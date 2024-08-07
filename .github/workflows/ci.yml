@@ -1,0 +1,86 @@
+# This file is part of jinx. Copyright © 2024 jinx contributors.
+# jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
+
+name: CI
+on:
+  pull_request:
+    branches: # run for pull requests that target master or prerelease
+      - master
+      - prerelease
+    paths-ignore: # ignore files that can't alter build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .github/workflows/build.yml
+      - .github/workflows/publish.yml
+      - .gitignore
+      - docs/**
+      - LICENSE
+      - screenshots/**
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v1
+  test:
+    strategy:
+      matrix:
+        target:
+          - runs-on: windows-latest
+            triple: x86_64-pc-windows-msvc
+            build-name: Windows
+            artifact-suffix: ''
+            suffix: .exe
+            path-separator: '\'
+            runner-can-execute: true
+          - runs-on: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+            build-name: Linux
+            artifact-suffix: -linux
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: x86_64-apple-darwin
+            build-name: macOS x86
+            artifact-suffix: -mac-x86
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: aarch64-apple-darwin
+            build-name: macOS ARM
+            artifact-suffix: -mac-arm
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: false
+      fail-fast: false
+    name: Test ${{ matrix.target.build-name }}
+    runs-on: ${{ matrix.target.runs-on }}
+    steps:
+      - name: git checkout
+        uses: actions/checkout@v4
+      - name: Setup workflow cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target.triple }}
+      - name: Check
+        run: cargo +nightly clippy --all-features --all-targets --target ${{ matrix.target.triple }}
+      - name: Test (no features)
+        if: matrix.target.runner-can-execute
+        run: cargo +nightly test --no-default-features --target ${{ matrix.target.triple }}
+      - name: Test (all features)
+        if: matrix.target.runner-can-execute
+        run: cargo +nightly test --all-features --target ${{ matrix.target.triple }}

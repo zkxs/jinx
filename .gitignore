@@ -1,0 +1,12 @@
+# Rust stuff
+/target
+
+# Config files
+jinx.sqlite
+
+# Log files
+*.log
+
+# IntelliJ stuff
+*.iml
+.idea/

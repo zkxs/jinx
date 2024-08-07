@@ -1,0 +1,30 @@
+[package]
+name = "jinx"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michael Ripley <zkxs00@gmail.com>"]
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+repository = "https://github.com/zkxs/jinx"
+description = "Discord bot that handles Jinxxy license registration"
+keywords = ["jinxxy", "discord", "bot", "license", "activation"]
+
+[dependencies]
+tokio = "1" # Async runtime
+tokio-graceful-shutdown = "0.15" # Handles SIGINT/SIGTERM/Ctrl+C
+poise = { git = "https://github.com/zkxs/poise.git", branch = "current", features = ["unstable"] } # Discord
+reqwest = { version = "0.11", features = ["gzip", "json"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise
+serde = "1" # Serialization
+tokio-rusqlite = { git = "https://github.com/zkxs/tokio-rusqlite.git", branch = "master", features = ["bundled"] } # Persistence
+tracing = "0.1" # Logging API
+tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
+regex = "1" # Pattern matching
+rand = "0.8" # RNG
+dashmap = "6" # concurrent map
+ahash = "0.8" # faster hashing algorithm than std
+percent-encoding = "2" # URL encoding
+semver = "1" # Semver parsing (for update check)
+clap = { version = "4", features = ["derive"] } # command-line arg parsing
+
+[dev-dependencies]
+tracing-test = "0.2" # Allow tracing to print during unit tests
