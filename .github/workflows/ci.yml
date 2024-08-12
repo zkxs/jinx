@@ -39,7 +39,7 @@ jobs:
             suffix: ''
             path-separator: '/'
             runner-can-execute: true
-          - runs-on: macos-latest
+          - runs-on: macos-13
             triple: x86_64-apple-darwin
             build-name: macOS x86
             artifact-suffix: -mac-x86
@@ -52,7 +52,7 @@ jobs:
             artifact-suffix: -mac-arm
             suffix: ''
             path-separator: '/'
-            runner-can-execute: false
+            runner-can-execute: true
       fail-fast: false
     name: Test ${{ matrix.target.build-name }}
     runs-on: ${{ matrix.target.runs-on }}
