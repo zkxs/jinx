@@ -40,24 +40,26 @@ jobs:
             suffix: ''
             path-separator: '/'
             runner-can-execute: true
-          - runs-on: macos-latest
+          - runs-on: macos-latest-large
             triple: x86_64-apple-darwin
             build-name: macOS x86
             artifact-suffix: -mac-x86
             suffix: ''
             path-separator: '/'
             runner-can-execute: true
-          - runs-on: macos-latest
+          - runs-on: macos-latest-xlarge
             triple: aarch64-apple-darwin
             build-name: macOS ARM
             artifact-suffix: -mac-arm
             suffix: ''
             path-separator: '/'
-            runner-can-execute: false
+            runner-can-execute: true
       fail-fast: false
     name: Build ${{ matrix.target.build-name }}
     runs-on: ${{ matrix.target.runs-on }}
     steps:
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target.triple }}
       - name: git checkout
         uses: actions/checkout@v4
       - name: Setup workflow cache
