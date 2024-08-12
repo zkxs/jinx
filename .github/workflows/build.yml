@@ -97,5 +97,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') # only run for pushes to tags
         with:
           draft: true
-          files: ${{ runner.temp }}${{ matrix.target.path-separator }}jinx{{ matrix.target.artifact-suffix }}${{ matrix.target.suffix }}
+          files: ${{ runner.temp }}${{ matrix.target.path-separator }}jinx${{ matrix.target.artifact-suffix }}${{ matrix.target.suffix }}
           fail_on_unmatched_files: true
