@@ -57,6 +57,12 @@ jobs:
     name: Test ${{ matrix.target.build-name }}
     runs-on: ${{ matrix.target.runs-on }}
     steps:
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target.triple }}
+      - name: Install Cargo
+        run: rustup component add --target ${{ matrix.target.triple }} cargo
+      - name: Install Clippy
+        run: rustup component add --target ${{ matrix.target.triple }} clippy
       - name: git checkout
         uses: actions/checkout@v4
       - name: Setup workflow cache
@@ -69,12 +75,6 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target.triple }}
       - name: Check
         run: cargo clippy --target ${{ matrix.target.triple }}
       - name: Test
