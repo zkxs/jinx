@@ -12,7 +12,6 @@ on:
       - .gitignore
       - docs/**
       - LICENSE
-      - screenshots/**
 jobs:
   cargo-deny:
     # only run for pushes to tags or non-dependabot branches
@@ -71,29 +70,13 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Setup Rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target.triple }}
-      - name: Setup Rust nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          components: rust-src
-          target: ${{ matrix.target.triple }}
       - name: Check
-        run: cargo +nightly clippy --all-features --all-targets --target ${{ matrix.target.triple }}
-      - name: Test (no features)
+        run: cargo clippy --target ${{ matrix.target.triple }}
+      - name: Test
         if: matrix.target.runner-can-execute
-        run: cargo +nightly test --no-default-features --target ${{ matrix.target.triple }}
-      - name: Test (all features)
-        if: matrix.target.runner-can-execute
-        run: cargo +nightly test --all-features --target ${{ matrix.target.triple }}
+        run: cargo test --target ${{ matrix.target.triple }}
       - name: Build
-        run: cargo +nightly build -Z build-std=std --release --target ${{ matrix.target.triple }}
+        run: cargo build --release --target ${{ matrix.target.triple }}
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
