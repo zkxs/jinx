@@ -8,7 +8,7 @@ policies.
 
 ## Data Collection
 
-### Data Necessary data to manage license keys
+### Data Necessary to Manage Licenses
 
 The following data is collected and stored by Jinx solely to enable Jinxxy license registration.
 
@@ -35,8 +35,6 @@ is sold to any third party in any situation. None of this data is shared with an
 situations:
 - **Discord User IDs** are sent to the Jinxxy API in order to associate them with a license activation
 - Jinxxy creators (or other users they authorize) may export **Discord User IDs** of users who have activated licenses, allowing them to correlate your Discord and Jinxxy accounts.
-
-## Data Security
 
 ## Changes to this Privacy Policy
 
