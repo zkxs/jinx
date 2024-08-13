@@ -8,7 +8,7 @@ license keys. For support, [open an issue](https://github.com/zkxs/jinx/issues) 
 > Jinx is in a pre-release state and has not been validated against the Jinxxy API. 
 > <small>(This is because I do not have access to the Jinxxy API yet.)</small>
 > 
-> **Use this software at your own risk until I complete my validation!**
+> **Use this software at your own risk!**
 
 > [!IMPORTANT]
 > **[Click here to install the bot][bot install]**  
@@ -116,15 +116,11 @@ Jinx comes with several slash commands for server administrators and moderators.
 | `/version`                             | None                | Shows version information about Jinx.                                                   |
 
 > [!TIP]
-> The required permission/role for a command can be customized in the server's Integration settings.
-
-> [!TIP]
->  `/user_info` can also be used from the context menu: look for "Apps"/"List Jinxxy licenses" when you right-click a
-> user in your server.
-
-> [!TIP]
-> If a Jinx update causes commands to become outdated, you can run `/init` again with no parameters to reinstall all
-> commands to your server.
+> - The required permission/role for a command can be customized in the server's Integration settings.
+> - `/user_info` can also be used from the context menu: look for "Apps"/"List Jinxxy licenses" when you right-click a
+>   user in your server.
+> - In the event that a Jinx update causes commands to become outdated, you can run `/init` again with no parameters to reinstall all
+>   commands to your server.
 
 ## Permissions Used
 
