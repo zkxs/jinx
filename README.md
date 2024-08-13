@@ -143,7 +143,7 @@ Jinx comes with several slash commands for server administrators and moderators.
 | Manage Roles  | Used to assign users the role matching their license key's product |
 | Send Messages | Used to send responses to some slash commands                      |
 
-## License
+## License & Legal
 
 jinx is free software: you can redistribute it and/or modify it under the terms of the
 [GNU Affero General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the
@@ -155,5 +155,9 @@ details.
 
 A full list of dependencies is available in [Cargo.toml](Cargo.toml), or a breakdown of dependencies by license can be
 generated with `cargo deny list`.
+
+---
+
+The [publicly installable bot][bot install] provided by us is available under our [Terms of Service](TERMS.md) and [Privacy Policy](PRIVACY.md).
 
 [bot install]: https://discord.com/oauth2/authorize?client_id=1270708639145001052
