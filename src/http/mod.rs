@@ -15,8 +15,8 @@ static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .user_agent(constants::USER_AGENT)
         .gzip(true)
         .https_only(true)
-        .connect_timeout(Duration::from_secs(6))
-        .timeout(Duration::from_secs(3))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(10))
         // .connection_verbose(true) // useful for debugging
         .build()
         .unwrap()
@@ -31,8 +31,8 @@ static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         // .http2_keep_alive_timeout(Duration::from_secs(10)) // if the ping is not acknowledged within the timeout, the connection will be closed
         .gzip(true)
         .https_only(true)
-        .connect_timeout(Duration::from_secs(6))
-        .timeout(Duration::from_secs(3))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(10))
         // .connection_verbose(true) // useful for debugging
         .build()
         .unwrap()
