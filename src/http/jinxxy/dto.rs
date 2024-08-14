@@ -40,7 +40,7 @@ impl From<License> for super::LicenseInfo {
             username: license.user.username,
             product_id: license.inventory_item.item.id,
             product_name: license.inventory_item.item.name,
-            product_version_id: license.inventory_item.item.version.id,
+            product_version_id: license.inventory_item.item.version.map(|version| version.id),
             activations: license.activations.total_count,
         }
     }
@@ -65,7 +65,7 @@ pub struct LicenseInventoryItemItem { // yes I know this name is ridiculous, but
     /// Product Name
     name: String,
     /// Product version (can be used to sell different feature sets in the same product)
-    version: LicenseInventoryItemItemVersion, //TODO: this may be nullable
+    version: Option<LicenseInventoryItemItemVersion>,
 }
 
 impl From<LicenseInventoryItemItem> for PartialProduct {
@@ -79,7 +79,7 @@ impl From<LicenseInventoryItemItem> for PartialProduct {
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseInventoryItemItemVersion {
-    id: String, //TODO: this may be nullable
+    id: String,
 }
 
 #[derive(Debug, Deserialize)]

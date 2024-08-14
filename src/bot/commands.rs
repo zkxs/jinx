@@ -318,7 +318,7 @@ pub async fn user_info(
                         .or_insert(result).as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
                 };
                 let product_version_name = product_version_cache
-                    .and_then(|cache| cache.get(&license_info.product_version_id))
+                    .and_then(|cache| license_info.product_version_id.as_ref().and_then(|version_id| cache.get(version_id)))
                     .map(|version| format!("\"{}\"", version))
                     .unwrap_or("`null`".to_string());
 

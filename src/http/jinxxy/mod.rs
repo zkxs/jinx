@@ -262,7 +262,7 @@ pub struct LicenseInfo {
     pub username: String,
     pub product_id: String,
     pub product_name: String,
-    pub product_version_id: String,
+    pub product_version_id: Option<String>,
     pub activations: u32,
 }
 
