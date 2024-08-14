@@ -331,8 +331,7 @@ pub async fn user_info(
                 };
 
                 message.push_str(format!(
-                    "\n- ID=`{}` short=`{}` long=`{}` activations={} locked={} user={} product=\"{}\" version={}",
-                    license_id,
+                    "\n- short=`{}` long=`{}` activations={} locked={} user={} product=\"{}\" version={}",
                     license_info.short_key,
                     license_info.key,
                     license_info.activations, // this field came from Jinxxy and is up to date
@@ -342,6 +341,7 @@ pub async fn user_info(
                     product_version_name
                 ).as_str());
             } else {
+                // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
                 message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
             }
         }
