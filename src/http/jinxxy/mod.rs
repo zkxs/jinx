@@ -191,17 +191,26 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
     Ok(response.id)
 }
 
-/// Delete a license activation
-pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<(), Error> {
+/// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
+pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool, Error> {
     let response = HTTP_CLIENT.delete(format!("{}licenses/{}/activations/{}", JINXXY_BASE_URL, license_id, activation_id))
         .headers(get_headers(api_key))
         .send()
         .await?;
-    if !response.status().is_success() {
-        JinxError::fail(format!("DELETE /licenses/<id>/activations/<id> returned status code {}", response.status().as_u16()))?;
-        unreachable!()
+    if response.status().is_success() {
+        Ok(true)
+    } else {
+        debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
+        // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
+        let status_code = response.status();
+        let response: dto::JinxxyError = response.json().await?;
+        if response.looks_like_404() {
+            // license was not found
+            Ok(false)
+        } else {
+            Err(JinxError::boxed(format!("DELETE /licenses/<id>/activations/<id> returned status code {}", status_code.as_u16())))
+        }
     }
-    Ok(())
 }
 
 /// Look up a product

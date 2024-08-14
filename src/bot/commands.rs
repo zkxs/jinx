@@ -377,7 +377,7 @@ pub async fn deactivate_license(
             let activations = context.data().db.get_user_license_activations(guild_id, user.id.get(), license_id.clone()).await?;
             for activation_id in activations {
                 let license_id = license_id.clone();
-                jinxxy::delete_license_activation(&api_key, &license_id, &activation_id).await?; //TODO: might error if the activation doesn't exist
+                jinxxy::delete_license_activation(&api_key, &license_id, &activation_id).await?;
                 context.data().db.deactivate_license(guild_id, license_id, activation_id, user.id.get()).await?;
             }
             let reply = CreateReply::default()
