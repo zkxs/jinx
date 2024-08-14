@@ -3,9 +3,9 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
+use crate::license::LOCKING_USER_ID;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use crate::license::LOCKING_USER_ID;
 
 const DISCORD_PREFIX: &str = "discord_";
 
@@ -37,6 +37,7 @@ impl From<License> for super::LicenseInfo {
             license_id: license.id,
             short_key: license.short_key,
             key: license.key,
+            user_id: license.user.id,
             username: license.user.username,
             product_id: license.inventory_item.item.id,
             product_name: license.inventory_item.item.name,
@@ -48,8 +49,10 @@ impl From<License> for super::LicenseInfo {
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseUser {
+    /// User ID
+    id: String,
     /// Account's username; used in profile URL
-    username: String,
+    username: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,7 +95,7 @@ pub struct AuthUser {
     /// No sure what this is, but it can be null or empty. I think this is custom display name?
     name: Option<String>,
     /// Account's username; used in profile URL
-    username: String,
+    username: Option<String>,
     profile_image: Option<ProfileImage>,
 }
 
@@ -100,7 +103,7 @@ impl AuthUser {
     fn into_display_name(self) -> String {
         match self.name {
             Some(name) if !name.is_empty() && !name.trim().is_empty() => name,
-            _ => self.username,
+            _ => self.username.unwrap_or_else(|| "`null`".to_string()),
         }
     }
 }

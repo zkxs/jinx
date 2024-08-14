@@ -259,7 +259,8 @@ pub struct LicenseInfo {
     pub license_id: String,
     pub short_key: String,
     pub key: String,
-    pub username: String,
+    pub user_id: String,
+    pub username: Option<String>,
     pub product_id: String,
     pub product_name: String,
     pub product_version_id: Option<String>,
@@ -267,7 +268,8 @@ pub struct LicenseInfo {
 }
 
 impl LicenseInfo {
-    pub fn profile_url(&self) -> String {
-        format!("https://jinxxy.com/{}", utf8_percent_encode(&self.username, NON_ALPHANUMERIC))
+    pub fn profile_url(&self) -> Option<String> {
+        self.username.as_ref()
+            .map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
     }
 }

@@ -324,15 +324,20 @@ pub async fn user_info(
 
                 let locked = context.data().db.is_license_locked(guild_id, license_id.clone()).await?;
 
+                let username = if let Some(username) = &license_info.username {
+                    format!("[{}](<{}>)", username, license_info.profile_url().ok_or_else(|| JinxError::new("expected profile_url to exist when username is set"))?)
+                } else {
+                    format!("`{}`", license_info.user_id)
+                };
+
                 message.push_str(format!(
-                    "\n- ID=`{}` short=`{}` long=`{}` activations={} locked={} [{}](<{}>) product=\"{}\" version={}",
+                    "\n- ID=`{}` short=`{}` long=`{}` activations={} locked={} user={} product=\"{}\" version={}",
                     license_id,
                     license_info.short_key,
                     license_info.key,
                     license_info.activations, // this field came from Jinxxy and is up to date
                     locked, // this field came from the local DB and may be out of sync
-                    license_info.username,
-                    license_info.profile_url(),
+                    username,
                     license_info.product_name,
                     product_version_name
                 ).as_str());
