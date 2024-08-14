@@ -609,7 +609,7 @@ pub(super) async fn link_product(
             let components = vec![
                 CreateActionRow::SelectMenu(CreateSelectMenu::new(product_select_id.clone(), CreateSelectMenuKind::String { options: product_select_options }).placeholder("Product Name").min_values(1).max_values(product_select_options_len)),
                 CreateActionRow::SelectMenu(CreateSelectMenu::new(role_select_id.clone(), CreateSelectMenuKind::Role { default_roles: None }).placeholder("Role to Grant").min_values(1).max_values(MAX_SELECT_VALUES)),
-                CreateActionRow::Buttons(vec![CreateButton::new(link_button_id.clone()).label("Link"), CreateButton::new(link_button_id.clone()).label("Unlink")]),
+                CreateActionRow::Buttons(vec![CreateButton::new(link_button_id.clone()).label("Link"), CreateButton::new(unlink_button_id.clone()).label("Unlink")]),
             ];
             let reply = CreateReply::default()
                 .ephemeral(true)
