@@ -3,6 +3,9 @@
 
 use crate::cli_args::{JinxArgs, OwnerCommand};
 use clap::Parser;
+use std::process::ExitCode;
+use std::sync::atomic;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 use tracing::info;
@@ -27,8 +30,11 @@ const DB_READ_ERROR_MESSAGE: &str = "Failed to read from database";
 const DB_WRITE_ERROR_MESSAGE: &str = "Failed to write to database";
 const DISCORD_ID_PARSE_ERROR_MESSAGE: &str = "Failed to parse Discord ID";
 
+/// If we should restart the bot on shutdown
+static SHOULD_RESTART: AtomicBool = AtomicBool::new(false);
+
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> ExitCode {
     let cli_args = JinxArgs::parse();
     match cli_args.command {
         Some(cli_args::Command::Init { discord_token }) => {
@@ -37,12 +43,15 @@ async fn main() {
             if let Some(discord_token) = discord_token {
                 let db = db::JinxDb::open().await.expect(DB_OPEN_ERROR_MESSAGE);
                 db.set_discord_token(discord_token).await.expect("Failed to set discord token");
+                ExitCode::SUCCESS
             } else {
-                eprintln!("discord token must be provided either via command-line parameter or DISCORD_TOKEN environment variable")
+                eprintln!("discord token must be provided either via command-line parameter or DISCORD_TOKEN environment variable");
+                ExitCode::FAILURE
             }
         }
         Some(cli_args::Command::UpdateCheck) => {
             println!("{}", http::update_checker::check_for_update().await);
+            ExitCode::SUCCESS
         }
         Some(cli_args::Command::Owner(cli_args::OwnerArgs { command })) => {
             let db = db::JinxDb::open().await.expect(DB_OPEN_ERROR_MESSAGE);
@@ -57,6 +66,7 @@ async fn main() {
                     db.get_owners().await.expect(DB_READ_ERROR_MESSAGE).into_iter().for_each(|id| println!("{}", id));
                 }
             }
+            ExitCode::SUCCESS
         }
         None => {
             // Init logging
@@ -74,7 +84,14 @@ async fn main() {
                 .handle_shutdown_requests(Duration::from_millis(1000))
                 .await;
 
-            info!("shutting down now: {:?}", result);
+
+            if SHOULD_RESTART.load(atomic::Ordering::Acquire) {
+                info!("restarting now: {:?}", result);
+                ExitCode::SUCCESS
+            } else {
+                info!("shutting down now: {:?}", result);
+                ExitCode::FAILURE
+            }
         }
     }
 }

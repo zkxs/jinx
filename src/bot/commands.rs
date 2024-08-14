@@ -5,11 +5,12 @@ use super::Context;
 use crate::error::JinxError;
 use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
-use crate::{constants, license};
+use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic;
 use std::time::Duration;
 use poise::serenity_prelude::GuildId;
 use tracing::{info, warn};
@@ -78,6 +79,24 @@ pub(super) async fn exit(
 ) -> Result<(), Error> {
     info!("starting shutdown...");
     context.send(CreateReply::default().content("Shutting down now!").ephemeral(true)).await?;
+    context.framework().shard_manager.shutdown_all().await;
+    Ok(())
+}
+
+/// Remotely restarts down the bot. If you do not have access to restart the bot this is PERMANENT.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn restart(
+    context: Context<'_>,
+) -> Result<(), Error> {
+    info!("starting restart...");
+    context.send(CreateReply::default().content("Restarting now!").ephemeral(true)).await?;
+    SHOULD_RESTART.store(true, atomic::Ordering::Release);
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
 }
