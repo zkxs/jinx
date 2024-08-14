@@ -1,14 +1,13 @@
 # Jinx
 
 Jinx is a Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
-license keys. For support, [open an issue](https://github.com/zkxs/jinx/issues) or
-[join our Discord](https://discord.gg/aKkA6m26f9).
+license keys.
+
+<!-- For support, [open an issue][issues] or [join our Discord][discord].-->
 
 > [!WARNING]
-> Jinx is in a pre-release state and has not been validated against the Jinxxy API. 
-> <small>(This is because I do not have access to the Jinxxy API yet.)</small>
-> 
-> **Use this software at your own risk!**
+> Jinx is in a pre-release state and has only been partially validated against the Jinxxy API.
+> You may experience bugs with this software: please report them [here][issues] or [in our Discord][discord].
 
 > [!IMPORTANT]
 > **[Click here to install the bot][bot install]**  
@@ -157,3 +156,5 @@ generated with `cargo deny list`.
 The [publicly installable bot][bot install] provided by us is available under our [Terms of Service](TERMS.md) and [Privacy Policy](PRIVACY.md).
 
 [bot install]: https://discord.com/oauth2/authorize?client_id=1270708639145001052
+[discord]: https://discord.gg/aKkA6m26f9
+[issues]: https://github.com/zkxs/jinx/issues
