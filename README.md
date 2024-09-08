@@ -17,16 +17,16 @@ license keys.
 
 A user clicks the "Register" button:
 
-![Registration Message](docs/register_message.png)
+![Registration Message](docs/images/register_message.png)
 
 Next, the user is presented with a prompt to enter a license key:
 
-![Registration Dialog](docs/register_modal.png)
+![Registration Dialog](docs/images/register_modal.png)
 
 Finally, if a valid license was provided then the user is granted any roles associated to their product. A confirmation
 message is shown:
 
-![Registration Success](docs/register_success.png)
+![Registration Success](docs/images/register_success.png)
 
 ## Installation
 
@@ -38,14 +38,14 @@ When installing the bot, a "jinx" role will be automatically created in your ser
 **You must ensure sure the "jinx" role is listed above any roles you want Jinx to manage.**
 For example, in the screenshot below Jinx can only manage "test-secret-role" and "test-secret-role-2".
 
-![Role Management UI](docs/manage_roles.png)
+![Role Management UI](docs/images/manage_roles.png)
 
 Next, go to [Jinxxy's API Keys page](https://jinxxy.com/my/dashboard/settings/api-keys) and create a new
 API key with products_read, customers_read, licenses_read, and licenses_write (see
 [explanation of permissions](docs/permissions-used.md) to learn why we need these). Uncheck the expiration checkbox.
 Make note of the API key when you create it: we'll need it shortly. The form should look like this:
 
-![API Key creation](docs/create_api_key_2.png)
+![API Key creation](docs/images/create_api_key_2.png)
 
 Finally, back in your Discord server run the following slash commands:
 
