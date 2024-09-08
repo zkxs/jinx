@@ -8,6 +8,8 @@
   - pagination
   - Jinxxy/GitHub Ratelimiting?
 - bump project version
+- indices on the sqlite tables
+- decide if I want to work around jinxxy activation delete bug
 
 ## Goals
 
