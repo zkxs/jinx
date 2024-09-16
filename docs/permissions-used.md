@@ -5,7 +5,6 @@
 | Permission     | Explanation                                                   |
 |----------------|---------------------------------------------------------------|
 | products_read  | Used to list products so you can assign Discord roles to them |
-| customers_read | Used to fetch seller's username and profile picture thumbnail |
 | licenses_read  | Used to verify license keys                                   |
 | licenses_write | Used to link a Discord user to a license key                  |
 

@@ -41,11 +41,11 @@ For example, in the screenshot below Jinx can only manage "test-secret-role" and
 ![Role Management UI](docs/images/manage_roles.png)
 
 Next, go to [Jinxxy's API Keys page](https://jinxxy.com/my/dashboard/settings/api-keys) and create a new
-API key with products_read, customers_read, licenses_read, and licenses_write (see
+API key with products_read, licenses_read, and licenses_write (see
 [explanation of permissions](docs/permissions-used.md) to learn why we need these). Uncheck the expiration checkbox.
 Make note of the API key when you create it: we'll need it shortly. The form should look like this:
 
-![API Key creation](docs/images/create_api_key_2.png)
+![API Key creation](docs/images/create_api_key.png)
 
 Finally, back in your Discord server run the following slash commands:
 
