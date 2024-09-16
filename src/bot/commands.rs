@@ -375,7 +375,7 @@ pub async fn user_info(
     Ok(())
 }
 
-/// Query license information for a user
+/// Deactivate a license. Does not revoke any granted roles.
 #[poise::command(
     slash_command,
     guild_only,
