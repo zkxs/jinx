@@ -12,10 +12,10 @@ keywords = ["jinxxy", "discord", "bot", "license", "activation"]
 [dependencies]
 tokio = "1" # Async runtime
 tokio-graceful-shutdown = "0.15" # Handles SIGINT/SIGTERM/Ctrl+C
-poise = { git = "https://github.com/zkxs/poise.git", branch = "current", features = ["unstable"] } # Discord
+poise = { git = "https://github.com/zkxs/poise.git", branch = "current", features = ["unstable"] } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1
 reqwest = { version = "0.11", features = ["gzip", "json"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise
 serde = "1" # Serialization
-tokio-rusqlite = { git = "https://github.com/zkxs/tokio-rusqlite.git", branch = "master", features = ["bundled"] } # Persistence
+tokio-rusqlite = { git = "https://github.com/zkxs/tokio-rusqlite.git", branch = "master", features = ["bundled"] } # Persistence. Forked from https://github.com/programatik29/tokio-rusqlite 0.5.1
 tracing = "0.1" # Logging API
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
 regex = "1" # Pattern matching
