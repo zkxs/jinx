@@ -113,9 +113,12 @@ pub(super) async fn stats(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
-    let users_len = context.serenity_context().cache.user_count();
-    let guilds_len = context.serenity_context().cache.guild_count();
-    let shards_len = context.serenity_context().cache.shard_count();
+    let configured_guild_count = context.data().db.guild_count().await.unwrap();
+    let license_activation_count = context.data().db.license_activation_count().await.unwrap();
+    let product_role_count = context.data().db.product_role_count().await.unwrap();
+    let user_count = context.serenity_context().cache.user_count();
+    let cached_guild_count = context.serenity_context().cache.guild_count();
+    let shard_count = context.serenity_context().cache.shard_count();
     let mut shard_list = String::new();
     {
         let shard_manager = context.framework().shard_manager();
@@ -127,9 +130,12 @@ pub(super) async fn stats(
 
     let message = format!(
         "db_size={db_size} KiB\n\
-        users={users_len}\n\
-        guilds={guilds_len}\n\
-        shards={shards_len}{shard_list}"
+        users={user_count}\n\
+        cached guilds={cached_guild_count}\n\
+        configured guilds={configured_guild_count}\n\
+        license activations={license_activation_count}\n\
+        product->role links={product_role_count}\n\
+        shards={shard_count}{shard_list}"
     );
     context.send(
         CreateReply::default()

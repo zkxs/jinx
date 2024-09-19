@@ -310,4 +310,28 @@ impl JinxDb {
             Ok(result)
         }).await
     }
+
+    /// Get count of license activations
+    pub async fn license_activation_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
+    /// Get count of configured guilds
+    pub async fn guild_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(*) FROM guild", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
+    /// Get count of product->role mappings
+    pub async fn product_role_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(*) FROM product_role", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
 }
