@@ -10,6 +10,9 @@
 - bump project version
 - indices on the sqlite tables
 - decide if I want to work around jinxxy activation delete bug
+- bot log channel
+  - log license actions
+  - it would also let me send alerts
 
 ## Goals
 

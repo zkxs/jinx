@@ -69,18 +69,18 @@ is moderately technical.
 
 Jinx comes with several slash commands for server administrators and moderators.
 
-| Command                                | Required Permission | Description                                                                             |
-|----------------------------------------|---------------------|-----------------------------------------------------------------------------------------|
-| `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                    |
-| `/link_product`                        | Manage Roles        | Link a product to a role. Activating a license for the product will grant linked roles. |
-| `/list_links`                          | Manage Roles        | List all product→role links.                                                            |
-| `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                      |
-| `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                           |
-| `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                             |
-| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                           |
-| `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                |
-| `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                    |
-| `/version`                             | None                | Shows version information about Jinx.                                                   |
+| Command                                | Required Permission | Description                                                                                          |
+| -------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                                 |
+| `/link_product`                        | Manage Roles        | Link (or unlink) a product and a role. Activating a license for the product will grant linked roles. |
+| `/list_links`                          | Manage Roles        | List all product→role links.                                                                         |
+| `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                                   |
+| `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                                        |
+| `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                                          |
+| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                                        |
+| `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                             |
+| `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                                 |
+| `/version`                             | None                | Shows version information about Jinx.                                                                |
 
 > [!TIP]
 > - The required permission/role for a command can be customized in the server's Integration settings.

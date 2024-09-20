@@ -565,7 +565,7 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
     Ok(license_id)
 }
 
-/// Link a product to a role. Activating a license for the product will grant linked roles.
+/// Link (or unlink) a product and a role. Activating a license for the product will grant linked roles.
 #[poise::command(
     slash_command,
     guild_only,
