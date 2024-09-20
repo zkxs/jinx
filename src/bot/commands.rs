@@ -101,6 +101,36 @@ pub(super) async fn restart(
     Ok(())
 }
 
+/// Send an announcement to ALL bot log channels.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn announce(
+    context: Context<'_>,
+    message: String,
+) -> Result<(), Error> {
+    let message = CreateMessage::default().content(message);
+    let channels = context.data().db.get_log_channels().await?;
+    let channel_count = channels.len();
+    context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
+    let mut successful_messages: usize = 0;
+    for channel in channels {
+        match channel.send_message(context.serenity_context(), message.clone()).await {
+            Ok(_) => successful_messages += 1,
+            Err(e) => warn!("Error sending message to {}: {:?}", channel, e),
+        }
+    }
+    let reply = CreateReply::default()
+        .ephemeral(true)
+        .content(format!("Sent announcement to {successful_messages}/{channel_count} channels"));
+    context.send(reply).await?;
+    Ok(())
+}
+
 /// Get statistics about bot load and performance
 #[poise::command(
     slash_command,

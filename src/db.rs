@@ -353,6 +353,19 @@ impl JinxDb {
         Ok(channel_id.map(ChannelId::new))
     }
 
+    /// Get all bot log channels
+    pub async fn get_log_channels(&self) -> Result<Vec<ChannelId>> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL")?;
+            let result = statement.query_and_then((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
+            let mut vec = Vec::with_capacity(result.size_hint().0);
+            for row in result {
+                vec.push(row?);
+            }
+            Ok(vec)
+        }).await
+    }
+
     /// Set or unset bot log channel
     pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> Result<()> {
         self.connection.call(move |connection| {

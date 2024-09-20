@@ -46,6 +46,7 @@ static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| 
 /// commands to be installed only for owner-owned guilds
 static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     vec![
+        announce(),
         exit(),
         restart(),
         stats(),
@@ -67,6 +68,7 @@ pub async fn run_bot() -> Result<(), Error> {
         .options(poise::FrameworkOptions {
             // all commands must appear in this list otherwise poise won't recoginize interactions for them
             commands: vec![
+                announce(),
                 create_post(),
                 deactivate_license(),
                 exit(),
