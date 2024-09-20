@@ -8,7 +8,7 @@ use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 2;
+const SCHEMA_VERSION_VALUE: i32 = 3;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -51,7 +51,8 @@ impl JinxDb {
                 id                     INTEGER PRIMARY KEY, \
                 jinxxy_api_key         TEXT, \
                 log_channel_id         INTEGER, \
-                test                   INTEGER NOT NULL DEFAULT 0 \
+                test                   INTEGER NOT NULL DEFAULT 0, \
+                owner                  INTEGER NOT NULL DEFAULT 0 \
             ) STRICT", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS product_role ( \
@@ -82,6 +83,12 @@ impl JinxDb {
                 connection.execute("ALTER TABLE guild ADD COLUMN log_channel_id INTEGER", ())?;
                 // "test" column needs to be added to "guild"
                 connection.execute("ALTER TABLE guild ADD COLUMN test INTEGER NOT NULL DEFAULT 0", ())?;
+            }
+
+            // handle schema v2 -> v3 migration
+            if schema_version < 3 {
+                // "owner" column needs to be added to "guild"
+                connection.execute("ALTER TABLE guild ADD COLUMN owner INTEGER NOT NULL DEFAULT 0", ())?;
             }
 
             // update the schema version value persisted to the DB
@@ -134,7 +141,7 @@ impl JinxDb {
         }).await
     }
 
-    pub async fn is_owner(&self, owner_id: u64) -> Result<bool> {
+    pub async fn is_user_owner(&self, owner_id: u64) -> Result<bool> {
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("SELECT EXISTS(SELECT * FROM owner WHERE owner_id = :owner)")?;
             let owner_exists = statement.query_row(named_params! {":owner": owner_id}, |row| {
@@ -396,5 +403,27 @@ impl JinxDb {
             Ok(())
         }).await?;
         Ok(())
+    }
+
+    /// Set or unset this guild as an owner guild (gets extra slash commands)
+    pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> Result<()> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("INSERT INTO guild (id, owner) VALUES (:guild, :owner) ON CONFLICT (id) DO UPDATE SET owner = excluded.owner")?;
+            statement.execute(named_params! {":guild": guild.get(), ":owner": owner})?;
+            Ok(())
+        }).await?;
+        Ok(())
+    }
+
+    /// Check if a guild is an owner guild (gets extra slash commands)
+    pub async fn is_owner_guild(&self, guild: GuildId) -> Result<bool> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT owner FROM guild WHERE id = :guild")?;
+            let owner = statement.query_row(named_params! {":guild": guild.get()}, |row| {
+                let owner: bool = row.get(0)?;
+                Ok(owner)
+            }).optional()?;
+            Ok(owner.unwrap_or(false))
+        }).await
     }
 }

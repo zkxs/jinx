@@ -8,12 +8,13 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
-use poise::serenity_prelude::CreateMessage;
+use poise::serenity_prelude::{CreateMessage, GuildId, Http};
 use poise::{serenity_prelude as serenity, Command, CreateReply, FrameworkContext, FrameworkError};
 use rand::prelude::*;
 use serenity::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
 use std::fmt::Debug;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -57,7 +58,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
 
 /// User data, which is stored and accessible in all command invocations
 struct Data {
-    db: JinxDb,
+    db: Arc<JinxDb>,
 }
 
 pub async fn run_bot() -> Result<(), Error> {
@@ -98,10 +99,31 @@ pub async fn run_bot() -> Result<(), Error> {
         })
         .setup(|ctx, _ready, _framework| {
             Box::pin(async move {
-                info!("registering commands...");
+                let db = Arc::new(db);
+                info!("registering global commands...");
                 let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
                 info!("setup complete!");
+
+                let shard_id = ctx.shard_id.get();
+                let http = ctx.http.clone();
+                let cache = ctx.cache.clone();
+                let db_clone = db.clone();
+                tokio::task::spawn(async move {
+                    let mut updated_guilds: usize = 0;
+                    for guild in cache.guilds() {
+                        if guild.shard_id(&cache) == shard_id {
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            if let Err(e) = set_guild_commands(&http, &db_clone, guild, None, None).await {
+                                error!("Error setting guild commands for guild {}: {:?}", guild, e);
+                            } else {
+                                updated_guilds += 1;
+                            }
+                        }
+                    }
+                    info!("Shard {} set up commands in {} guilds", shard_id, updated_guilds);
+                });
+
                 Ok(Data {
                     db
                 })
@@ -121,8 +143,30 @@ pub async fn run_bot() -> Result<(), Error> {
     Ok(())
 }
 
+/// Set (or reset) guild commands for this guild.
+///
+/// There is a global rate limit of 200 application command creates per day, per guild.
+async fn set_guild_commands(http: impl AsRef<Http>, db: &JinxDb, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), Error> {
+    let owner = if let Some(owner) = force_owner {
+        owner
+    } else {
+        db.is_owner_guild(guild_id).await?
+    };
+    let creator = if let Some(creator) = force_creator {
+        creator
+    } else {
+        db.get_jinxxy_api_key(guild_id).await?.is_some()
+    };
+    let owner_commands = owner.then_some(OWNER_COMMANDS.iter()).into_iter().flatten();
+    let creator_commands = creator.then_some(CREATOR_COMMANDS.iter()).into_iter().flatten();
+    let command_iter = owner_commands.chain(creator_commands);
+    let commands = poise::builtins::create_application_commands(command_iter);
+    guild_id.set_commands(http, commands).await?;
+    Ok(())
+}
+
 async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
-    Ok(context.data().db.is_owner(context.author().id.get()).await?)
+    Ok(context.data().db.is_user_owner(context.author().id.get()).await?)
 }
 
 /// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.

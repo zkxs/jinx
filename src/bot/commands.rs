@@ -1,20 +1,19 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::Context;
+use super::{check_owner, Context};
 use crate::error::JinxError;
 use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
 use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::GuildId;
 use poise::CreateReply;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic;
 use std::time::Duration;
-use poise::serenity_prelude::GuildId;
 use tracing::{info, warn};
-use super::check_owner;
 
 // discord component ids
 pub(super) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
@@ -229,38 +228,36 @@ pub(super) async fn init(
         // here we have a bit of an easter-egg to install owner commands
         if api_key == "install_owner_commands" {
             if check_owner(context).await? {
-                let creator = context.data().db.get_jinxxy_api_key(guild_id).await?.is_some();
+                context.data().db.set_owner_guild(guild_id, true).await?;
 
                 //TODO: for some reason this sometimes times out and gives a 404 if the commands have
                 // previously been deleted in the same bot process; HOWEVER it actually still succeeds.
                 // I suspect this is a discord/serenity/poise bug.
                 // For some <id>, <nonce>, this looks like:
                 // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
-                set_guild_commands(context, guild_id, true, creator).await?;
+                set_guild_commands(context, guild_id, Some(true), None).await?;
 
-                context.send(CreateReply::default().content("Commands installed.").ephemeral(true)).await?;
+                context.send(CreateReply::default().content("Owner commands installed.").ephemeral(true)).await?;
             } else {
                 context.send(CreateReply::default().content("Not an owner").ephemeral(true)).await?;
             }
         } else if api_key == "uninstall_owner_commands" {
             if check_owner(context).await? {
-                let creator = context.data().db.get_jinxxy_api_key(guild_id).await?.is_some();
-                set_guild_commands(context, guild_id, false, creator).await?;
-                context.send(CreateReply::default().content("Commands uninstalled.").ephemeral(true)).await?;
+                context.data().db.set_owner_guild(guild_id, false).await?;
+                set_guild_commands(context, guild_id, Some(false), None).await?;
+                context.send(CreateReply::default().content("Owner commands uninstalled.").ephemeral(true)).await?;
             } else {
                 context.send(CreateReply::default().content("Not an owner").ephemeral(true)).await?;
             }
         } else {
             // normal /init <key> use ends up in this branch
             context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
-            let owner = check_owner(context).await?;
-            set_guild_commands(context, guild_id, owner, true).await?;
+            set_guild_commands(context, guild_id, None, Some(true)).await?;
             context.send(CreateReply::default().content("Done!").ephemeral(true)).await?;
         }
     } else if context.data().db.get_jinxxy_api_key(guild_id).await?.is_some() {
         // re-initialize commands but only if API key is already set
-        let owner = check_owner(context).await?;
-        set_guild_commands(context, guild_id, owner, true).await?;
+        set_guild_commands(context, guild_id, None, Some(true)).await?;
         context.send(CreateReply::default().content("Commands reinstalled.").ephemeral(true)).await?;
     } else {
         context.send(CreateReply::default().content("Please provide a Jinxxy API key").ephemeral(true)).await?;
@@ -269,14 +266,13 @@ pub(super) async fn init(
     Ok(())
 }
 
-async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, owner: bool, creator: bool) -> Result<(), Error> {
-    let owner_commands = owner.then_some(super::OWNER_COMMANDS.iter()).into_iter().flatten();
-    let creator_commands = creator.then_some(super::CREATOR_COMMANDS.iter()).into_iter().flatten();
-    let command_iter = owner_commands.chain(creator_commands);
-    let commands = poise::builtins::create_application_commands(command_iter);
-    guild_id.set_commands(context, commands).await?;
-    Ok(())
+/// Set (or reset) guild commands for this guild.
+///
+/// There is a global rate limit of 200 application command creates per day, per guild.
+async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
+    super::set_guild_commands(context.http(), &context.data().db, guild_id, force_owner, force_creator).await
 }
+
 
 /// Set (or unset) channel for bot to log to.
 #[poise::command(
