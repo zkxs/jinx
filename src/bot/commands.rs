@@ -175,6 +175,7 @@ pub(super) async fn stats(
     let configured_guild_count = context.data().db.guild_count().await.unwrap();
     let license_activation_count = context.data().db.license_activation_count().await.unwrap();
     let product_role_count = context.data().db.product_role_count().await.unwrap();
+    let log_channel_count = context.data().db.log_channel_count().await.unwrap();
     let user_count = context.serenity_context().cache.user_count();
     let cached_guild_count = context.serenity_context().cache.guild_count();
     let shard_count = context.serenity_context().cache.shard_count();
@@ -192,6 +193,7 @@ pub(super) async fn stats(
         users={user_count}\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
+        log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
         product->role links={product_role_count}\n\
         shards={shard_count}{shard_list}"

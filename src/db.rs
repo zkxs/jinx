@@ -339,6 +339,14 @@ impl JinxDb {
         }).await
     }
 
+    /// Get count of distinct bot log channels
+    pub async fn log_channel_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(DISTINCT log_channel_id) FROM guild WHERE test = 0", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
