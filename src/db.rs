@@ -326,7 +326,7 @@ impl JinxDb {
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild ON license_activation.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -334,7 +334,7 @@ impl JinxDb {
     /// Get count of configured guilds
     pub async fn guild_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM guild LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM guild WHERE test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
