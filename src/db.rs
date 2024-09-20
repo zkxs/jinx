@@ -73,7 +73,8 @@ impl JinxDb {
                 owner_id               INTEGER PRIMARY KEY \
             ) STRICT", ())?;
 
-            let schema_version: i32 = connection.query_row(format!("SELECT \"{SCHEMA_VERSION_KEY}\" FROM settings").as_str(), (), |a| a.get(0))?;
+            let mut settings_read = connection.prepare("SELECT value FROM settings where key = :key")?;
+            let schema_version: i32 = settings_read.query_row(named_params! {":key": SCHEMA_VERSION_KEY}, |a| a.get(0))?;
 
             // handle schema v1 -> v2 migration
             if schema_version < 2 {
@@ -85,7 +86,7 @@ impl JinxDb {
 
             // update the schema version value persisted to the DB
             let mut settings_insert = connection.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
-            settings_insert.execute(named_params! { ":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE})?;
+            settings_insert.execute(named_params! {":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE})?;
 
             Ok(())
         }).await
