@@ -50,7 +50,8 @@ impl JinxDb {
             connection.execute("CREATE TABLE IF NOT EXISTS guild ( \
                 id                     INTEGER PRIMARY KEY, \
                 jinxxy_api_key         TEXT, \
-                log_channel_id         INTEGER \
+                log_channel_id         INTEGER, \
+                test                   INTEGER NOT NULL DEFAULT 0 \
             ) STRICT", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS product_role ( \
@@ -78,6 +79,8 @@ impl JinxDb {
             if schema_version < 2 {
                 // "log_channel_id" column needs to be added to "guild"
                 connection.execute("ALTER TABLE guild ADD COLUMN log_channel_id INTEGER", ())?;
+                // "test" column needs to be added to "guild"
+                connection.execute("ALTER TABLE guild ADD COLUMN test INTEGER NOT NULL DEFAULT 0", ())?;
             }
 
             // update the schema version value persisted to the DB
@@ -322,7 +325,7 @@ impl JinxDb {
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -330,7 +333,7 @@ impl JinxDb {
     /// Get count of configured guilds
     pub async fn guild_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM guild", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM guild LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -338,7 +341,7 @@ impl JinxDb {
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM product_role", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM product_role LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -371,6 +374,16 @@ impl JinxDb {
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT INTO guild (id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (id) DO UPDATE SET log_channel_id = excluded.log_channel_id")?;
             statement.execute(named_params! {":guild": guild.get(), ":channel": channel.map(ChannelId::get)})?;
+            Ok(())
+        }).await?;
+        Ok(())
+    }
+
+    /// Set or unset this guild as a test guild
+    pub async fn set_test(&self, guild: GuildId, test: bool) -> Result<()> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("INSERT INTO guild (id, test) VALUES (:guild, :test) ON CONFLICT (id) DO UPDATE SET test = excluded.test")?;
+            statement.execute(named_params! {":guild": guild.get(), ":test": test})?;
             Ok(())
         }).await?;
         Ok(())

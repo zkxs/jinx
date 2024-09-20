@@ -111,7 +111,7 @@ pub(super) async fn restart(
 )]
 pub(super) async fn announce(
     context: Context<'_>,
-    message: String,
+    #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
     let message = CreateMessage::default().content(message);
     let channels = context.data().db.get_log_channels().await?;
@@ -128,6 +128,35 @@ pub(super) async fn announce(
         .ephemeral(true)
         .content(format!("Sent announcement to {successful_messages}/{channel_count} channels"));
     context.send(reply).await?;
+    Ok(())
+}
+
+/// Set or unset this guild as a test guild
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn set_test(
+    context: Context<'_>,
+    #[description = "is this a test guild?"] test: bool,
+) -> Result<(), Error> {
+    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+
+    context.data().db.set_test(guild_id, test).await?;
+
+    let message = if test {
+        "this guild is now set as a test guild"
+    } else {
+        "this guild is now set as a production guild"
+    };
+    let reply = CreateReply::default()
+        .ephemeral(true)
+        .content(message);
+    context.send(reply).await?;
+
     Ok(())
 }
 
