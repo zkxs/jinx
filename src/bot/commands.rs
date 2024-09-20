@@ -217,6 +217,61 @@ async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, owner: bool
     Ok(())
 }
 
+/// Set (or unset) channel for bot to log to.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_GUILD",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn set_log_channel(
+    context: Context<'_>,
+    #[description = "user to query licenses for"] channel: Option<serenity::Channel>,
+) -> Result<(), Error> {
+    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+
+    // if setting a channel, then attempt to write a test log to the channel
+    let test_result = match channel.as_ref() {
+        Some(channel) => {
+            let message = CreateMessage::default()
+                .content("I will now log to this channel.");
+            channel.id().send_message(context.serenity_context(), message).await.map(|_| ())
+        }
+        None => {
+            Ok(())
+        }
+    };
+
+    match test_result {
+        Ok(()) => {
+            // test log worked, so set the channel
+            context.data().db.set_log_channel(guild_id, channel.as_ref().map(|channel| channel.id())).await?;
+
+            // let the user know what we just did
+            let message = if let Some(channel) = channel {
+                format!("Bot log channel set to <#{}>.", channel.id())
+            } else {
+                "Bot log channel unset.".to_string()
+            };
+            let reply = CreateReply::default()
+                .ephemeral(true)
+                .content(message);
+            context.send(reply).await?;
+        }
+        Err(e) => {
+            // test log failed, so let the user know
+            let reply = CreateReply::default()
+                .ephemeral(true)
+                .content(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().id(), e));
+            context.send(reply).await?;
+            warn!("Error sending message to test log channel: {:?}", e);
+        }
+    }
+
+    Ok(())
+}
+
 /// Create post with buttons to register product keys
 #[poise::command(
     slash_command,

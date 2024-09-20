@@ -2,13 +2,13 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use dashmap::DashMap;
-use poise::serenity_prelude::{GuildId, RoleId};
+use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::path::Path;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 1;
+const SCHEMA_VERSION_VALUE: i32 = 2;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -46,12 +46,11 @@ impl JinxDb {
                 key                    TEXT PRIMARY KEY, \
                 value                  ANY \
             ) STRICT", ())?;
-            let mut settings_insert = connection.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (:key, :value)")?;
-            settings_insert.execute(named_params! { ":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE})?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS guild ( \
                 id                     INTEGER PRIMARY KEY, \
-                jinxxy_api_key         TEXT \
+                jinxxy_api_key         TEXT, \
+                log_channel_id         INTEGER \
             ) STRICT", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS product_role ( \
@@ -73,7 +72,16 @@ impl JinxDb {
                 owner_id               INTEGER PRIMARY KEY \
             ) STRICT", ())?;
 
-            let mut settings_insert = connection.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (:key, :value)")?;
+            let schema_version: i32 = connection.query_row(format!("SELECT \"{SCHEMA_VERSION_KEY}\" FROM settings").as_str(), (), |a| a.get(0))?;
+
+            // handle schema v1 -> v2 migration
+            if schema_version < 2 {
+                // "log_channel_id" column needs to be added to "guild"
+                connection.execute("ALTER TABLE guild ADD COLUMN log_channel_id INTEGER", ())?;
+            }
+
+            // update the schema version value persisted to the DB
+            let mut settings_insert = connection.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
             settings_insert.execute(named_params! { ":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE})?;
 
             Ok(())
@@ -179,7 +187,7 @@ impl JinxDb {
     pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> Result<()> {
         let api_key_clone = api_key.clone();
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT OR REPLACE INTO guild (id, jinxxy_api_key) VALUES (:guild, :api_key)")?;
+            let mut statement = connection.prepare_cached("INSERT INTO guild (id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key")?;
             statement.execute(named_params! {":guild": guild.get(), ":api_key": api_key_clone})?;
             Ok(())
         }).await?;
@@ -333,5 +341,25 @@ impl JinxDb {
             let result: u64 = connection.query_row("SELECT count(*) FROM product_role", [], |row| row.get(0))?;
             Ok(result)
         }).await
+    }
+
+    /// Get bot log channel
+    pub async fn get_log_channel(&self, guild: GuildId) -> Result<Option<ChannelId>> {
+        let channel_id = self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT log_channel_id FROM guild WHERE id = ?")?;
+            let result: Option<u64> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
+            Ok(result)
+        }).await?;
+        Ok(channel_id.map(ChannelId::new))
+    }
+
+    /// Set or unset bot log channel
+    pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> Result<()> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("INSERT INTO guild (id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (id) DO UPDATE SET log_channel_id = excluded.log_channel_id")?;
+            statement.execute(named_params! {":guild": guild.get(), ":channel": channel.map(ChannelId::get)})?;
+            Ok(())
+        }).await?;
+        Ok(())
     }
 }
