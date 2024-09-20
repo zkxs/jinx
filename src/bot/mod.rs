@@ -8,6 +8,7 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
+use poise::serenity_prelude::CreateMessage;
 use poise::{serenity_prelude as serenity, Command, CreateReply, FrameworkContext, FrameworkError};
 use rand::prelude::*;
 use serenity::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
@@ -122,6 +123,7 @@ async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
     Ok(context.data().db.is_owner(context.author().id.get()).await?)
 }
 
+/// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.
 async fn event_handler<'a>(
     context: &'a serenity::Context,
     event: &'a FullEvent,
@@ -135,7 +137,7 @@ async fn event_handler<'a>(
     result
 }
 
-/// Extra event handler layer for error handling
+/// Inner event handler layer. See [`event_handler`] for the error handling layer.
 async fn event_handler_inner<'a>(
     context: &'a serenity::Context,
     event: &'a FullEvent,
@@ -270,12 +272,15 @@ async fn event_handler_inner<'a>(
 
                                     if grant_roles {
                                         let roles = data.db.get_roles(guild_id, license_info.product_id).await?;
-                                        let mut message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", license_info.product_name);
+                                        let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", license_info.product_name);
+                                        let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), license_info.product_name);
                                         let mut errors: String = String::new();
                                         for role in roles {
                                             match member.add_role(context, role).await {
                                                 Ok(()) => {
-                                                    message.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                                                    let bullet_point = format!("\n- <@&{}>", role.get());
+                                                    client_message.push_str(bullet_point.as_str());
+                                                    owner_message.push_str(bullet_point.as_str());
                                                 }
                                                 Err(e) => {
                                                     errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
@@ -286,20 +291,32 @@ async fn event_handler_inner<'a>(
                                         let embed = if errors.is_empty() {
                                             CreateEmbed::default()
                                                 .title("Registration Success")
-                                                .description(message)
+                                                .description(client_message)
                                                 .color(Colour::DARK_GREEN)
                                         } else {
-                                            let message = format!("{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.", message, errors);
+                                            let message = format!("{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.", client_message, errors);
                                             CreateEmbed::default()
                                                 .title("Registration Partial Success")
                                                 .description(message)
                                                 .color(Colour::ORANGE)
                                         };
 
-                                        let message = CreateInteractionResponseMessage::default()
+                                        // let the user know what happened
+                                        let modal_response_message = CreateInteractionResponseMessage::default()
                                             .ephemeral(true)
                                             .embed(embed);
-                                        modal_interaction.create_response(context, CreateInteractionResponse::Message(message)).await?;
+                                        modal_interaction.create_response(context, CreateInteractionResponse::Message(modal_response_message)).await?;
+
+                                        // also send a notification to the guild owner bot log if it's set up for this guild
+                                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                            let bot_log_message = CreateMessage::default().content(owner_message);
+                                            log_channel.send_message(context, bot_log_message).await?;
+                                            if !errors.is_empty() {
+                                                let bot_log_error_message = CreateMessage::default()
+                                                    .content(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors));
+                                                log_channel.send_message(context, bot_log_error_message).await?;
+                                            }
+                                        }
                                     } else {
                                         // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
                                         send_fail_message().await?;
@@ -385,6 +402,7 @@ impl<'a> PoiseError<'a> {
     }
 }
 
+/// Error handler to add extra, custom logging for Poise/Serenity errors.
 async fn error_handler(error: FrameworkError<'_, Data, Error>) {
     let error: Option<PoiseError> = match error {
         FrameworkError::Setup { ctx, error, .. } => PoiseError::debug("Setup", ctx, error),
