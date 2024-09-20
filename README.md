@@ -82,6 +82,7 @@ Jinx comes with several slash commands for server administrators and moderators.
 | `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                             |
 | `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                                 |
 | `/version`                             | None                | Shows version information about Jinx.                                                                |
+| `/help`                                | None                | Shows help information about Jinx.                                                                   |
 
 > [!TIP]
 > - The required permission/role for a command can be customized in the server's Integration settings.

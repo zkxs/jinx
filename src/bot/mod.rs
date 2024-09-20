@@ -25,6 +25,7 @@ const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 /// commands to be installed globally
 static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     vec![
+        help(),
         init(),
         version(),
     ]
@@ -75,6 +76,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 create_post(),
                 deactivate_license(),
                 exit(),
+                help(),
                 init(),
                 license_info(),
                 link_product(),

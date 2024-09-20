@@ -9,7 +9,6 @@
   - Jinxxy/GitHub Ratelimiting?
 - bump project version
 - indices on the sqlite tables
-- add a `/help` command
 
 ## Goals
 

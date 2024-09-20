@@ -30,6 +30,29 @@ static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use th
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+/// Shows bot help
+#[poise::command(
+    slash_command,
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn help(
+    context: Context<'_>,
+) -> Result<(), Error> {
+    let embed = CreateEmbed::default()
+        .title("Jinx Help")
+        .description(
+            "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys.\n\
+            For documentation, see https://github.com/zkxs/jinx\n\
+            For support, join https://discord.gg/aKkA6m26f9"
+        );
+    let reply = CreateReply::default()
+        .ephemeral(true)
+        .embed(embed);
+    context.send(reply).await?;
+    Ok(())
+}
+
 /// Shows bot version
 #[poise::command(
     slash_command,
