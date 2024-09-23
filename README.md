@@ -52,14 +52,15 @@ Finally, back in your Discord server run the following slash commands:
 1. Run the `/init <api_key>` command in your Sever and provide your API key. This is one-time setup.
 2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations) to.
 3. Run the `/link_product` command for each Jinxxy product you want to link to a role. You may have multiple products
-   that grant the same role, and products can grant multiple rows.
+   that grant the same role, and products can grant multiple roles. This command can also unlink products and roles if
+   you make a mistake.
 4. Check your work using `/list_links`
 5. When you're ready, run `/create_post` in the channel of your choosing to have Jinx create a button users can click to
    register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
    you may want to delete and recreate the post to update it.
 
-I recommend testing everything with a test license. You can create a 100% discount code on an unlisted test product to
-create test licenses.
+I recommend testing everything with a test license. You can create a 100% discount code or create an unlisted free
+product to create test license keys.
 
 ### Self-hosting
 
