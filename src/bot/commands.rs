@@ -135,8 +135,31 @@ pub(super) async fn announce(
     context: Context<'_>,
     #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
+    announce_internal::<false>(context, message).await
+}
+
+/// Send an announcement to all test server bot log channels.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn announce_test(
+    context: Context<'_>,
+    #[description = "Message to broadcast"] message: String,
+) -> Result<(), Error> {
+    announce_internal::<true>(context, message).await
+}
+
+/// Internal implementation of the announce command that handles whether to use test servers or ALL servers
+async fn announce_internal<const TEST_ONLY: bool>(
+    context: Context<'_>,
+    message: String,
+) -> Result<(), Error> {
     let message = CreateMessage::default().content(message);
-    let channels = context.data().db.get_log_channels().await?;
+    let channels = context.data().db.get_log_channels::<TEST_ONLY>().await?;
     let channel_count = channels.len();
     context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
     let mut successful_messages: usize = 0;

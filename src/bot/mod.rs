@@ -50,6 +50,7 @@ static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| 
 static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     vec![
         announce(),
+        announce_test(),
         exit(),
         restart(),
         set_test(),
@@ -73,6 +74,7 @@ pub async fn run_bot() -> Result<(), Error> {
             // all commands must appear in this list otherwise poise won't recoginize interactions for them
             commands: vec![
                 announce(),
+                announce_test(),
                 create_post(),
                 deactivate_license(),
                 exit(),

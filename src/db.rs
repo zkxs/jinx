@@ -372,10 +372,17 @@ impl JinxDb {
         Ok(channel_id.map(ChannelId::new))
     }
 
-    /// Get all bot log channels
-    pub async fn get_log_channels(&self) -> Result<Vec<ChannelId>> {
+    /// Get all bot log channels.
+    /// If `TEST_ONLY` is true, then only returns non-production servers. Otherwise, returns all servers.
+    pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> Result<Vec<ChannelId>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL")?;
+            let mut statement = if TEST_ONLY {
+                // only non-production servers
+                connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL AND guild.test != 0")
+            } else {
+                // all servers, including production servers
+                connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL")
+            }?;
             let result = statement.query_and_then((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
             let mut vec = Vec::with_capacity(result.size_hint().0);
             for row in result {
