@@ -142,7 +142,7 @@ fn validate_license_activation(expected_user_id: UserId, user_ids: impl Iterator
 pub struct ActivationValidation {
     /// If the expected user has activated the license
     pub own_user: bool,
-    /// If the expected user has activated the license more than once
+    /// If the expected user has activated the license more than once (this shouldn't be possible)
     pub multiple: bool,
     /// If an unexpected user has activated the license
     pub other_user: bool,
@@ -151,7 +151,7 @@ pub struct ActivationValidation {
 }
 
 impl ActivationValidation {
-    /// Check if the license has multiple conflicting activations
+    /// Check if the license has multiple conflicting activations (this shouldn't be possible)
     pub fn deadlocked(&self) -> bool {
         self.own_user && self.other_user
     }

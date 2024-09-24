@@ -287,10 +287,27 @@ async fn event_handler_inner<'a>(
 
                                 // verify no activations from unexpected users
                                 if validation.other_user || validation.locked {
-                                    // some other user has already activated this license
+                                    // some other user has already activated this license. This is the NORMAL fail case. The other fail cases are abnormal.
+
+                                    // send a notification to the guild owner bot log if it's set up for this guild
+                                    if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                        let message = if validation.locked {
+                                            format!("<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.", user_id.get())
+                                        } else {
+                                            let mut message = format!("<@{}> attempted to activate a license that has already been used by:", user_id.get());
+                                            activations.iter()
+                                                .flat_map(|vec| vec.iter())
+                                                .flat_map(|activation| activation.try_into_user_id())
+                                                .for_each(|user_id| message.push_str(format!("\n- <@{}>", user_id).as_str()));
+                                            message
+                                        };
+                                        let bot_log_message = CreateMessage::default().content(message);
+                                        log_channel.send_message(context, bot_log_message).await?;
+                                    }
+
                                     send_fail_message().await?;
                                 } else {
-                                    // log if multiple activations for different users
+                                    // log if multiple activations for this user
                                     if validation.multiple {
                                         warn!("{} is about to activate \"{}\". User already has multiple activations: {:?}", user_id, license_key, activations);
                                     }
@@ -318,6 +335,13 @@ async fn event_handler_inner<'a>(
                                         // Two different people just race-conditioned their way to multiple activations so this license is now rendered unusable ever again.
                                         // A moderator can use `/deactivate_license` to fix this manually.
                                         warn!("license \"{}\" is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable", license_key);
+
+                                        // also send a notification to the guild owner bot log if it's set up for this guild
+                                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                            let message = format!("<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.", user_id.get());
+                                            let bot_log_message = CreateMessage::default().content(message);
+                                            log_channel.send_message(context, bot_log_message).await?;
+                                        }
                                     }
 
                                     if grant_roles {
