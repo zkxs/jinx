@@ -17,7 +17,7 @@ const GUMROAD_KEY_INDEX: usize = 2;
 const NUMBER_KEY_INDEX: usize = 3;
 static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| RegexSet::new([
     r"^[A-Z]{4}-[a-f0-9]{12}$", // jinxxy short key `XXXX-cd071c534191`
-    r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", // jinxxy long key `3642d957-c5d8-4d18-a1ae-cd071c534191`
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", // jinxxy long key `3642d957-c5d8-4d18-a1ae-cd071c534191`. This is a version 4 DCE 1.1, ISO/IEC 11578:1996 UUID.
     r"^[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$", // gumroad key `ABCD1234-1234FEDC-0987A321-A2B3C5D6`
     r"^[0-9]+$", // an integer number `3245554511053325533`
 ]).unwrap()); // in case you are wondering the above are not real keys: they're only examples
