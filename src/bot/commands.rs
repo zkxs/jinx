@@ -9,9 +9,10 @@ use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::GuildId;
 use poise::CreateReply;
+use regex::Regex;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic;
+use std::sync::{atomic, LazyLock};
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -27,6 +28,15 @@ const MAX_SELECT_VALUES: u8 = 25;
 
 /// Message shown to admins when the Jinxxy API key is missing
 static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
+
+static GLOBAL_JINXXY_API_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"^sk_[a-f0-9]{32}$", // jinxxy API key `sk_9bba2064ee8c20aa4fd6b015eed2001a`
+).unwrap()); // in case you are wondering the above is not a real key: it's only an example
+
+thread_local! {
+    // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
+    static JINXXY_API_KEY_REGEX: Regex = GLOBAL_JINXXY_API_KEY_REGEX.clone();
+}
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -295,11 +305,16 @@ pub(super) async fn init(
             } else {
                 context.send(CreateReply::default().content("Not an owner").ephemeral(true)).await?;
             }
-        } else {
+        } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
             // normal /init <key> use ends up in this branch
             context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
             set_guild_commands(context, guild_id, None, Some(true)).await?;
             context.send(CreateReply::default().content("Done!").ephemeral(true)).await?;
+        } else {
+            // user has given us some mystery garbage value for their API key
+            context.send(CreateReply::default().content(
+                "Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>)."
+            ).ephemeral(true)).await?;
         }
     } else if context.data().db.get_jinxxy_api_key(guild_id).await?.is_some() {
         // re-initialize commands but only if API key is already set
