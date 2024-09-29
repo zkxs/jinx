@@ -3,11 +3,7 @@
 Jinx is a Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
 license keys.
 
-<!-- For support, [open an issue][issues] or [join our Discord][discord].-->
-
-> [!WARNING]
-> Jinx is in a pre-release state and has only been partially validated against the Jinxxy API.
-> You may experience bugs with this software: please report them [here on GitHub][issues] or [in our Discord][discord].
+If you have feedback or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
 
 > [!IMPORTANT]
 > **[Click here to install the bot][bot install]**  
@@ -90,8 +86,6 @@ Jinx comes with several slash commands for server administrators and moderators.
 > - The required permission/role for a command can be customized in the server's Integration settings.
 > - `/user_info` can also be used from the context menu: look for "Apps"/"List Jinxxy licenses" when you right-click a
 >   user in your server.
-> - In the event that a Jinx update causes commands to become outdated, you can run `/init` again with no parameters to reinstall all
->   commands to your server.
 
 ## License & Legal
 
