@@ -178,6 +178,7 @@ async fn announce_internal<const TEST_ONLY: bool>(
             Ok(_) => successful_messages += 1,
             Err(e) => warn!("Error sending message to {}: {:?}", channel, e),
         }
+        tokio::time::sleep(Duration::from_millis(50)).await; // rate limit to 20 TPS
     }
     let reply = CreateReply::default()
         .ephemeral(true)

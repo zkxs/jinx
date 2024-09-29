@@ -4,11 +4,12 @@
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::path::Path;
+use tokio::time::Instant;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 3;
+const SCHEMA_VERSION_VALUE: i32 = 4;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -41,14 +42,18 @@ impl JinxDb {
 
     /// Set up the database
     async fn init(connection: &Connection) -> Result<()> {
+        let start = Instant::now();
         connection.call(|connection| {
+            // all applications are encouraged to switch this setting off on every database connection as soon as that connection is opened
+            connection.execute("PRAGMA trusted_schema = OFF;", ())?;
+
             connection.execute("CREATE TABLE IF NOT EXISTS \"settings\" ( \
                 key                    TEXT PRIMARY KEY, \
                 value                  ANY \
             ) STRICT", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS guild ( \
-                id                     INTEGER PRIMARY KEY, \
+                guild_id               INTEGER PRIMARY KEY, \
                 jinxxy_api_key         TEXT, \
                 log_channel_id         INTEGER, \
                 test                   INTEGER NOT NULL DEFAULT 0, \
@@ -91,12 +96,38 @@ impl JinxDb {
                 connection.execute("ALTER TABLE guild ADD COLUMN owner INTEGER NOT NULL DEFAULT 0", ())?;
             }
 
+            // handle schema v3 -> v4 migration
+            if schema_version < 4 {
+                // "guild.id" column needs to be renamed to "guild_id"
+                connection.execute("ALTER TABLE guild RENAME COLUMN id TO guild_id", ())?;
+            }
+
+            // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
+            // All applications should run "PRAGMA optimize;" after a schema change.
+            connection.execute("PRAGMA optimize = 0x10002;", ())?;
+
             // update the schema version value persisted to the DB
             let mut settings_insert = connection.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
             settings_insert.execute(named_params! {":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE})?;
 
             Ok(())
-        }).await
+        }).await?;
+
+        let elapsed = start.elapsed();
+        debug!("initialized db in {}ms", elapsed.as_millis());
+
+        Ok(())
+    }
+
+    /// Attempt to optimize the database.
+    ///
+    /// Applications that use long-lived database connections should run "PRAGMA optimize;" periodically, perhaps once per day or once per hour.
+    pub async fn optimize(&self) -> Result<()> {
+        self.connection.call(move |connection| {
+            connection.execute("PRAGMA optimize;", ())?;
+            Ok(())
+        }).await?;
+        Ok(())
     }
 
     pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
@@ -198,7 +229,7 @@ impl JinxDb {
     pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> Result<()> {
         let api_key_clone = api_key.clone();
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT INTO guild (id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key")?;
+            let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key")?;
             statement.execute(named_params! {":guild": guild.get(), ":api_key": api_key_clone})?;
             Ok(())
         }).await?;
@@ -214,7 +245,7 @@ impl JinxDb {
         } else {
             // cache miss
             let api_key = self.connection.call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT jinxxy_api_key FROM guild WHERE id = ?")?;
+                let mut statement = connection.prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
                 let result: Option<String> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
                 Ok(result)
             }).await?;
@@ -333,7 +364,7 @@ impl JinxDb {
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild ON license_activation.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -357,7 +388,7 @@ impl JinxDb {
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM product_role LEFT JOIN guild ON product_role.guild_id = guild.id WHERE guild.test = 0", [], |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
@@ -365,7 +396,7 @@ impl JinxDb {
     /// Get bot log channel
     pub async fn get_log_channel(&self, guild: GuildId) -> Result<Option<ChannelId>> {
         let channel_id = self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT log_channel_id FROM guild WHERE id = ?")?;
+            let mut statement = connection.prepare_cached("SELECT log_channel_id FROM guild WHERE guild_id = ?")?;
             let result: Option<u64> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
             Ok(result)
         }).await?;
@@ -395,7 +426,7 @@ impl JinxDb {
     /// Set or unset bot log channel
     pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> Result<()> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT INTO guild (id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (id) DO UPDATE SET log_channel_id = excluded.log_channel_id")?;
+            let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id")?;
             statement.execute(named_params! {":guild": guild.get(), ":channel": channel.map(ChannelId::get)})?;
             Ok(())
         }).await?;
@@ -405,7 +436,7 @@ impl JinxDb {
     /// Set or unset this guild as a test guild
     pub async fn set_test(&self, guild: GuildId, test: bool) -> Result<()> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT INTO guild (id, test) VALUES (:guild, :test) ON CONFLICT (id) DO UPDATE SET test = excluded.test")?;
+            let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, test) VALUES (:guild, :test) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test")?;
             statement.execute(named_params! {":guild": guild.get(), ":test": test})?;
             Ok(())
         }).await?;
@@ -415,7 +446,7 @@ impl JinxDb {
     /// Set or unset this guild as an owner guild (gets extra slash commands)
     pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> Result<()> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT INTO guild (id, owner) VALUES (:guild, :owner) ON CONFLICT (id) DO UPDATE SET owner = excluded.owner")?;
+            let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, owner) VALUES (:guild, :owner) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner")?;
             statement.execute(named_params! {":guild": guild.get(), ":owner": owner})?;
             Ok(())
         }).await?;
@@ -425,7 +456,7 @@ impl JinxDb {
     /// Check if a guild is an owner guild (gets extra slash commands)
     pub async fn is_owner_guild(&self, guild: GuildId) -> Result<bool> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT owner FROM guild WHERE id = :guild")?;
+            let mut statement = connection.prepare_cached("SELECT owner FROM guild WHERE guild_id = :guild")?;
             let owner = statement.query_row(named_params! {":guild": guild.get()}, |row| {
                 let owner: bool = row.get(0)?;
                 Ok(owner)

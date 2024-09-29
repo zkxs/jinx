@@ -15,6 +15,7 @@ use serenity::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateI
 use std::fmt::Debug;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
+use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -65,6 +66,7 @@ struct Data {
 
 pub async fn run_bot() -> Result<(), Error> {
     let db = JinxDb::open().await?;
+    debug!("DB opened");
     let discord_token = db.get_discord_token().await?
         .ok_or(JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
     let intents = serenity::GatewayIntents::non_privileged();
@@ -104,29 +106,52 @@ pub async fn run_bot() -> Result<(), Error> {
         .setup(|ctx, _ready, _framework| {
             Box::pin(async move {
                 let db = Arc::new(db);
-                info!("registering global commands...");
+                debug!("registering global commands...");
                 let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
-                info!("setup complete!");
 
-                let shard_id = ctx.shard_id.get();
-                let http = ctx.http.clone();
-                let cache = ctx.cache.clone();
-                let db_clone = db.clone();
-                tokio::task::spawn(async move {
-                    let mut updated_guilds: usize = 0;
-                    for guild in cache.guilds() {
-                        if guild.shard_id(&cache) == shard_id {
-                            tokio::time::sleep(Duration::from_millis(500)).await;
-                            if let Err(e) = set_guild_commands(&http, &db_clone, guild, None, None).await {
-                                error!("Error setting guild commands for guild {}: {:?}", guild, e);
-                            } else {
-                                updated_guilds += 1;
+                // set up the task to set guild commands
+                {
+                    let shard_id = ctx.shard_id.get();
+                    let http = ctx.http.clone();
+                    let cache = ctx.cache.clone();
+                    let db_clone = db.clone();
+                    tokio::task::spawn(async move {
+                        let mut updated_guilds: usize = 0;
+                        for guild in cache.guilds() {
+                            if guild.shard_id(&cache) == shard_id {
+                                tokio::time::sleep(Duration::from_millis(500)).await; // rate limit to 2 TPS
+                                if let Err(e) = set_guild_commands(&http, &db_clone, guild, None, None).await {
+                                    error!("Error setting guild commands for guild {}: {:?}", guild, e);
+                                } else {
+                                    updated_guilds += 1;
+                                }
                             }
                         }
-                    }
-                    info!("Shard {} set up commands in {} guilds", shard_id, updated_guilds);
-                });
+                        info!("Shard {} set up commands in {} guilds", shard_id, updated_guilds);
+                    });
+                }
+
+                // set up the task to periodically optimize the DB
+                {
+                    let db_clone = db.clone();
+                    tokio::task::spawn(async move {
+                        loop {
+                            const SECONDS_PER_MINUTE: u64 = 60;
+                            const MINUTES_PER_HOUR: u64 = 60;
+                            const HOURS_PER_DAY: u64 = 24;
+                            const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+
+                            tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
+                            let start = Instant::now();
+                            if let Err(e) = db_clone.optimize().await {}
+                            let elapsed = start.elapsed();
+                            info!("optimized db in {}ms", elapsed.as_millis());
+                        }
+                    });
+                }
+
+                debug!("framework setup complete");
 
                 Ok(Data {
                     db
@@ -135,9 +160,13 @@ pub async fn run_bot() -> Result<(), Error> {
         })
         .build();
 
+    debug!("framework built");
+
     let mut client = serenity::ClientBuilder::new(discord_token, intents)
         .framework(framework)
         .await.unwrap();
+
+    debug!("client built. Starting...");
 
     // note that client.start() does NOT do sharding. If sharding is needed you need to use one of the alternative start functions
     // https://docs.rs/serenity/latest/serenity/gateway/index.html#sharding
