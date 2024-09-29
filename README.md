@@ -1,7 +1,7 @@
 # Jinx
 
 Jinx is a Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
-license keys.
+license keys. Install via the link below, or find us in the [Discord App Directory][app directory].
 
 If you have feedback or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
 
@@ -107,3 +107,4 @@ The [publicly installable bot][bot install] provided by us is available under ou
 [bot install]: https://discord.com/oauth2/authorize?client_id=1270708639145001052
 [discord]: https://discord.gg/aKkA6m26f9
 [issues]: https://github.com/zkxs/jinx/issues
+[app directory]: https://discord.com/application-directory/1270708639145001052
