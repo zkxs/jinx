@@ -144,7 +144,9 @@ pub async fn run_bot() -> Result<(), Error> {
 
                             tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
                             let start = Instant::now();
-                            if let Err(e) = db_clone.optimize().await {}
+                            if let Err(e) = db_clone.optimize().await {
+                                error!("Error optimizing DB: {:?}", e);
+                            }
                             let elapsed = start.elapsed();
                             info!("optimized db in {}ms", elapsed.as_millis());
                         }
