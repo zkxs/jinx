@@ -104,7 +104,7 @@ impl JinxDb {
 
             // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
             // All applications should run "PRAGMA optimize;" after a schema change.
-            connection.execute("PRAGMA optimize = 0x10002;", ())?;
+            connection.execute("PRAGMA optimize = 0x10002", ())?;
 
             // update the schema version value persisted to the DB
             let mut settings_insert = connection.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
@@ -124,7 +124,7 @@ impl JinxDb {
     /// Applications that use long-lived database connections should run "PRAGMA optimize;" periodically, perhaps once per day or once per hour.
     pub async fn optimize(&self) -> Result<()> {
         self.connection.call(move |connection| {
-            connection.execute("PRAGMA optimize;", ())?;
+            connection.execute("PRAGMA optimize", ())?;
             Ok(())
         }).await?;
         Ok(())
