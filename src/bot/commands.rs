@@ -346,16 +346,16 @@ async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner
 )]
 pub(super) async fn set_log_channel(
     context: Context<'_>,
-    #[description = "user to query licenses for"] channel: Option<serenity::Channel>,
+    #[description = "user to query licenses for"] channel: Option<serenity::ChannelId>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     // if setting a channel, then attempt to write a test log to the channel
-    let test_result = match channel.as_ref() {
+    let test_result = match channel {
         Some(channel) => {
             let message = CreateMessage::default()
                 .content("I will now log to this channel.");
-            channel.id().send_message(context.serenity_context(), message).await.map(|_| ())
+            channel.send_message(context.serenity_context(), message).await.map(|_| ())
         }
         None => {
             Ok(())
@@ -365,11 +365,11 @@ pub(super) async fn set_log_channel(
     match test_result {
         Ok(()) => {
             // test log worked, so set the channel
-            context.data().db.set_log_channel(guild_id, channel.as_ref().map(|channel| channel.id())).await?;
+            context.data().db.set_log_channel(guild_id, channel).await?;
 
             // let the user know what we just did
             let message = if let Some(channel) = channel {
-                format!("Bot log channel set to <#{}>.", channel.id())
+                format!("Bot log channel set to <#{}>.", channel.get())
             } else {
                 "Bot log channel unset.".to_string()
             };
@@ -382,7 +382,7 @@ pub(super) async fn set_log_channel(
             // test log failed, so let the user know
             let reply = CreateReply::default()
                 .ephemeral(true)
-                .content(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().id(), e));
+                .content(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e));
             context.send(reply).await?;
             warn!("Error sending message to test log channel: {:?}", e);
         }
