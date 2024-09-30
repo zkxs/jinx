@@ -345,7 +345,7 @@ async fn set_guild_commands(context: Context<'_>, guild_id: serenity::GuildId, f
 )]
 pub(super) async fn set_log_channel(
     context: Context<'_>,
-    #[description = "user to query licenses for"] channel: Option<serenity::ChannelId>,
+    #[description = "user to query licenses for"] channel: Option<serenity::ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
