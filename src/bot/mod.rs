@@ -334,6 +334,7 @@ async fn event_handler_inner<'a>(
                                                 .for_each(|user_id| message.push_str(format!("\n- <@{}>", user_id).as_str()));
                                             message
                                         };
+                                        info!("{}", message);
                                         let bot_log_message = CreateMessage::default().content(message);
                                         log_channel.send_message(context, bot_log_message).await?;
                                     }
