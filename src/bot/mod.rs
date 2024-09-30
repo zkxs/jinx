@@ -296,7 +296,7 @@ async fn event_handler_inner<'a>(
 
                         let guild_id = modal_interaction.guild_id.ok_or(JinxError::new("expected to be in a guild"))?;
                         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id).await? {
-                            let license = license_type.create_jinxxy_license(license_key);
+                            let license = license_type.create_untrusted_jinxxy_license(license_key);
                             let license_response = if let Some(license) = license {
                                 jinxxy::check_license(&api_key, license).await?
                             } else {

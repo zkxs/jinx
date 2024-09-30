@@ -722,14 +722,15 @@ pub async fn unlock_license(
     Ok(())
 }
 
-/// get a license ID from whatever the heck the user provided
+/// Get a license ID from whatever the heck the user provided. This can proxy IDs through, so it may
+/// not be suitable for untrusted applications where you don't want to allow users to pass IDs directly.
 async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, Error> {
     let license_type = license::identify_license(license);
     let license_id = if license_type.is_integer() {
         Some(license.to_string())
     } else {
         // convert short/long key into ID
-        let license_key = license_type.create_jinxxy_license(license);
+        let license_key = license_type.create_trusted_jinxxy_license(license);
         if let Some(license_key) = license_key {
             jinxxy::get_license_id(api_key, license_key).await?
         } else {

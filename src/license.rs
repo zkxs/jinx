@@ -53,7 +53,22 @@ impl LicenseType {
     }
 
     /// Create the correct type of Jinxxy license for the user-provided value.
-    pub fn create_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
+    ///
+    /// This function only returns Short/Long Jinxxy keys. We intentionally do not create IDs here,
+    /// as 
+    pub fn create_untrusted_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
+        match self {
+            LicenseType::JinxxyLong => Some(LicenseKey::Long(license)),
+            LicenseType::Integer => None,
+            LicenseType::Gumroad => None,
+            _ => Some(LicenseKey::Short(license)), // if we aren't certain what this is just try it as a short key
+        }
+    }
+
+    /// Create the correct type of Jinxxy license for the user-provided value.
+    ///
+    /// This function can return any type of Jinxxy key/id.
+    pub fn create_trusted_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
         match self {
             LicenseType::JinxxyLong => Some(LicenseKey::Long(license)),
             LicenseType::Integer => Some(LicenseKey::Id(license)),
