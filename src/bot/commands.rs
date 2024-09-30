@@ -7,7 +7,6 @@ use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
 use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::GuildId;
 use poise::CreateReply;
 use regex::Regex;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
@@ -331,7 +330,7 @@ pub(super) async fn init(
 /// Set (or reset) guild commands for this guild.
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
-async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
+async fn set_guild_commands(context: Context<'_>, guild_id: serenity::GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
     super::set_guild_commands(context.http(), &context.data().db, guild_id, force_owner, force_creator).await
 }
 
