@@ -424,12 +424,16 @@ pub(super) async fn create_post(
             let message = CreateMessage::default()
                 .embed(embed)
                 .components(components);
-            channel.send_message(context.serenity_context(), message).await?;
 
+            let message = if let Err(e) = channel.send_message(context.serenity_context(), message).await {
+                warn!("Error in /create_post when sending message: {:?}", e);
+                "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions."
+            } else {
+                "Registration post created!"
+            };
             let reply = CreateReply::default()
                 .ephemeral(true)
-                .content("Registration post created!");
-
+                .content(message);
             context.send(reply).await?;
         }
         Err(e) => {
