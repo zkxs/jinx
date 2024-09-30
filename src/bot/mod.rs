@@ -264,7 +264,7 @@ async fn event_handler_inner<'a>(
                         });
                     if let Some(license_key) = license_key {
                         let license_type = license::identify_license(license_key);
-                        debug!("got license \"{}\" which looks like {}", license_key, license_type);
+                        debug!("got license which looks like {}", license_type);
 
                         /* Generic fail message. This message is deterministic based solely on the user-provided string,
                          * which prevents leaking information regarding license validity. For example, different messages
@@ -274,6 +274,8 @@ async fn event_handler_inner<'a>(
                          * - An invalid license
                          */
                         let send_fail_message = || async {
+                            debug!("failed to verify license \"{}\" which looks like {}", license_key, license_type);
+
                             let description = if license_type.is_jinxxy_license() {
                                 "The provided license key was not valid or is already in use".to_string()
                             } else {
