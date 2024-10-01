@@ -393,6 +393,24 @@ impl JinxDb {
         }).await
     }
 
+    /// Get count of license activations in a guild
+    pub async fn guild_license_activation_count(&self, guild: GuildId) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
+            let result: u64 = statement.query_row(named_params! {":guild": guild.get()}, |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
+    /// Get count of product->role mappings in a guild
+    pub async fn guild_product_role_count(&self, guild: GuildId) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
+            let result: u64 = statement.query_row(named_params! {":guild": guild.get()}, |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
     /// Get bot log channel
     pub async fn get_log_channel(&self, guild: GuildId) -> Result<Option<ChannelId>> {
         let channel_id = self.connection.call(move |connection| {

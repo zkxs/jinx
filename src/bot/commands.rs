@@ -215,6 +215,35 @@ pub(super) async fn set_test(
     Ok(())
 }
 
+/// Get statistics about license activations
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn stats(
+    context: Context<'_>,
+) -> Result<(), Error> {
+    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let license_activation_count = context.data().db.guild_license_activation_count(guild_id).await.unwrap();
+    let product_role_count = context.data().db.guild_product_role_count(guild_id).await.unwrap();
+
+    let message = format!(
+        "license activations={license_activation_count}\n\
+        product->role links={product_role_count}"
+    );
+    let embed = CreateEmbed::default()
+        .title("Jinx Stats")
+        .description(message);
+    context.send(
+        CreateReply::default()
+            .embed(embed)
+            .ephemeral(true)
+    ).await?;
+    Ok(())
+}
+
 /// Get statistics about bot load and performance
 #[poise::command(
     slash_command,
@@ -223,7 +252,7 @@ pub(super) async fn set_test(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn stats(
+pub(super) async fn owner_stats(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
@@ -242,7 +271,6 @@ pub(super) async fn stats(
             shard_list.push_str(format!("\n- {} {:?} {}", shard_id, info.latency, info.stage).as_str());
         }
     }
-
     let message = format!(
         "db_size={db_size} KiB\n\
         users={user_count}\n\
@@ -253,9 +281,12 @@ pub(super) async fn stats(
         product->role links={product_role_count}\n\
         shards={shard_count}{shard_list}"
     );
+    let embed = CreateEmbed::default()
+        .title("Jinx Owner Stats")
+        .description(message);
     context.send(
         CreateReply::default()
-            .content(message)
+            .embed(embed)
             .ephemeral(true)
     ).await?;
     Ok(())
