@@ -78,8 +78,8 @@ Jinx comes with several slash commands for server administrators and moderators.
 | `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                                          |
 | `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                                        |
 | `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                             |
-| `/stats`                               | Manage Server       | Display aggregate statistics on license activations                                                  |
 | `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                                 |
+| `/stats`                               | Manage Server       | Display aggregate statistics on license activations                                                  |
 | `/version`                             | None                | Shows version information about Jinx.                                                                |
 | `/help`                                | None                | Shows help information about Jinx.                                                                   |
 
