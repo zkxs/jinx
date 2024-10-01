@@ -110,28 +110,6 @@ pub async fn run_bot() -> Result<(), Error> {
                 let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
-                // set up the task to set guild commands
-                {
-                    let shard_id = ctx.shard_id.get();
-                    let http = ctx.http.clone();
-                    let cache = ctx.cache.clone();
-                    let db_clone = db.clone();
-                    tokio::task::spawn(async move {
-                        let mut updated_guilds: usize = 0;
-                        for guild in cache.guilds() {
-                            if guild.shard_id(&cache) == shard_id {
-                                tokio::time::sleep(Duration::from_millis(500)).await; // rate limit to 2 TPS
-                                if let Err(e) = set_guild_commands(&http, &db_clone, guild, None, None).await {
-                                    error!("Error setting guild commands for guild {}: {:?}", guild, e);
-                                } else {
-                                    updated_guilds += 1;
-                                }
-                            }
-                        }
-                        info!("Shard {} set up commands in {} guilds", shard_id, updated_guilds);
-                    });
-                }
-
                 // set up the task to periodically optimize the DB
                 {
                     let db_clone = db.clone();
@@ -226,6 +204,26 @@ async fn event_handler_inner<'a>(
     data: &'a Data,
 ) -> Result<(), Error> {
     match event {
+        FullEvent::GuildCreate {guild, is_new} => {
+            info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new)
+        }
+        FullEvent::GuildDelete {incomplete, full} => {
+            info!("GuildDelete guild={} full={:?}", incomplete.id.get(), full)
+        }
+        FullEvent::CacheReady { guilds } => {
+            // set guild commands
+            info!("Setting up commands in {} guilds...", guilds.len());
+            let mut updated_guilds: usize = 0;
+            for guild in guilds {
+                tokio::time::sleep(Duration::from_millis(500)).await; // rate limit to 2 TPS
+                if let Err(e) = set_guild_commands(&context.http, &data.db, *guild, None, None).await {
+                    error!("Error setting guild commands for guild {}: {:?}", guild, e);
+                } else {
+                    updated_guilds += 1;
+                }
+            }
+            info!("Set up commands in {} guilds", updated_guilds);
+        }
         FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
             #[allow(
                 clippy::single_match

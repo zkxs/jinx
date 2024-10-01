@@ -8,7 +8,6 @@
   - pagination
   - Jinxxy/GitHub Ratelimiting?
 - bump project version
-- indices on the sqlite tables
 
 ## Goals
 
@@ -16,6 +15,11 @@
   - if caching doesn't work out, then every time we receive activation data we should sync it back to the `license_activation` table
 - ability to scan and revoke roles in a background job
 - Evaluate if a single thread can handle load or if this needs the full tokio multithreaded executor
+- itch.io support
+  - this will require a significant DB change, which is a great time to investigate adding foreign key constraints
+- indices on the sqlite tables
+- foreign keys on the sqlite tables
+- clean up message formatting (use embeds more, reduce information overload of `/user_info` and `/license_info`)
 
 ## Stretch Goals
 
