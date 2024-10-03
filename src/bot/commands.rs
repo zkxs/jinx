@@ -7,13 +7,14 @@ use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
 use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{GuildId, UserId};
 use poise::CreateReply;
 use regex::Regex;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{atomic, LazyLock};
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 // discord component ids
 pub(super) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
@@ -173,7 +174,7 @@ async fn announce_internal<const TEST_ONLY: bool>(
     context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
     let mut successful_messages: usize = 0;
     for channel in channels {
-        match channel.send_message(context.serenity_context(), message.clone()).await {
+        match channel.send_message(context, message.clone()).await {
             Ok(_) => successful_messages += 1,
             Err(e) => warn!("Error sending message to {}: {:?}", channel, e),
         }
@@ -292,6 +293,64 @@ pub(super) async fn owner_stats(
     Ok(())
 }
 
+/// Verify guild ownership
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(super) async fn verify_guild(
+    context: Context<'_>,
+    guild_id: u64,
+    owner_id: Option<UserId>,
+) -> Result<(), Error> {
+    let embed = if guild_id == 0 {
+        // guild was invalid
+        CreateEmbed::default()
+            .title("Guild Verification Error")
+            .color(Colour::RED)
+            .description("Guild was invalid (id of 0)")
+    } else if let Some(guild) = GuildId::new(guild_id).to_guild_cached(&context) {
+        // guild was valid!
+        if let Some(expected_owner_id) = owner_id {
+            // we have an expected owner to check
+            if guild.owner_id == expected_owner_id {
+                CreateEmbed::default()
+                    .title("Guild Verification Success")
+                    .color(Colour::DARK_GREEN)
+                    .description("Provided user owns that guild.")
+            } else {
+                CreateEmbed::default()
+                    .title("Guild Verification Failure")
+                    .color(Colour::ORANGE)
+                    .description(format!("Provided user does not own that guild. Actual owner is <@{}>.", guild.owner_id.get()))
+            }
+        } else {
+            // we don't have an expected owner to check, so just print the actual owner
+            debug!("GUILD DEBUG: {:?}", *guild);
+            CreateEmbed::default()
+                .title("Guild Verification Result")
+                .color(Colour::DARK_GREEN)
+                .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
+        }
+    } else {
+        // guild was not cached
+        CreateEmbed::default()
+            .title("Guild Verification Error")
+            .color(Colour::RED)
+            .description("Guild not in cache")
+    };
+
+    context.send(
+        CreateReply::default()
+            .embed(embed)
+            .ephemeral(true)
+    ).await?;
+    Ok(())
+}
+
 /// Set up Jinx for this Discord server
 #[poise::command(
     slash_command,
@@ -361,8 +420,8 @@ pub(super) async fn init(
 /// Set (or reset) guild commands for this guild.
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
-async fn set_guild_commands(context: Context<'_>, guild_id: serenity::GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
-    super::set_guild_commands(context.http(), &context.data().db, guild_id, force_owner, force_creator).await
+async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
+    super::set_guild_commands(context, &context.data().db, guild_id, force_owner, force_creator).await
 }
 
 
@@ -385,7 +444,7 @@ pub(super) async fn set_log_channel(
         Some(channel) => {
             let message = CreateMessage::default()
                 .content("I will now log to this channel.");
-            channel.send_message(context.serenity_context(), message).await.map(|_| ())
+            channel.send_message(context, message).await.map(|_| ())
         }
         None => {
             Ok(())
@@ -455,7 +514,7 @@ pub(super) async fn create_post(
                 .embed(embed)
                 .components(components);
 
-            let message = if let Err(e) = channel.send_message(context.serenity_context(), message).await {
+            let message = if let Err(e) = channel.send_message(context, message).await {
                 warn!("Error in /create_post when sending message: {:?}", e);
                 "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions."
             } else {

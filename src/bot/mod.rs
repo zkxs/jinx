@@ -57,6 +57,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
         owner_stats(),
         restart(),
         set_test(),
+        verify_guild(),
     ]
 });
 
@@ -94,6 +95,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 stats(),
                 unlock_license(),
                 user_info(),
+                verify_guild(),
                 version(),
             ],
             event_handler: |ctx, event, framework, data| {
