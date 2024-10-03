@@ -963,7 +963,7 @@ pub(super) async fn link_product(
                                 let roles = selected_roles.take().unwrap();
 
                                 let mut message_lines = String::new();
-                                let mut warning_lines = String::new();
+                                let mut warned_roles: HashSet<u64, ahash::RandomState> = HashSet::with_hasher(Default::default());
                                 for product_id in product_ids {
                                     let product_name = product_lookup.get(product_id.as_str())
                                         .map(|name| format!("\"{}\"", name))
@@ -976,8 +976,8 @@ pub(super) async fn link_product(
                                         }
                                         message_lines.push_str(format!("\n- {}→<@&{}>", product_name, role.get()).as_str());
                                         // if we're in link mode, then generate warnings
-                                        if link && !assignable_roles.contains(role) {
-                                            warning_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                                        if link && !assignable_roles.contains(role) && !warned_roles.contains(&role.get()) {
+                                            warned_roles.insert(role.get());
                                         }
                                     }
                                 }
@@ -995,10 +995,14 @@ pub(super) async fn link_product(
                                     .content("")
                                     .embed(embed)
                                     .components(Default::default());
-                                let reply = if warning_lines.is_empty() {
+                                let reply = if warned_roles.is_empty() {
                                     reply
                                 } else {
                                     // warn if the roles cannot be assigned (too high, or we lack the perm)
+                                    let mut warning_lines = String::new();
+                                    for role in warned_roles {
+                                        warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
+                                    }
                                     let embed = CreateEmbed::default()
                                         .title("Warning")
                                         .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
