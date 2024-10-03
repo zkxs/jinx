@@ -976,7 +976,7 @@ pub(super) async fn link_product(
                                         }
                                         message_lines.push_str(format!("\n- {}→<@&{}>", product_name, role.get()).as_str());
                                         // if we're in link mode, then generate warnings
-                                        if link && !assignable_roles.remove(role) {
+                                        if link && !assignable_roles.contains(role) {
                                             warning_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
                                         }
                                     }
