@@ -7,7 +7,7 @@ use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
 use crate::{constants, license, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::{GuildId, UserId};
+use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 use poise::CreateReply;
 use regex::Regex;
 use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
@@ -303,44 +303,55 @@ pub(super) async fn owner_stats(
 )]
 pub(super) async fn verify_guild(
     context: Context<'_>,
-    guild_id: u64,
-    owner_id: Option<UserId>,
+    #[description = "ID of guild"] guild_id: String,
+    #[description = "Optional ID of expected owner"] owner_id: Option<UserId>,
 ) -> Result<(), Error> {
-    let embed = if guild_id == 0 {
-        // guild was invalid
-        CreateEmbed::default()
-            .title("Guild Verification Error")
-            .color(Colour::RED)
-            .description("Guild was invalid (id of 0)")
-    } else if let Some(guild) = GuildId::new(guild_id).to_guild_cached(&context) {
-        // guild was valid!
-        if let Some(expected_owner_id) = owner_id {
-            // we have an expected owner to check
-            if guild.owner_id == expected_owner_id {
+    let embed = match guild_id.parse::<u64>() {
+        Ok(guild_id) => {
+            if guild_id == 0 {
+                // guild was invalid (0)
                 CreateEmbed::default()
-                    .title("Guild Verification Success")
-                    .color(Colour::DARK_GREEN)
-                    .description("Provided user owns that guild.")
+                    .title("Guild Verification Error")
+                    .color(Colour::RED)
+                    .description("Guild was invalid (id of 0)")
+            } else if let Some(guild) = GuildId::new(guild_id).to_guild_cached(&context) {
+                // guild was valid!
+                if let Some(expected_owner_id) = owner_id {
+                    // we have an expected owner to check
+                    if guild.owner_id == expected_owner_id {
+                        CreateEmbed::default()
+                            .title("Guild Verification Success")
+                            .color(Colour::DARK_GREEN)
+                            .description("Provided user owns that guild.")
+                    } else {
+                        CreateEmbed::default()
+                            .title("Guild Verification Failure")
+                            .color(Colour::ORANGE)
+                            .description(format!("Provided user does not own that guild. Actual owner is <@{}>.", guild.owner_id.get()))
+                    }
+                } else {
+                    // we don't have an expected owner to check, so just print the actual owner
+                    debug!("GUILD DEBUG: {:?}", *guild);
+                    CreateEmbed::default()
+                        .title("Guild Verification Result")
+                        .color(Colour::DARK_GREEN)
+                        .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
+                }
             } else {
+                // guild was not cached
                 CreateEmbed::default()
-                    .title("Guild Verification Failure")
-                    .color(Colour::ORANGE)
-                    .description(format!("Provided user does not own that guild. Actual owner is <@{}>.", guild.owner_id.get()))
+                    .title("Guild Verification Error")
+                    .color(Colour::RED)
+                    .description("Guild not in cache")
             }
-        } else {
-            // we don't have an expected owner to check, so just print the actual owner
-            debug!("GUILD DEBUG: {:?}", *guild);
-            CreateEmbed::default()
-                .title("Guild Verification Result")
-                .color(Colour::DARK_GREEN)
-                .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
         }
-    } else {
-        // guild was not cached
-        CreateEmbed::default()
-            .title("Guild Verification Error")
-            .color(Colour::RED)
-            .description("Guild not in cache")
+        Err(e) => {
+            // guild was invalid (not a number)
+            CreateEmbed::default()
+                .title("Guild Verification Error")
+                .color(Colour::RED)
+                .description(format!("Guild was invalid (parse error: {})", e))
+        }
     };
 
     context.send(
@@ -435,7 +446,7 @@ async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner
 )]
 pub(super) async fn set_log_channel(
     context: Context<'_>,
-    #[description = "user to query licenses for"] channel: Option<serenity::ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
+    #[description = "user to query licenses for"] channel: Option<ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
