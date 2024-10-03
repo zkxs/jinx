@@ -876,7 +876,7 @@ pub(super) async fn link_product(
                 .collect();
 
             let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-            let mut assignable_roles: HashSet<RoleId, ahash::RandomState> = {
+            let assignable_roles: HashSet<RoleId, ahash::RandomState> = {
                 let bot_id = context.framework().bot_id;
                 let bot_member = guild_id.member(context, bot_id).await?;
                 let permissions = bot_member.permissions(context)?;
