@@ -267,7 +267,7 @@ impl User {
 pub struct LicenseInfo {
     pub license_id: String,
     pub short_key: String,
-    pub key: String,
+    // pub key: String, // the long key, which we currently don't use anywhere
     pub user_id: String,
     pub username: Option<String>,
     pub product_id: String,
