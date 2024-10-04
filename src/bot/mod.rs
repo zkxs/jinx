@@ -209,9 +209,13 @@ async fn event_handler_inner<'a>(
 ) -> Result<(), Error> {
     match event {
         FullEvent::GuildCreate {guild, is_new} => {
-            info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new)
+            // is_new == Some(false) when we're just restarting the bot
+            // is_new == Some(true) when a new guild adds the bot
+            if !matches!(is_new, Some(false)) {
+                info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
+            }
         }
-        FullEvent::GuildDelete {incomplete, full} => {
+        FullEvent::GuildDelete { incomplete, full } => {
             info!("GuildDelete guild={} full={:?}", incomplete.id.get(), full)
         }
         FullEvent::CacheReady { guilds } => {
@@ -227,6 +231,9 @@ async fn event_handler_inner<'a>(
                 }
             }
             info!("Set up commands in {} guilds", updated_guilds);
+        }
+        FullEvent::Ratelimit {data} => {
+            warn!("Ratelimit event: {:?}", data);
         }
         FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
             #[allow(
@@ -460,6 +467,14 @@ async fn event_handler_inner<'a>(
                 }
                 _ => {}
             }
+        }
+        FullEvent::InteractionCreate { interaction: Interaction::Command(command_interaction) } => {
+            debug!(
+                "command \"{}\" invoked in {:?} by {}",
+                command_interaction.data.name,
+                command_interaction.guild_id.map(|guild| guild.get()),
+                command_interaction.user.id.get()
+            );
         }
         _ => {}
     }

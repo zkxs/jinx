@@ -413,6 +413,7 @@ pub(super) async fn init(
             context.send(CreateReply::default().content("Done!").ephemeral(true)).await?;
         } else {
             // user has given us some mystery garbage value for their API key
+            debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
             context.send(CreateReply::default().content(
                 "Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>)."
             ).ephemeral(true)).await?;
