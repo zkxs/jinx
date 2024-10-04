@@ -24,7 +24,6 @@ pub struct LicenseListResult {
 pub struct License {
     /// ID of this license
     id: String,
-    key: String,
     short_key: String,
     user: LicenseUser,
     inventory_item: LicenseInventoryItem,
@@ -36,7 +35,6 @@ impl From<License> for super::LicenseInfo {
         Self {
             license_id: license.id,
             short_key: license.short_key,
-            key: license.key,
             user_id: license.user.id,
             username: license.user.username,
             product_id: license.inventory_item.item.id,
