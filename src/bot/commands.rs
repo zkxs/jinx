@@ -597,58 +597,62 @@ pub async fn user_info(
 
     if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
-        let mut message = format!("Licenses for <@{}>:", user.id.get());
+        let message = if license_ids.is_empty() {
+            format!("<@{}> has no license activations.", user.id.get())
+        } else {
+            let mut message = format!("Licenses for <@{}>:", user.id.get());
 
-        // build a cache of product versions that we need names for
-        // Map structure: product_id -> {product_version_id -> product_version_name}
-        let mut product_cache: HashMap<String, Option<HashMap<String, String, ahash::RandomState>>, ahash::RandomState> = Default::default();
+            // build a cache of product versions that we need names for
+            // Map structure: product_id -> {product_version_id -> product_version_name}
+            let mut product_cache: HashMap<String, Option<HashMap<String, String, ahash::RandomState>>, ahash::RandomState> = Default::default();
 
-        for license_id in license_ids {
-            let license_info = jinxxy::check_license_id(&api_key, &license_id).await?;
-            if let Some(license_info) = license_info {
-                let product_version_cache = if let Some(product) = product_cache.get(&license_info.product_id) {
-                    product.as_ref()
+            for license_id in license_ids {
+                let license_info = jinxxy::check_license_id(&api_key, &license_id).await?;
+                if let Some(license_info) = license_info {
+                    let product_version_cache = if let Some(product) = product_cache.get(&license_info.product_id) {
+                        product.as_ref()
+                    } else {
+                        let result = jinxxy::get_product(&api_key, &license_info.product_id).await;
+                        if let Err(e) = &result {
+                            warn!("Error looking up product info for {}, which is in license {}: {:?}", license_info.product_id, license_id, e);
+                        }
+                        let result = result.ok().map(|product| {
+                            product.versions.into_iter()
+                                .map(|version| (version.id, version.name))
+                                .collect()
+                        });
+                        product_cache.entry(license_info.product_id.clone())
+                            .or_insert(result).as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
+                    };
+                    let product_version_name = product_version_cache
+                        .and_then(|cache| license_info.product_version_id.as_ref().and_then(|version_id| cache.get(version_id)))
+                        .map(|version| format!("\"{}\"", version))
+                        .unwrap_or("`null`".to_string());
+
+                    let locked = context.data().db.is_license_locked(guild_id, license_id.clone()).await?;
+
+                    let username = if let Some(username) = &license_info.username {
+                        format!("[{}](<{}>)", username, license_info.profile_url().ok_or_else(|| JinxError::new("expected profile_url to exist when username is set"))?)
+                    } else {
+                        format!("`{}`", license_info.user_id)
+                    };
+
+                    message.push_str(format!(
+                        "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
+                        license_info.short_key,
+                        license_info.activations, // this field came from Jinxxy and is up to date
+                        locked, // this field came from the local DB and may be out of sync
+                        username,
+                        license_info.product_name,
+                        product_version_name
+                    ).as_str());
                 } else {
-                    let result = jinxxy::get_product(&api_key, &license_info.product_id).await;
-                    if let Err(e) = &result {
-                        warn!("Error looking up product info for {}, which is in license {}: {:?}", license_info.product_id, license_id, e);
-                    }
-                    let result = result.ok().map(|product| {
-                        product.versions.into_iter()
-                            .map(|version| (version.id, version.name))
-                            .collect()
-                    });
-                    product_cache.entry(license_info.product_id.clone())
-                        .or_insert(result).as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
-                };
-                let product_version_name = product_version_cache
-                    .and_then(|cache| license_info.product_version_id.as_ref().and_then(|version_id| cache.get(version_id)))
-                    .map(|version| format!("\"{}\"", version))
-                    .unwrap_or("`null`".to_string());
-
-                let locked = context.data().db.is_license_locked(guild_id, license_id.clone()).await?;
-
-                let username = if let Some(username) = &license_info.username {
-                    format!("[{}](<{}>)", username, license_info.profile_url().ok_or_else(|| JinxError::new("expected profile_url to exist when username is set"))?)
-                } else {
-                    format!("`{}`", license_info.user_id)
-                };
-
-                message.push_str(format!(
-                    "\n- short=`{}` long=`{}` activations={} locked={} user={} product=\"{}\" version={}",
-                    license_info.short_key,
-                    license_info.key,
-                    license_info.activations, // this field came from Jinxxy and is up to date
-                    locked, // this field came from the local DB and may be out of sync
-                    username,
-                    license_info.product_name,
-                    product_version_name
-                ).as_str());
-            } else {
-                // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
-                message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
+                    // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
+                    message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
+                }
             }
-        }
+            message
+        };
 
         let reply = CreateReply::default()
             .ephemeral(true)
