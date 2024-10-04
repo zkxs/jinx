@@ -234,7 +234,7 @@ async fn event_handler_inner<'a>(
             )] // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
             match component_interaction.data.custom_id.as_str() {
                 REGISTER_BUTTON_ID => {
-                    let components = vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Short, "License Key", LICENSE_KEY_ID).placeholder("XXXX-cd071c534191"))];
+                    let components = vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Short, "License Key (check your receipt email or the Jinxxy website)", LICENSE_KEY_ID).placeholder("XXXX-cd071c534191"))];
                     let modal = CreateModal::new(REGISTER_MODAL_ID, "License Registration")
                         .components(components);
                     let response = CreateInteractionResponse::Modal(modal);
