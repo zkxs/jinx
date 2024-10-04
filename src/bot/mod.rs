@@ -208,29 +208,26 @@ async fn event_handler_inner<'a>(
     data: &'a Data,
 ) -> Result<(), Error> {
     match event {
-        FullEvent::GuildCreate {guild, is_new} => {
+        FullEvent::GuildCreate { guild, is_new } => {
             // is_new == Some(false) when we're just restarting the bot
             // is_new == Some(true) when a new guild adds the bot
             if !matches!(is_new, Some(false)) {
                 info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
+            }
+
+            if let Err(e) = set_guild_commands(&context.http, &data.db, guild.id, None, None).await {
+                error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
             }
         }
         FullEvent::GuildDelete { incomplete, full } => {
             info!("GuildDelete guild={} full={:?}", incomplete.id.get(), full)
         }
         FullEvent::CacheReady { guilds } => {
-            // set guild commands
-            info!("Setting up commands in {} guilds...", guilds.len());
-            let mut updated_guilds: usize = 0;
-            for guild in guilds {
-                tokio::time::sleep(Duration::from_millis(500)).await; // rate limit to 2 TPS
-                if let Err(e) = set_guild_commands(&context.http, &data.db, *guild, None, None).await {
-                    error!("Error setting guild commands for guild {}: {:?}", guild, e);
-                } else {
-                    updated_guilds += 1;
-                }
-            }
-            info!("Set up commands in {} guilds", updated_guilds);
+            /* the docs claim this happens "when the cache has received and inserted all data from
+             * guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
+             * ALSO happens every single time any new guild is added.
+             */
+            debug!("cache ready! {} guilds.", guilds.len());
         }
         FullEvent::Ratelimit {data} => {
             warn!("Ratelimit event: {:?}", data);
