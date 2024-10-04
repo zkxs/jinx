@@ -724,14 +724,19 @@ pub async fn license_info(
         if let Some(license_id) = license_id {
             // look up license usage info from local DB: this avoids doing some expensive Jinxxy API requests
             let license_users = context.data().db.get_license_users(guild_id, license_id).await?;
-            let mut message = format!("Users for `{}`:", license);
-            for user_id in license_users {
-                if user_id == 0 {
-                    message.push_str("\n- **LOCKED**. This entry prevents the license from being used to grant roles.");
-                } else {
-                    message.push_str(format!("\n- <@{}>", user_id).as_str());
+            let message = if license_users.is_empty() {
+                format!("`{}` is valid, but has no registered users.", license)
+            } else {
+                let mut message = format!("Users for `{}`:", license);
+                for user_id in license_users {
+                    if user_id == 0 {
+                        message.push_str("\n- **LOCKED** (prevents further use)");
+                    } else {
+                        message.push_str(format!("\n- <@{}>", user_id).as_str());
+                    }
                 }
-            }
+                message
+            };
             let reply = CreateReply::default()
                 .ephemeral(true)
                 .content(message);
