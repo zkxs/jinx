@@ -514,7 +514,7 @@ pub(super) async fn create_post(
         Ok(jinxxy_user) => {
             let embed = CreateEmbed::default()
                 .title("Jinxxy Product Registration")
-                .description(format!("Press the button below to register a Jinxxy license key for any of {} products.", jinxxy_user.name_possessive()));
+                .description(format!("Press the button below to register a Jinxxy license key for any of {} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>).", jinxxy_user.name_possessive()));
             let embed = if let Some(profile_image_url) = jinxxy_user.profile_image_url {
                 embed.thumbnail(profile_image_url)
             } else {
