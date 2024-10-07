@@ -1,6 +1,6 @@
 # Planned Features
 
-## Do Before Release
+## Do Before Each Release
 
 - Make sure you didn't forget any license notices: `rg -g '*.rs' --files-without-match -F 'GNU AGPL v3.0'`
 - Make sure you didn't introduce any lint warnings: `cargo clippy`
@@ -13,19 +13,16 @@
 
 - Caching? API gives etags... do they work for paginated responses?
   - if caching doesn't work out, then every time we receive activation data we should sync it back to the `license_activation` table
-- ability to scan and revoke roles in a background job
 - Evaluate if a single thread can handle load or if this needs the full tokio multithreaded executor
-- itch.io support
-  - this will require a significant DB change, which is a great time to investigate adding foreign key constraints
 - indices on the sqlite tables
 - foreign keys on the sqlite tables
 - clean up message formatting (use embeds more, reduce information overload of `/user_info` and `/license_info`)
 
 ## Stretch Goals
 
+- ability to scan and revoke roles in a background job. License invalidation may be possible today via buyer-initiated refunds?
 - admin features
   - ability to edit post (not a priority as you can just delete and recreate)
-  - bot log to channel
   - recover from lost DB
     - some kind of `/rebuild_database` command to enumerate all licenses and activations to rebuild the `license_activation` table
     - admin will need to manually rerun `/init`
@@ -44,3 +41,21 @@
     - by guild ID
     - by Jinxxy ID (username and name can both change)
     - by user ID (we don't actually record this for creators or unsuccessful license registrations)
+
+### Other Stores
+
+While possible to add other stores, it would require some significant refactoring and DB schema changes so I need to
+convince myself that it's worth it. Below is a list of various stores and what their API is like:
+
+- API is viable
+  - **gumroad** has [an API](https://help.gumroad.com/article/76-license-keys.html) that works fine. [Gumcord](https://github.com/benaclejames/GumCord) already uses it. I'm not interested in competing with Gumcord.
+  - **payhip** has [an API](https://help.payhip.com/article/114-software-license-keys), and it looks mostly fine. The increase/decrease stuff is weirdly non-atomic, but oh well.
+  - **itch.io** has [an API](https://itch.io/docs/api/serverside), but it expects a fragment of the download URL which is weird and will be difficult to
+    explain to users.
+- API is not viable
+  - **Ko-fi** has basic Discord roles support, but its binary "is this person a supporter" and can't do per-product role
+    grants. No REST API, but it also provides a webhook which in theory could work, but in practice would be very
+    obnoxious to implement anything on. I'm not going to jump through obnoxious hoops if Ko-Fi already has their own
+    Discord support, even if their support is mediocre.
+- No API
+  - **booth** has no API, and does not issue license keys.
