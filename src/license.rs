@@ -47,6 +47,11 @@ impl LicenseType {
         matches!(self, LicenseType::JinxxyShort | LicenseType::JinxxyLong)
     }
 
+    /// If the license is any known type of license
+    pub fn is_license(&self) -> bool {
+        !matches!(self, LicenseType::Unknown)
+    }
+
     /// If the license is an integer. This indicates it *may* be a license ID.
     pub fn is_integer(&self) -> bool {
         matches!(self, LicenseType::Integer)

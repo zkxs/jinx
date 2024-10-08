@@ -280,7 +280,13 @@ async fn event_handler_inner<'a>(
                          * - An invalid license
                          */
                         let send_fail_message = || async {
-                            debug!("failed to verify license \"{}\" which looks like {}", license_key, license_type);
+
+                            let user_id = modal_interaction.user.id;
+                            if license_type.is_license() {
+                                debug!("failed to verify license for <@{}> which looks like {}", user_id.get(), license_type);
+                            } else {
+                                debug!("failed to verify license \"{}\" for <@{}> which looks like {}", license_key, user_id.get(), license_type);
+                            }
 
                             let description = if license_type.is_jinxxy_license() {
                                 "The provided license key was not valid or is already in use".to_string()
