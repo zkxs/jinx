@@ -899,9 +899,10 @@ impl ProductData {
 
 /// Fake check that just initializes product state
 async fn product_init_check(context: Context<'_>) -> Result<bool, Error> {
+    debug!("{} product_init_check", context.id());
     if context.invocation_data::<ProductData>().await.is_none() {
         let product_data = ProductData::new(context).await?;
-        context.set_invocation_data(product_data).await;
+        context.set_invocation_data::<ProductData>(product_data).await;
         debug!("Created product autocomplete state");
     }
     Ok(true)
@@ -909,6 +910,7 @@ async fn product_init_check(context: Context<'_>) -> Result<bool, Error> {
 
 /// Initializes autocomplete data, and then does the product autocomplete
 async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
+    debug!("{} product_autocomplete", context.id());
     if let Some(product_data) = context.invocation_data::<ProductData>().await.as_deref() {
         product_autocomplete_inner(product_data, product_prefix)
     } else {
@@ -940,6 +942,8 @@ pub(super) async fn link_product(
     #[description = "Product to modify role links for"] #[autocomplete = "product_autocomplete"] product: String,
     #[description = "Roles to link"] roles: Vec<RoleId>,
 ) -> Result<(), Error> {
+    debug!("{} link_product", context.id());
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
     if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let products = jinxxy::get_products(&api_key).await?;
