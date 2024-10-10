@@ -80,7 +80,7 @@ impl JinxDb {
             ) STRICT", ())?;
 
             let mut settings_read = connection.prepare("SELECT value FROM settings where key = :key")?;
-            let schema_version: i32 = settings_read.query_row(named_params! {":key": SCHEMA_VERSION_KEY}, |a| a.get(0))?;
+            let schema_version: i32 = settings_read.query_row(named_params! {":key": SCHEMA_VERSION_KEY}, |a| a.get(0)).optional()?.unwrap_or(SCHEMA_VERSION_VALUE);
 
             // handle schema v1 -> v2 migration
             if schema_version < 2 {
