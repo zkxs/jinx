@@ -26,6 +26,7 @@ ahash = "0.8" # faster hashing algorithm than std
 percent-encoding = "2" # URL encoding
 semver = "1" # Semver parsing (for update check)
 clap = { version = "4", features = ["derive"] } # command-line arg parsing
+radix_trie = "0.2"
 
 [dev-dependencies]
 tracing-test = "0.2" # Allow tracing to print during unit tests

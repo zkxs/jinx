@@ -14,6 +14,7 @@ use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRo
 use std::collections::{HashMap, HashSet};
 use std::sync::{atomic, LazyLock};
 use std::time::Duration;
+use radix_trie::{Trie, TrieCommon};
 use tracing::{debug, info, warn};
 
 // discord component ids
@@ -23,8 +24,6 @@ const PRODUCT_SELECT_ID: &str = "product_select";
 const ROLE_SELECT_ID: &str = "role_select";
 const LINK_PRODUCT_BUTTON: &str = "link_product_button";
 const UNLINK_PRODUCT_BUTTON: &str = "unlink_product_button";
-
-const MAX_SELECT_VALUES: u8 = 25;
 
 /// Message shown to admins when the Jinxxy API key is missing
 static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
@@ -866,7 +865,70 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
     Ok(license_id)
 }
 
-/// Link (or unlink) a product and a role. Activating a license for the product will grant linked roles.
+struct ProductData {
+    product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
+    product_name_trie: Trie<String, ()>,
+}
+
+impl ProductData {
+    async fn new(context: Context<'_>) -> Result<ProductData, Error> {
+        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+        if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+            let products = jinxxy::get_products(&api_key).await?;
+
+            // build trie
+            let mut product_name_trie = Trie::new();
+            for product_name in products.iter().map(|product| product.name.clone()) {
+                product_name_trie.insert(product_name, ());
+            }
+
+            // build map
+            let product_name_to_id_map = products.into_iter()
+                .map(|product| (product.name, product.id))
+                .collect();
+
+            Ok(ProductData {
+                product_name_to_id_map,
+                product_name_trie,
+            })
+        } else {
+            Err(JinxError::boxed(MISSING_API_KEY_MESSAGE))
+        }
+    }
+}
+
+/// Initializes autocomplete data, and then does the product autocomplete
+async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
+    let iter = if let Some(product_data) = context.invocation_data::<ProductData>().await.as_deref() {
+        product_autocomplete_inner(product_data, product_prefix)
+    } else {
+        match ProductData::new(context).await {
+            Ok(product_data) => {
+                debug!("Created product autocomplete state");
+                let iter = product_autocomplete_inner(&product_data, product_prefix);
+                context.set_invocation_data(product_data).await;
+                iter
+            }
+            Err(e) => {
+                warn!("Error creating product autocomplete state: {:?}", e);
+                Box::new(std::iter::empty())
+            }
+        }
+    };
+    iter
+}
+
+/// Does the product autocomplete
+fn product_autocomplete_inner(product_data: &ProductData, product_prefix: &str) -> Box<dyn Iterator<Item = String> + Send + Sync> {
+    if let Some(subtrie) = product_data.product_name_trie.subtrie(product_prefix) {
+        let vec: Vec<String> = subtrie.keys().cloned().collect();
+        Box::new(vec.into_iter())
+    } else {
+        Box::new(std::iter::empty())
+    }
+}
+
+/// Link (or unlink) a product to roles. Activating a license for the product will grant linked roles.
 #[poise::command(
     slash_command,
     guild_only,
@@ -876,6 +938,8 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
 )]
 pub(super) async fn link_product(
     context: Context<'_>,
+    #[description = "Product to modify role links for"] #[autocomplete = "product_autocomplete"] product: String,
+    #[description = "Roles to link"] roles: Vec<RoleId>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
     if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -887,6 +951,7 @@ pub(super) async fn link_product(
                 .map(|product| CreateSelectMenuOption::new(&product.name, &product.id))
                 .collect();
             let product_select_options_len = product_select_options.len();
+            const MAX_SELECT_VALUES: u8 = 25;
             let product_select_options_len = if product_select_options_len > MAX_SELECT_VALUES as usize {
                 MAX_SELECT_VALUES
             } else {
