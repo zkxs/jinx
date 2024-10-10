@@ -19,7 +19,7 @@ pub struct JinxDb {
 
 impl Drop for JinxDb {
     fn drop(&mut self) {
-        debug!("Closing sqlite db...");
+        debug!("Closing sqlite db…");
     }
 }
 

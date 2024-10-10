@@ -17,6 +17,9 @@
 - indices on the sqlite tables
 - foreign keys on the sqlite tables
 - clean up message formatting (use embeds more, reduce information overload of `/user_info` and `/license_info`)
+- switch /link_product to use an autocompleted string arg for product instead of a string select component, as string select components have a limit of 25
+  - print links for that product on completion
+  - consider removing the unlink button and just using checkbox state as whether or not to grant that role. Definitely do this if I can default some roles to checked.
 
 ## Stretch Goals
 

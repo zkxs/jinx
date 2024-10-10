@@ -110,7 +110,7 @@ pub async fn run_bot() -> Result<(), Error> {
         .setup(|ctx, _ready, _framework| {
             Box::pin(async move {
                 let db = Arc::new(db);
-                debug!("registering global commands...");
+                debug!("registering global commands…");
                 let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
@@ -150,7 +150,7 @@ pub async fn run_bot() -> Result<(), Error> {
         .framework(framework)
         .await.unwrap();
 
-    debug!("client built. Starting...");
+    debug!("client built. Starting…");
 
     // note that client.start() does NOT do sharding. If sharding is needed you need to use one of the alternative start functions
     // https://docs.rs/serenity/latest/serenity/gateway/index.html#sharding

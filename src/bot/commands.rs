@@ -109,7 +109,7 @@ pub(super) async fn version(
 pub(super) async fn exit(
     context: Context<'_>,
 ) -> Result<(), Error> {
-    info!("starting shutdown...");
+    info!("starting shutdown…");
     context.send(CreateReply::default().content("Shutting down now!").ephemeral(true)).await?;
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
@@ -126,7 +126,7 @@ pub(super) async fn exit(
 pub(super) async fn restart(
     context: Context<'_>,
 ) -> Result<(), Error> {
-    info!("starting restart...");
+    info!("starting restart…");
     context.send(CreateReply::default().content("Restarting now!").ephemeral(true)).await?;
     SHOULD_RESTART.store(true, atomic::Ordering::Release);
     context.framework().shard_manager.shutdown_all().await;
@@ -232,7 +232,7 @@ pub(super) async fn stats(
 
     let message = format!(
         "license activations={license_activation_count}\n\
-        product->role links={product_role_count}"
+        product→role links={product_role_count}"
     );
     let embed = CreateEmbed::default()
         .title("Jinx Stats")
@@ -279,7 +279,7 @@ pub(super) async fn owner_stats(
         configured guilds={configured_guild_count}\n\
         log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
-        product->role links={product_role_count}\n\
+        product→role links={product_role_count}\n\
         shards={shard_count}{shard_list}"
     );
     let embed = CreateEmbed::default()
@@ -560,18 +560,30 @@ pub(super) async fn list_links(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
     if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let links = context.data().db.get_links(guild_id).await?;
-        let mut message: String = "All product→role links:".to_string();
-        for (product_id, role) in links {
+        let mut links = context.data().db.get_links(guild_id).await?;
+        let message = if links.is_empty() {
+            "No product→role links configured".to_string()
+        } else {
+            links.sort_unstable_by(|a, b| a.1.cmp(&b.1)); // sort by role
+            let mut message: String = "All product→role links:".to_string();
+            let mut current_role = None;
             let products = jinxxy::get_products(&api_key).await?;
             let products: HashMap<String, String, ahash::RandomState> = products.into_iter()
                 .map(|product| (product.id, product.name))
                 .collect();
-            let product_name = products.get(&product_id)
-                .map(|name| format!("\"{}\"", name))
-                .unwrap_or_else(|| product_id.clone());
-            message.push_str(format!("\n- {} grants <@&{}>", product_name, role.get()).as_str());
-        }
+            for (product_id, role) in links {
+                let product_name = products.get(&product_id)
+                    .map(|name| format!("\"{}\"", name))
+                    .unwrap_or_else(|| product_id.clone());
+                if current_role != Some(role) {
+                    current_role = Some(role);
+                    message.push_str(format!("\n- <@&{}> grants {}", role.get(), product_name).as_str());
+                } else {
+                    message.push_str(format!(", {}", product_name).as_str());
+                }
+            }
+            message
+        };
         context.send(CreateReply::default().content(message).ephemeral(true)).await?;
     } else {
         context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
