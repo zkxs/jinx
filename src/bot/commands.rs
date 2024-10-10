@@ -897,25 +897,21 @@ impl ProductData {
     }
 }
 
+/// Fake check that just initializes product state
+async fn product_init_check(context: Context<'_>) -> Result<bool, Error> {
+    let product_data = ProductData::new(context).await?;
+    context.set_invocation_data(product_data).await;
+    debug!("Created product autocomplete state");
+    Ok(true)
+}
+
 /// Initializes autocomplete data, and then does the product autocomplete
 async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
-    let iter = if let Some(product_data) = context.invocation_data::<ProductData>().await.as_deref() {
+    if let Some(product_data) = context.invocation_data::<ProductData>().await.as_deref() {
         product_autocomplete_inner(product_data, product_prefix)
     } else {
-        match ProductData::new(context).await {
-            Ok(product_data) => {
-                debug!("Created product autocomplete state");
-                let iter = product_autocomplete_inner(&product_data, product_prefix);
-                context.set_invocation_data(product_data).await;
-                iter
-            }
-            Err(e) => {
-                warn!("Error creating product autocomplete state: {:?}", e);
-                Box::new(std::iter::empty())
-            }
-        }
-    };
-    iter
+        Box::new(std::iter::empty())
+    }
 }
 
 /// Does the product autocomplete
@@ -934,7 +930,8 @@ fn product_autocomplete_inner(product_data: &ProductData, product_prefix: &str) 
     guild_only,
     default_member_permissions = "MANAGE_ROLES",
     install_context = "Guild",
-    interaction_context = "Guild"
+    interaction_context = "Guild",
+    check = "product_init_check"
 )]
 pub(super) async fn link_product(
     context: Context<'_>,
