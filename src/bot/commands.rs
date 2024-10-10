@@ -899,9 +899,11 @@ impl ProductData {
 
 /// Fake check that just initializes product state
 async fn product_init_check(context: Context<'_>) -> Result<bool, Error> {
-    let product_data = ProductData::new(context).await?;
-    context.set_invocation_data(product_data).await;
-    debug!("Created product autocomplete state");
+    if context.invocation_data::<ProductData>().await.is_none() {
+        let product_data = ProductData::new(context).await?;
+        context.set_invocation_data(product_data).await;
+        debug!("Created product autocomplete state");
+    }
     Ok(true)
 }
 
