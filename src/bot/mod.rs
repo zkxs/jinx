@@ -2,6 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 mod commands;
+mod cache;
 
 use crate::bot::commands::*;
 use crate::db::JinxDb;
