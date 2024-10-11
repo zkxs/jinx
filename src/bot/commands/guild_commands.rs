@@ -437,22 +437,18 @@ pub(in crate::bot) async fn link_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Role to link"] roles: Vec<RoleId>, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+    #[description = "Role to link"] role: RoleId, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if roles.is_empty() {
-        context.send(CreateReply::default().content("No role provided").ephemeral(true)).await?;
-    } else if let Some(product_id) = product_id {
+    if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context, guild_id).await?;
 
         let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> = HashSet::with_hasher(Default::default());
-        for role in &roles {
-            context.data().db.link_product(guild_id, product_id.clone(), *role).await?;
-            if !assignable_roles.contains(role) && !unassignable_roles.contains(role) {
-                unassignable_roles.insert(*role);
-            }
+        context.data().db.link_product(guild_id, product_id.clone(), role).await?;
+        if !assignable_roles.contains(&role) && !unassignable_roles.contains(&role) {
+            unassignable_roles.insert(role);
         }
 
         let roles = context.data().db.get_roles(guild_id, product_id).await?;
@@ -493,19 +489,15 @@ pub(in crate::bot) async fn unlink_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Role to unlink"] roles: Vec<RoleId>, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+    #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if roles.is_empty() {
-        context.send(CreateReply::default().content("No role provided").ephemeral(true)).await?;
-    } else if let Some(product_id) = product_id {
+    if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context, guild_id).await?;
 
-        for role in &roles {
-            context.data().db.unlink_product(guild_id, product_id.clone(), *role).await?;
-        }
+        context.data().db.unlink_product(guild_id, product_id.clone(), role).await?;
 
         let roles = context.data().db.get_roles(guild_id, product_id).await?;
         let mut message_lines = String::new();
