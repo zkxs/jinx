@@ -174,7 +174,7 @@ pub(in crate::bot) async fn list_links(
         let message = if links.is_empty() {
             "No product→role links configured".to_string()
         } else {
-            links.sort_unstable_by(|a, b| a.1.cmp(&b.1)); // sort by role
+            links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
             let mut message: String = "All product→role links:".to_string();
             let mut current_role = None;
             let products = jinxxy::get_products(&api_key).await?;
@@ -187,7 +187,7 @@ pub(in crate::bot) async fn list_links(
                     .unwrap_or_else(|| product_id.clone());
                 if current_role != Some(role) {
                     current_role = Some(role);
-                    message.push_str(format!("\n- <@&{}> grants {}", role.get(), product_name).as_str());
+                    message.push_str(format!("\n- <@&{}> granted by {}", role.get(), product_name).as_str());
                 } else {
                     message.push_str(format!(", {}", product_name).as_str());
                 }
