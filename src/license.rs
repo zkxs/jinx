@@ -60,7 +60,8 @@ impl LicenseType {
     /// Create the correct type of Jinxxy license for the user-provided value.
     ///
     /// This function only returns Short/Long Jinxxy keys. We intentionally do not create IDs here,
-    /// as 
+    /// as in the future we may expose IDs in partially untrusted logs, so it'd be bad if IDs could
+    /// be used to register a license.
     pub fn create_untrusted_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
         match self {
             LicenseType::JinxxyLong => Some(LicenseKey::Long(license)),

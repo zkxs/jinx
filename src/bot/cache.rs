@@ -10,10 +10,7 @@
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 //! I can clear the cache with some kind of background task that checks timestamps ever 60s or so.
 
-//TODO: add cache size estimate to owner_len()
-
-use crate::bot::commands::MISSING_API_KEY_MESSAGE;
-use crate::bot::Context;
+use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use dashmap::{DashMap, Entry};

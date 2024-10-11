@@ -1,10 +1,10 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-mod commands;
 mod cache;
+mod commands;
 
-use crate::bot::commands::*;
+use commands::*;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -22,6 +22,9 @@ use crate::bot::cache::ApiCache;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
+
+/// Message shown to admins when the Jinxxy API key is missing
+pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
 
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
@@ -186,10 +189,6 @@ async fn set_guild_commands(http: impl AsRef<Http>, db: &JinxDb, guild_id: Guild
     let commands = poise::builtins::create_application_commands(command_iter);
     guild_id.set_commands(http, commands).await?;
     Ok(())
-}
-
-async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
-    Ok(context.data().db.is_user_owner(context.author().id.get()).await?)
 }
 
 /// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.
