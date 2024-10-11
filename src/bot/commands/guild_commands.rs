@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::commands::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, license_to_id};
+use crate::bot::commands::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, error_reply, license_to_id, success_reply};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -64,8 +64,11 @@ pub(in crate::bot) async fn set_log_channel(
     // if setting a channel, then attempt to write a test log to the channel
     let test_result = match channel {
         Some(channel) => {
+            let embed = CreateEmbed::default()
+                .title("Configuration Changed")
+                .description("I will now log to this channel.");
             let message = CreateMessage::default()
-                .content("I will now log to this channel.");
+                .embed(embed);
             channel.send_message(context, message).await.map(|_| ())
         }
         None => {
@@ -73,7 +76,7 @@ pub(in crate::bot) async fn set_log_channel(
         }
     };
 
-    match test_result {
+    let reply = match test_result {
         Ok(()) => {
             // test log worked, so set the channel
             context.data().db.set_log_channel(guild_id, channel).await?;
@@ -84,21 +87,16 @@ pub(in crate::bot) async fn set_log_channel(
             } else {
                 "Bot log channel unset.".to_string()
             };
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(message);
-            context.send(reply).await?;
+            success_reply("Success", message)
         }
         Err(e) => {
             // test log failed, so let the user know
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e));
-            context.send(reply).await?;
             warn!("Error sending message to test log channel: {:?}", e);
+            error_reply(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e))
         }
-    }
+    };
 
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -121,7 +119,7 @@ pub(in crate::bot) async fn create_post(
 
     let api_key = context.data().db.get_jinxxy_api_key(context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?).await?
         .ok_or(JinxError::new("Jinxxy API key is not set"))?;
-    match jinxxy::get_own_user(&api_key).await {
+    let reply = match jinxxy::get_own_user(&api_key).await {
         Ok(jinxxy_user) => {
             let embed = CreateEmbed::default()
                 .title("Jinxxy Product Registration")
@@ -136,24 +134,19 @@ pub(in crate::bot) async fn create_post(
                 .embed(embed)
                 .components(components);
 
-            let message = if let Err(e) = channel.send_message(context, message).await {
+            if let Err(e) = channel.send_message(context, message).await {
                 warn!("Error in /create_post when sending message: {:?}", e);
-                "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions."
+                error_reply("Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.")
             } else {
-                "Registration post created!"
-            };
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(message);
-            context.send(reply).await?;
+                success_reply("Success", "Registration post created!")
+            }
         }
         Err(e) => {
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("Could not get info for your Jinxxy user: {}", e));
-            context.send(reply).await?;
+            error_reply(format!("Could not get info for your Jinxxy user: {}", e))
         }
-    }
+    };
+
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -173,7 +166,7 @@ pub async fn user_info(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
         let message = if license_ids.is_empty() {
             format!("<@{}> has no license activations.", user.id.get())
@@ -231,14 +224,12 @@ pub async fn user_info(
             }
             message
         };
-
-        let reply = CreateReply::default()
-            .ephemeral(true)
-            .content(message);
-        context.send(reply).await?;
+        success_reply("User Info", message)
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -257,7 +248,7 @@ pub async fn deactivate_license(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = context.data().db.get_user_license_activations(guild_id, user.id.get(), license_id.clone()).await?;
@@ -266,19 +257,14 @@ pub async fn deactivate_license(
                 jinxxy::delete_license_activation(&api_key, &license_id, &activation_id).await?;
                 context.data().db.deactivate_license(guild_id, license_id, activation_id, user.id.get()).await?;
             }
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("All of <@{}>'s activations for `{}` have been deleted.", user.id.get(), license));
-            context.send(reply).await?;
+            success_reply("Success", format!("All of <@{}>'s activations for `{}` have been deleted.", user.id.get(), license))
         } else {
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license));
-            context.send(reply).await?;
+            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -297,7 +283,7 @@ pub async fn license_info(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB: this avoids doing some expensive Jinxxy API requests
@@ -315,19 +301,14 @@ pub async fn license_info(
                 }
                 message
             };
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(message);
-            context.send(reply).await?;
+            success_reply("License Info", message)
         } else {
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license));
-            context.send(reply).await?;
+            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -346,24 +327,19 @@ pub async fn lock_license(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activation_id = jinxxy::create_license_activation(&api_key, &license_id, LOCKING_USER_ID).await?;
             context.data().db.activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID).await?;
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("License `{}` is now locked and cannot be used to grant roles.", license));
-            context.send(reply).await?;
+            success_reply("Success", format!("License `{}` is now locked and cannot be used to grant roles.", license))
         } else {
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license));
-            context.send(reply).await?;
+            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -382,7 +358,7 @@ pub async fn unlock_license(
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(&api_key, &license_id).await?;
@@ -398,19 +374,14 @@ pub async fn unlock_license(
                 format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license)
             };
 
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(message);
-            context.send(reply).await?;
+            success_reply("Success", message)
         } else {
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license));
-            context.send(reply).await?;
+            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -441,7 +412,7 @@ pub(in crate::bot) async fn link_product(
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if let Some(product_id) = product_id {
+    let reply = if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context, guild_id).await?;
 
@@ -464,16 +435,16 @@ pub(in crate::bot) async fn link_product(
         let reply = CreateReply::default()
             .embed(embed)
             .ephemeral(true);
-        let reply = if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
+        if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
             reply.embed(embed)
         } else {
             reply
-        };
-        context.send(reply).await?;
+        }
     } else {
-        context.send(CreateReply::default().content("Product not found.").ephemeral(true)).await?;
-    }
+        error_reply("Product not found.")
+    };
 
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -493,7 +464,7 @@ pub(in crate::bot) async fn unlink_product(
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if let Some(product_id) = product_id {
+    let reply = if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context, guild_id).await?;
 
@@ -512,16 +483,16 @@ pub(in crate::bot) async fn unlink_product(
         let reply = CreateReply::default()
             .embed(embed)
             .ephemeral(true);
-        let reply = if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
+        if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
             reply.embed(embed)
         } else {
             reply
-        };
-        context.send(reply).await?;
+        }
     } else {
-        context.send(CreateReply::default().content("Product not found.").ephemeral(true)).await?;
-    }
+        error_reply("Product not found.")
+    };
 
+    context.send(reply).await?;
     Ok(())
 }
 
@@ -537,7 +508,7 @@ pub(in crate::bot) async fn list_links(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let assignable_roles = assignable_roles(&context, guild_id).await?;
         let mut links = context.data().db.get_links(guild_id).await?;
         let message = if links.is_empty() {
@@ -575,14 +546,14 @@ pub(in crate::bot) async fn list_links(
         let reply = CreateReply::default()
             .embed(embed)
             .ephemeral(true);
-        let reply = if let Some(embed) = unassignable_embed {
+        if let Some(embed) = unassignable_embed {
             reply.embed(embed)
         } else {
             reply
-        };
-        context.send(reply).await?;
+        }
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
-    }
+        error_reply(MISSING_API_KEY_MESSAGE)
+    };
+    context.send(reply).await?;
     Ok(())
 }

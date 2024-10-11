@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::util::{check_owner, set_guild_commands};
+use super::util::{check_owner, error_reply, set_guild_commands, success_reply};
 use crate::bot::Context;
 use crate::constants;
 use crate::error::JinxError;
@@ -101,7 +101,7 @@ pub(in crate::bot) async fn init(
         .map(|api_key| api_key.trim().to_string())
         .filter(|api_key| !api_key.is_empty());
 
-    if let Some(api_key) = api_key {
+    let reply = if let Some(api_key) = api_key {
         // here we have a bit of an easter-egg to install owner commands
         if api_key == "install_owner_commands" {
             if check_owner(context).await? {
@@ -114,37 +114,38 @@ pub(in crate::bot) async fn init(
                 // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
                 set_guild_commands(context, guild_id, Some(true), None).await?;
 
-                context.send(CreateReply::default().content("Owner commands installed.").ephemeral(true)).await?;
+                success_reply("Success", "Owner commands installed.")
             } else {
-                context.send(CreateReply::default().content("Not an owner").ephemeral(true)).await?;
+                error_reply("Not an owner")
             }
         } else if api_key == "uninstall_owner_commands" {
             if check_owner(context).await? {
                 context.data().db.set_owner_guild(guild_id, false).await?;
                 set_guild_commands(context, guild_id, Some(false), None).await?;
-                context.send(CreateReply::default().content("Owner commands uninstalled.").ephemeral(true)).await?;
+                success_reply("Success", "Owner commands uninstalled.")
             } else {
-                context.send(CreateReply::default().content("Not an owner").ephemeral(true)).await?;
+                error_reply("Not an owner")
             }
         } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
             // normal /init <key> use ends up in this branch
             context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
             set_guild_commands(context, guild_id, None, Some(true)).await?;
-            context.send(CreateReply::default().content("Done!").ephemeral(true)).await?;
+            success_reply("Success", "API key set and additional slash commands enabled. Please continue bot setup.")
         } else {
             // user has given us some mystery garbage value for their API key
             debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
-            context.send(CreateReply::default().content(
-                "Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>)."
-            ).ephemeral(true)).await?;
+            error_reply("Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
         }
     } else if context.data().db.get_jinxxy_api_key(guild_id).await?.is_some() {
         // re-initialize commands but only if API key is already set
         set_guild_commands(context, guild_id, None, Some(true)).await?;
-        context.send(CreateReply::default().content("Commands reinstalled.").ephemeral(true)).await?;
+
+        success_reply("Success", "Commands reinstalled.")
     } else {
-        context.send(CreateReply::default().content("Please provide a Jinxxy API key").ephemeral(true)).await?;
-    }
+        error_reply("Please provide a Jinxxy API key")
+    };
+
+    context.send(reply).await?;
 
     Ok(())
 }

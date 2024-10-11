@@ -7,7 +7,7 @@ use crate::bot::Context;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::{bot, license};
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, CreateReply};
 use serenity::{Colour, CreateEmbed, GuildId, Role, RoleId};
 use std::collections::HashSet;
 
@@ -103,4 +103,26 @@ fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmb
             .color(Colour::ORANGE);
         Some(embed)
     }
+}
+
+/// Create a simple success reply
+pub fn success_reply(title: impl Into<String>, message: impl Into<String>) -> CreateReply {
+    let embed = CreateEmbed::default()
+        .title(title)
+        .description(message)
+        .color(Colour::DARK_GREEN);
+    CreateReply::default()
+        .ephemeral(true)
+        .embed(embed)
+}
+
+/// Create a simple error reply
+pub fn error_reply(message: impl Into<String>) -> CreateReply {
+    let embed = CreateEmbed::default()
+        .title("Error")
+        .description(message)
+        .color(Colour::RED);
+    CreateReply::default()
+        .ephemeral(true)
+        .embed(embed)
 }

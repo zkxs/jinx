@@ -4,7 +4,7 @@
 mod guild_commands;
 mod owner_commands;
 mod global_commands;
-mod util;
+pub mod util;
 
 pub(super) use global_commands::*;
 pub(super) use guild_commands::*;

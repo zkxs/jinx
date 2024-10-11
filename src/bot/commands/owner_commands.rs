@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::util::check_owner;
+use super::util::{check_owner, success_reply};
 use crate::bot::Context;
 use crate::error::JinxError;
 use crate::SHOULD_RESTART;
@@ -76,7 +76,7 @@ pub(in crate::bot) async fn exit(
     context: Context<'_>,
 ) -> Result<(), Error> {
     info!("starting shutdown…");
-    context.send(CreateReply::default().content("Shutting down now!").ephemeral(true)).await?;
+    context.send(success_reply("Success", "Shutting down now!")).await?;
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
 }
@@ -93,7 +93,7 @@ pub(in crate::bot) async fn restart(
     context: Context<'_>,
 ) -> Result<(), Error> {
     info!("starting restart…");
-    context.send(CreateReply::default().content("Restarting now!").ephemeral(true)).await?;
+    context.send(success_reply("Success", "Restarting now!")).await?;
     SHOULD_RESTART.store(true, atomic::Ordering::Release);
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
@@ -134,7 +134,13 @@ async fn announce_internal<const TEST_ONLY: bool>(
     context: Context<'_>,
     message: String,
 ) -> Result<(), Error> {
-    let message = CreateMessage::default().content(message);
+    let embed = CreateEmbed::default().description(message);
+    let embed = if TEST_ONLY {
+        embed.title("Test Announcement")
+    } else {
+        embed.title("Announcement")
+    };
+    let message = CreateMessage::default().embed(embed);
     let channels = context.data().db.get_log_channels::<TEST_ONLY>().await?;
     let channel_count = channels.len();
     context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
@@ -146,10 +152,7 @@ async fn announce_internal<const TEST_ONLY: bool>(
         }
         tokio::time::sleep(Duration::from_millis(50)).await; // rate limit to 20 TPS
     }
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .content(format!("Sent announcement to {successful_messages}/{channel_count} channels"));
-    context.send(reply).await?;
+    context.send(success_reply("Success", format!("Sent announcement to {successful_messages}/{channel_count} channels"))).await?;
     Ok(())
 }
 
@@ -174,11 +177,7 @@ pub(in crate::bot) async fn set_test(
     } else {
         "this guild is now set as a production guild"
     };
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .content(message);
-    context.send(reply).await?;
-
+    context.send(success_reply("Success", message)).await?;
     Ok(())
 }
 

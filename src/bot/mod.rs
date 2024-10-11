@@ -5,13 +5,14 @@ mod cache;
 mod commands;
 
 use crate::bot::cache::ApiCache;
+use crate::bot::commands::util::error_reply;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
 use commands::*;
 use poise::serenity_prelude::{CreateMessage, GuildId, Http};
-use poise::{serenity_prelude as serenity, Command, CreateReply, FrameworkContext, FrameworkError};
+use poise::{serenity_prelude as serenity, Command, FrameworkContext, FrameworkError};
 use rand::prelude::*;
 use serenity::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
 use std::fmt::Debug;
@@ -370,7 +371,11 @@ async fn event_handler_inner<'a>(
                                             message
                                         };
                                         info!("{}", message);
-                                        let bot_log_message = CreateMessage::default().content(message);
+                                        let embed = CreateEmbed::default()
+                                            .title("Activation Attempt Failed")
+                                            .description(message)
+                                            .color(Colour::ORANGE);
+                                        let bot_log_message = CreateMessage::default().embed(embed);
                                         log_channel.send_message(context, bot_log_message).await?;
                                     }
 
@@ -408,7 +413,11 @@ async fn event_handler_inner<'a>(
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
                                             let message = format!("<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.", user_id.get());
-                                            let bot_log_message = CreateMessage::default().content(message);
+                                            let embed = CreateEmbed::default()
+                                                .title("Activation Error")
+                                                .description(message)
+                                                .color(Colour::RED);
+                                            let bot_log_message = CreateMessage::default().embed(embed);
                                             log_channel.send_message(context, bot_log_message).await?;
                                         }
                                     }
@@ -452,13 +461,20 @@ async fn event_handler_inner<'a>(
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
-                                            let bot_log_message = CreateMessage::default().content(owner_message);
+                                            let embed = CreateEmbed::default()
+                                                .title("License Activation")
+                                                .description(owner_message);
+                                            let bot_log_message = CreateMessage::default().embed(embed);
+                                            let bot_log_message = if errors.is_empty() {
+                                                bot_log_message
+                                            } else {
+                                                let error_embed = CreateEmbed::default()
+                                                    .title("Role Grant Error")
+                                                    .description(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors))
+                                                    .color(Colour::RED);
+                                                bot_log_message.embed(error_embed)
+                                            };
                                             log_channel.send_message(context, bot_log_message).await?;
-                                            if !errors.is_empty() {
-                                                let bot_log_error_message = CreateMessage::default()
-                                                    .content(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors));
-                                                log_channel.send_message(context, bot_log_error_message).await?;
-                                            }
                                         }
                                     } else {
                                         // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
@@ -611,10 +627,8 @@ async fn error_handler(error: FrameworkError<'_, Data, Error>) {
                 } else {
                     error!("NONCE[{}] {} error encountered in {}. Caused by {:?}.", nonce, error.title, context.command().name, user);
                 }
-                let result = context.send(CreateReply::default()
-                    .ephemeral(true)
-                    .content(format!("Error: {}. Additional data has been sent to the log. Please report this to the bot developer with error code `{}`", error.title, nonce))
-                ).await;
+
+                let result = context.send(error_reply(format!("Error: {}. Additional data has been sent to the log. Please report this to the bot developer with error code `{}`", error.title, nonce))).await;
                 if let Err(e) = result {
                     error!("Error sending error message: {:?}", e);
                 }
