@@ -109,9 +109,10 @@ pub(in crate::bot) async fn restart(
 )]
 pub(in crate::bot) async fn announce(
     context: Context<'_>,
+    #[description = "Message title"] title: Option<String>,
     #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
-    announce_internal::<false>(context, message).await
+    announce_internal::<false>(context, title, message).await
 }
 
 /// Send an announcement to all test server bot log channels.
@@ -124,22 +125,28 @@ pub(in crate::bot) async fn announce(
 )]
 pub(in crate::bot) async fn announce_test(
     context: Context<'_>,
+    #[description = "Message title"] title: Option<String>,
     #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
-    announce_internal::<true>(context, message).await
+    announce_internal::<true>(context, title, message).await
 }
 
 /// Internal implementation of the announce command that handles whether to use test servers or ALL servers
 async fn announce_internal<const TEST_ONLY: bool>(
     context: Context<'_>,
+    title: Option<String>,
     message: String,
 ) -> Result<(), Error> {
+    let message = message.replace(r"\n", "\n");
     let embed = CreateEmbed::default().description(message);
-    let embed = if TEST_ONLY {
+    let embed = if let Some(title) = title {
+        embed.title(title)
+    } else if TEST_ONLY {
         embed.title("Test Announcement")
     } else {
         embed.title("Announcement")
     };
+
     let message = CreateMessage::default().embed(embed);
     let channels = context.data().db.get_log_channels::<TEST_ONLY>().await?;
     let channel_count = channels.len();
