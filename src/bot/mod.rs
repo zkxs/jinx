@@ -4,11 +4,12 @@
 mod cache;
 mod commands;
 
-use commands::*;
+use crate::bot::cache::ApiCache;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
+use commands::*;
 use poise::serenity_prelude::{CreateMessage, GuildId, Http};
 use poise::{serenity_prelude as serenity, Command, CreateReply, FrameworkContext, FrameworkError};
 use rand::prelude::*;
@@ -18,7 +19,6 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
-use crate::bot::cache::ApiCache;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -70,7 +70,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
 /// User data, which is stored and accessible in all command invocations
 struct Data {
     db: Arc<JinxDb>,
-    api_cache: ApiCache,
+    api_cache: Arc<ApiCache>,
 }
 
 pub async fn run_bot() -> Result<(), Error> {
@@ -122,16 +122,16 @@ pub async fn run_bot() -> Result<(), Error> {
                 let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
+                const SECONDS_PER_MINUTE: u64 = 60;
+                const MINUTES_PER_HOUR: u64 = 60;
+                const HOURS_PER_DAY: u64 = 24;
+                const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+
                 // set up the task to periodically optimize the DB
                 {
                     let db_clone = db.clone();
                     tokio::task::spawn(async move {
                         loop {
-                            const SECONDS_PER_MINUTE: u64 = 60;
-                            const MINUTES_PER_HOUR: u64 = 60;
-                            const HOURS_PER_DAY: u64 = 24;
-                            const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
-
                             tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
                             let start = Instant::now();
                             if let Err(e) = db_clone.optimize().await {
@@ -143,11 +143,30 @@ pub async fn run_bot() -> Result<(), Error> {
                     });
                 }
 
+                let api_cache = Arc::new(ApiCache::default());
+
+                // set up the task to periodically optimize the DB
+                {
+                    let api_cache_clone = api_cache.clone();
+                    tokio::task::spawn(async move {
+                        loop {
+                            tokio::time::sleep(Duration::from_secs(5 * SECONDS_PER_MINUTE)).await;
+                            let start = Instant::now();
+                            api_cache_clone.clean();
+                            let elapsed = start.elapsed();
+                            const EXPECTED_DURATION: Duration = Duration::from_millis(5);
+                            if elapsed > EXPECTED_DURATION {
+                                info!("cleaned cache in {}ms", elapsed.as_millis());
+                            }
+                        }
+                    });
+                }
+
                 debug!("framework setup complete");
 
                 Ok(Data {
                     db,
-                    api_cache: Default::default(),
+                    api_cache,
                 })
             })
         })
@@ -234,7 +253,7 @@ async fn event_handler_inner<'a>(
              */
             debug!("cache ready! {} guilds.", guilds.len());
         }
-        FullEvent::Ratelimit {data} => {
+        FullEvent::Ratelimit { data } => {
             warn!("Ratelimit event: {:?}", data);
         }
         FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
@@ -285,7 +304,6 @@ async fn event_handler_inner<'a>(
                          * - An invalid license
                          */
                         let send_fail_message = || async {
-
                             let user_id = modal_interaction.user.id;
                             if license_type.is_license() {
                                 debug!("failed to verify license for <@{}> which looks like {}", user_id.get(), license_type);

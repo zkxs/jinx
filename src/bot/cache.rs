@@ -69,6 +69,11 @@ impl ApiCache {
             .sum()
     }
 
+    /// Remove expired cache entries
+    pub fn clean(&self) {
+        self.map.retain(|_guild_id, cache_entry| !cache_entry.is_expired());
+    }
+
     pub async fn product_names_with_prefix<'a>(&self, context: &Context<'_>, prefix: &'a str) -> Result<Vec<String>, Error> {
         self.get(context, |cache_entry| {
             cache_entry.product_names_with_prefix(prefix).collect()
