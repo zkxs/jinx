@@ -12,17 +12,17 @@
 
 //TODO: add cache size estimate to owner_len()
 
-use std::collections::HashMap;
 use crate::bot::commands::MISSING_API_KEY_MESSAGE;
 use crate::bot::Context;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
-use radix_trie::{Trie, TrieCommon};
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::Instant;
 use tracing::debug;
+use trie_rs::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -75,7 +75,7 @@ impl ApiCache {
 
 pub struct GuildCache {
     product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
-    product_name_trie: Trie<String, ()>,
+    product_name_trie: Trie<u8>,
     create_time: Instant,
 }
 
@@ -84,11 +84,13 @@ impl GuildCache {
         if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
             let products = jinxxy::get_products(&api_key).await?;
 
+
             // build trie
-            let mut product_name_trie = Trie::new();
-            for product_name in products.iter().map(|product| product.name.clone()) {
-                product_name_trie.insert(product_name, ());
+            let mut trie_builder = TrieBuilder::new();
+            for product_name in products.iter().map(|product| product.name.as_str()) {
+                trie_builder.push(product_name);
             }
+            let product_name_trie = trie_builder.build();
 
             // build map
             let product_name_to_id_map = products.into_iter()
@@ -107,13 +109,8 @@ impl GuildCache {
         }
     }
 
-    pub fn product_names_with_prefix(&self, prefix: &str) -> Box<dyn Iterator<Item = String> + Send + Sync> {
-        if let Some(subtrie) = self.product_name_trie.subtrie(prefix) {
-            let vec: Vec<String> = subtrie.keys().cloned().collect();
-            Box::new(vec.into_iter())
-        } else {
-            Box::new(std::iter::empty())
-        }
+    pub fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
+        self.product_name_trie.predictive_search(prefix)
     }
 
     pub fn product_name_to_id(&self, product_name: &str) -> Option<&str> {

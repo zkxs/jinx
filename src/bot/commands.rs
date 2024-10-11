@@ -867,15 +867,15 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
 /// Initializes autocomplete data, and then does the product autocomplete
 async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item=String> {
     debug!("{} product_autocomplete", context.id());
-    let result = context.data().api_cache.get(&context, |cache_entry| {
-        cache_entry.product_names_with_prefix(product_prefix)
+    let result: Result<Vec<String>, Error> = context.data().api_cache.get(&context, |cache_entry| {
+        cache_entry.product_names_with_prefix(product_prefix).collect()
     }).await;
 
     match result {
-        Ok(result) => result,
+        Ok(result) => result.into_iter(),
         Err(e) => {
             warn!("Failed to read API cache: {:?}", e);
-            Box::new(std::iter::empty())
+            Vec::new().into_iter()
         }
     }
 }
