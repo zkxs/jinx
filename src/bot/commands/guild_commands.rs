@@ -1,11 +1,12 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::{check_owner, Context};
+use crate::bot::commands::util::license_to_id;
+use crate::bot::{check_owner, Context};
 use crate::error::JinxError;
 use crate::http::{jinxxy, update_checker};
 use crate::license::LOCKING_USER_ID;
-use crate::{constants, license, SHOULD_RESTART};
+use crate::{bot, constants, SHOULD_RESTART};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 use poise::CreateReply;
@@ -17,8 +18,8 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 // discord component ids
-pub(super) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
-pub(super) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
+pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
+pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
 
 /// Message shown to admins when the Jinxxy API key is missing
 pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
@@ -34,63 +35,7 @@ thread_local! {
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-/// Shows bot help
-#[poise::command(
-    slash_command,
-    install_context = "Guild",
-    interaction_context = "Guild"
-)]
-pub(super) async fn help(
-    context: Context<'_>,
-) -> Result<(), Error> {
-    let embed = CreateEmbed::default()
-        .title("Jinx Help")
-        .description(
-            "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys.\n\
-            For documentation, see https://github.com/zkxs/jinx\n\
-            For support, join https://discord.gg/aKkA6m26f9"
-        );
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .embed(embed);
-    context.send(reply).await?;
-    Ok(())
-}
 
-/// Shows bot version
-#[poise::command(
-    slash_command,
-    install_context = "Guild",
-    interaction_context = "Guild"
-)]
-pub(super) async fn version(
-    context: Context<'_>,
-) -> Result<(), Error> {
-    let embed = CreateEmbed::default()
-        .title("Version Check")
-        .description(constants::DISCORD_BOT_VERSION);
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .embed(embed);
-    let version_check = update_checker::check_for_update().await;
-    let reply = if version_check.is_warn() {
-        let embed = CreateEmbed::default()
-            .title("Warning")
-            .color(Colour::ORANGE)
-            .description(version_check.to_string());
-        reply.embed(embed)
-    } else if version_check.is_error() {
-        let embed = CreateEmbed::default()
-            .title("Error")
-            .color(Colour::RED)
-            .description(version_check.to_string());
-        reply.embed(embed)
-    } else {
-        reply
-    };
-    context.send(reply).await?;
-    Ok(())
-}
 
 /// Remotely shuts down the bot. If you do not have access to restart the bot this is PERMANENT.
 #[poise::command(
@@ -100,7 +45,7 @@ pub(super) async fn version(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn exit(
+pub(in crate::bot) async fn exit(
     context: Context<'_>,
 ) -> Result<(), Error> {
     info!("starting shutdown…");
@@ -117,7 +62,7 @@ pub(super) async fn exit(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn restart(
+pub(in crate::bot) async fn restart(
     context: Context<'_>,
 ) -> Result<(), Error> {
     info!("starting restart…");
@@ -135,7 +80,7 @@ pub(super) async fn restart(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn announce(
+pub(in crate::bot) async fn announce(
     context: Context<'_>,
     #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
@@ -150,7 +95,7 @@ pub(super) async fn announce(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn announce_test(
+pub(in crate::bot) async fn announce_test(
     context: Context<'_>,
     #[description = "Message to broadcast"] message: String,
 ) -> Result<(), Error> {
@@ -189,7 +134,7 @@ async fn announce_internal<const TEST_ONLY: bool>(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn set_test(
+pub(in crate::bot) async fn set_test(
     context: Context<'_>,
     #[description = "is this a test guild?"] test: bool,
 ) -> Result<(), Error> {
@@ -217,7 +162,7 @@ pub(super) async fn set_test(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn stats(
+pub(in crate::bot) async fn stats(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
@@ -247,7 +192,7 @@ pub(super) async fn stats(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn owner_stats(
+pub(in crate::bot) async fn owner_stats(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
@@ -297,7 +242,7 @@ pub(super) async fn owner_stats(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn verify_guild(
+pub(in crate::bot) async fn verify_guild(
     context: Context<'_>,
     #[description = "ID of guild"] guild_id: String,
     #[description = "Optional ID of expected owner"] owner_id: Option<UserId>,
@@ -366,7 +311,7 @@ pub(super) async fn verify_guild(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn init(
+pub(in crate::bot) async fn init(
     context: Context<'_>,
     #[description = "Jinxxy API key"] api_key: Option<String>,
 ) -> Result<(), Error> {
@@ -429,7 +374,7 @@ pub(super) async fn init(
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
 async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
-    super::set_guild_commands(context, &context.data().db, guild_id, force_owner, force_creator).await
+    bot::set_guild_commands(context, &context.data().db, guild_id, force_owner, force_creator).await
 }
 
 
@@ -441,7 +386,7 @@ async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn set_log_channel(
+pub(in crate::bot) async fn set_log_channel(
     context: Context<'_>,
     #[description = "user to query licenses for"] channel: Option<ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
 ) -> Result<(), Error> {
@@ -496,7 +441,7 @@ pub(super) async fn set_log_channel(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn create_post(
+pub(in crate::bot) async fn create_post(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let channel = context.channel_id();
@@ -551,7 +496,7 @@ pub(super) async fn create_post(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(super) async fn list_links(
+pub(in crate::bot) async fn list_links(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
@@ -844,24 +789,6 @@ pub async fn unlock_license(
     Ok(())
 }
 
-/// Get a license ID from whatever the heck the user provided. This can proxy IDs through, so it may
-/// not be suitable for untrusted applications where you don't want to allow users to pass IDs directly.
-async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, Error> {
-    let license_type = license::identify_license(license);
-    let license_id = if license_type.is_integer() {
-        Some(license.to_string())
-    } else {
-        // convert short/long key into ID
-        let license_key = license_type.create_trusted_jinxxy_license(license);
-        if let Some(license_key) = license_key {
-            jinxxy::get_license_id(api_key, license_key).await?
-        } else {
-            None
-        }
-    };
-    Ok(license_id)
-}
-
 /// Initializes autocomplete data, and then does the product autocomplete
 async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item=String> {
     match context.data().api_cache.product_names_with_prefix(&context, product_prefix).await {
@@ -881,7 +808,7 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> imp
     install_context = "Guild",
     interaction_context = "Guild",
 )]
-pub(super) async fn link_product(
+pub(in crate::bot) async fn link_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
@@ -971,7 +898,7 @@ pub(super) async fn link_product(
     install_context = "Guild",
     interaction_context = "Guild",
 )]
-pub(super) async fn unlink_product(
+pub(in crate::bot) async fn unlink_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
