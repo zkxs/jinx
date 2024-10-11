@@ -47,14 +47,14 @@ Make note of the API key when you create it: we'll need it shortly. The form sho
 Finally, back in your Discord server run the following slash commands:
 
 1. Run the `/init <api_key>` command in your Sever and provide your API key. This is one-time setup.
-2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations) to.
-3. Run the `/link_product` command for each Jinxxy product you want to link to a role. You may have multiple products
-   that grant the same role, and products can grant multiple roles. This command can also unlink products and roles if
-   you make a mistake.
+2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations)
+   to. (You can re-run this command without a channel if you wish to unset your log channel later).
+3. Run the `/link_product` command for each Jinxxy product you want to link to a role. Products can grant multiple role:
+   run the command more than once to create more links as needed. If you make a mistake, use `/unlink_product` to fix it.
 4. Check your work using `/list_links`
 5. When you're ready, run `/create_post` in the channel of your choosing to have Jinx create a button users can click to
    register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
-   you may want to delete and recreate the post to update it.
+   you may want to delete and recreate the post, as it will not automatically update.
 
 I recommend testing everything with a test license. You can create a 100% discount code or create an unlisted free
 product to create test license keys.
@@ -68,22 +68,22 @@ is moderately technical.
 
 Jinx comes with several slash commands for server administrators and moderators.
 
-| Command                                | Required Permission | Description                                                                                |
-| -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------ |
-| `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                       |
-| `/set_log_channel [channel]`           | Manage Server       | Set (or unset) channel for bot to log to.                                                  |
-| `/link_product`                        | Manage Roles        | Link a product to roles. Activating a license for the product will grant all linked roles. |
-| `/unlink_product`                      | Manage Roles        | Unlink product from roles.                                                                 |
-| `/list_links`                          | Manage Roles        | List all product→role links.                                                               |
-| `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                         |
-| `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                              |
-| `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                                |
-| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                              |
-| `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                   |
-| `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                       |
-| `/stats`                               | Manage Server       | Display aggregate statistics on license activations                                        |
-| `/version`                             | None                | Shows version information about Jinx.                                                      |
-| `/help`                                | None                | Shows help information about Jinx.                                                         |
+| Command                                | Required Permission | Description                                                                                 |
+| -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
+| `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                        |
+| `/set_log_channel [channel]`           | Manage Server       | Set (or unset) channel for bot to log to.                                                   |
+| `/link_product`                        | Manage Roles        | Link a product to a role. Activating a license for the product will grant all linked roles. |
+| `/unlink_product`                      | Manage Roles        | Unlink product from roles.                                                                  |
+| `/list_links`                          | Manage Roles        | List all product→role links.                                                                |
+| `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                          |
+| `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                               |
+| `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                                 |
+| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                               |
+| `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                    |
+| `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                        |
+| `/stats`                               | Manage Server       | Display aggregate statistics on license activations                                         |
+| `/version`                             | None                | Shows version information about Jinx.                                                       |
+| `/help`                                | None                | Shows help information about Jinx.                                                          |
 
 > [!TIP]
 > - The required permission/role for a command can be customized in the server's Integration settings.
