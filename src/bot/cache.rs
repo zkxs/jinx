@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::Instant;
 use tracing::debug;
-use trie_rs::{Trie, TrieBuilder};
+use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -75,7 +75,7 @@ impl ApiCache {
 
 pub struct GuildCache {
     product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
-    product_name_trie: Trie<u8>,
+    product_name_trie: Trie<u8, String>,
     create_time: Instant,
 }
 
@@ -88,7 +88,7 @@ impl GuildCache {
             // build trie
             let mut trie_builder = TrieBuilder::new();
             for product_name in products.iter().map(|product| product.name.as_str()) {
-                trie_builder.push(product_name);
+                trie_builder.push(product_name.to_lowercase(), product_name.to_string());
             }
             let product_name_trie = trie_builder.build();
 
@@ -110,7 +110,8 @@ impl GuildCache {
     }
 
     pub fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
-        self.product_name_trie.predictive_search(prefix)
+        self.product_name_trie.predictive_search(prefix.to_lowercase())
+            .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
     pub fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
