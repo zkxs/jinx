@@ -66,7 +66,7 @@ impl JinxDb {
                 role_id                INTEGER NOT NULL, \
                 PRIMARY KEY            (guild_id, product_id, role_id) \
             ) STRICT", ())?;
-            
+
             connection.execute("CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS license_activation ( \
@@ -218,7 +218,7 @@ impl JinxDb {
     /// Locally check if a license is locked. This may be out of sync with Jinxxy!
     pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> Result<bool> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0)")?;
+            let mut statement = connection.prepare_cached("SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0)")?; //TODO: could use an index
             let lock_exists = statement.query_row(named_params! {":guild": guild.get(), ":license": license_id}, |row| {
                 let exists: bool = row.get(0)?;
                 Ok(exists)
@@ -277,7 +277,7 @@ impl JinxDb {
     /// Get roles for a product ID
     pub async fn get_roles(&self, guild: GuildId, product_id: String) -> Result<Vec<RoleId>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product")?;
+            let mut statement = connection.prepare_cached("SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product")?; // uses `role_lookup` index
             let result = statement.query_map(named_params! {":guild": guild.get(), ":product": product_id}, |row| {
                 let role_id: u64 = row.get(0)?;
                 Ok(RoleId::new(role_id))
@@ -293,7 +293,7 @@ impl JinxDb {
     /// get all links
     pub async fn get_links(&self, guild: GuildId) -> Result<Vec<(String, RoleId)>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT product_id, role_id FROM product_role WHERE guild_id = ?")?;
+            let mut statement = connection.prepare_cached("SELECT product_id, role_id FROM product_role WHERE guild_id = ?")?; //TODO: could use an index
             let result = statement.query_map([guild.get()], |row| {
                 let product_id: String = row.get(0)?;
                 let role_id: u64 = row.get(1)?;
@@ -310,7 +310,7 @@ impl JinxDb {
     /// Locally get all licences a users has been recorded to activate. This may be out of sync with Jinxxy!
     pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> Result<Vec<String>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user")?;
+            let mut statement = connection.prepare_cached("SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user")?; //TODO: could use an index
             let result = statement.query_map(named_params! {":guild": guild.get(), ":user": user_id}, |row| {
                 let license_id: String = row.get(0)?;
                 Ok(license_id)
@@ -326,7 +326,7 @@ impl JinxDb {
     /// Locally get all activations for a user and license has been recorded to activate. This may be out of sync with Jinxxy!
     pub async fn get_user_license_activations(&self, guild: GuildId, user_id: u64, license_id: String) -> Result<Vec<String>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license")?;
+            let mut statement = connection.prepare_cached("SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license")?; //TODO: could use an index
             let result = statement.query_map(named_params! {":guild": guild.get(), ":user": user_id, ":license": license_id}, |row| {
                 let activation_id: String = row.get(0)?;
                 Ok(activation_id)
@@ -342,7 +342,7 @@ impl JinxDb {
     /// Locally get all users that have activated the given license. This may be out of sync with Jinxxy!
     pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> Result<Vec<u64>> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license")?;
+            let mut statement = connection.prepare_cached("SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license")?; //TODO: could use an index
             let result = statement.query_map(named_params! {":guild": guild.get(), ":license": license_id}, |row| {
                 let user_id: u64 = row.get(0)?;
                 Ok(user_id)
