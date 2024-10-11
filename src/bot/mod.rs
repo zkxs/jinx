@@ -45,6 +45,7 @@ static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| 
         lock_license(),
         set_log_channel(),
         stats(),
+        unlink_product(),
         unlock_license(),
         user_info(),
     ]
@@ -96,6 +97,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 set_log_channel(),
                 set_test(),
                 stats(),
+                unlink_product(),
                 unlock_license(),
                 user_info(),
                 verify_guild(),
