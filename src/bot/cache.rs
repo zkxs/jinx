@@ -15,10 +15,10 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use tokio::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -93,6 +93,15 @@ impl GuildCache {
         if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
             let products = jinxxy::get_products(&api_key).await?;
 
+            // check for duplicate product names
+            {
+                let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
+                products.iter().for_each(|product| {
+                    if !dupe_set.insert(product.name.as_str()) {
+                        warn!("product {} \"{}\" has the same name as some other product", product.id, product.name)
+                    }
+                });
+            }
 
             // build trie
             let mut trie_builder = TrieBuilder::new();
