@@ -437,7 +437,7 @@ pub(in crate::bot) async fn link_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Role to link"] role: RoleId, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+    #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
@@ -489,7 +489,7 @@ pub(in crate::bot) async fn unlink_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+    #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
