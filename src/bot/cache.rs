@@ -71,6 +71,18 @@ impl ApiCache {
             .map(|entry| entry.value().len())
             .sum()
     }
+
+    pub async fn product_names_with_prefix<'a>(&self, context: &Context<'_>, prefix: &'a str) -> Result<Vec<String>, Error> {
+        self.get(context, |cache_entry| {
+            cache_entry.product_names_with_prefix(prefix).collect()
+        }).await
+    }
+
+    pub async fn product_name_to_id(&self, context: &Context<'_>, product_name: &str) -> Result<Option<String>, Error> {
+        self.get(context, |cache_entry| {
+            cache_entry.product_name_to_id(product_name).map(|str| str.to_string())
+        }).await
+    }
 }
 
 pub struct GuildCache {
@@ -109,12 +121,12 @@ impl GuildCache {
         }
     }
 
-    pub fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
+    fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
         self.product_name_trie.predictive_search(prefix.to_lowercase())
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
-    pub fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
+    fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
         self.product_name_to_id_map.get(product_name).map(|str| str.as_str())
     }
 

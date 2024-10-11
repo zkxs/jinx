@@ -66,6 +66,8 @@ impl JinxDb {
                 role_id                INTEGER NOT NULL, \
                 PRIMARY KEY            (guild_id, product_id, role_id) \
             ) STRICT", ())?;
+            
+            connection.execute("CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)", ())?;
 
             connection.execute("CREATE TABLE IF NOT EXISTS license_activation ( \
                 guild_id               INTEGER NOT NULL, \

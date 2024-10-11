@@ -10,7 +10,7 @@ use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 use poise::CreateReply;
 use regex::Regex;
-use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, Role, RoleId};
+use serenity::{ButtonStyle, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, Role, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{atomic, LazyLock};
 use std::time::Duration;
@@ -19,10 +19,6 @@ use tracing::{debug, info, warn};
 // discord component ids
 pub(super) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
 pub(super) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
-const PRODUCT_SELECT_ID: &str = "product_select";
-const ROLE_SELECT_ID: &str = "role_select";
-const LINK_PRODUCT_BUTTON: &str = "link_product_button";
-const UNLINK_PRODUCT_BUTTON: &str = "unlink_product_button";
 
 /// Message shown to admins when the Jinxxy API key is missing
 pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
@@ -866,12 +862,7 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
 
 /// Initializes autocomplete data, and then does the product autocomplete
 async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item=String> {
-    debug!("{} product_autocomplete", context.id());
-    let result: Result<Vec<String>, Error> = context.data().api_cache.get(&context, |cache_entry| {
-        cache_entry.product_names_with_prefix(product_prefix).collect()
-    }).await;
-
-    match result {
+    match context.data().api_cache.product_names_with_prefix(&context, product_prefix).await {
         Ok(result) => result.into_iter(),
         Err(e) => {
             warn!("Failed to read API cache: {:?}", e);
@@ -880,7 +871,7 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> imp
     }
 }
 
-/// Link (or unlink) a product to roles. Activating a license for the product will grant linked roles.
+/// Link a product to roles. Activating a license for the product will grant linked roles.
 #[poise::command(
     slash_command,
     guild_only,
@@ -894,189 +885,122 @@ pub(super) async fn link_product(
     #[autocomplete = "product_autocomplete"] product: String,
     #[description = "Roles to link"] roles: Vec<RoleId>,
 ) -> Result<(), Error> {
-    debug!("{} link_product", context.id());
+    let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let products = jinxxy::get_products(&api_key).await?;
-        if products.is_empty() {
-            context.send(CreateReply::default().content("No products found. Add some products in Jinxxy before using this command.").ephemeral(true)).await?;
-        } else {
-            let product_select_options: Vec<CreateSelectMenuOption> = products.iter()
-                .map(|product| CreateSelectMenuOption::new(&product.name, &product.id))
-                .collect();
-            let product_select_options_len = product_select_options.len();
-            const MAX_SELECT_VALUES: u8 = 25;
-            let product_select_options_len = if product_select_options_len > MAX_SELECT_VALUES as usize {
-                MAX_SELECT_VALUES
-            } else {
-                product_select_options_len as u8
-            };
+    if let Some(product_id) = product_id {
+        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+        let assignable_roles: HashSet<RoleId, ahash::RandomState> = {
+            let bot_id = context.framework().bot_id;
+            let bot_member = guild_id.member(context, bot_id).await?;
+            let permissions = bot_member.permissions(context)?;
 
-            let product_lookup: HashMap<String, String, ahash::RandomState> = products.into_iter()
-                .map(|product| (product.id, product.name))
-                .collect();
-
-            let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-            let assignable_roles: HashSet<RoleId, ahash::RandomState> = {
-                let bot_id = context.framework().bot_id;
-                let bot_member = guild_id.member(context, bot_id).await?;
-                let permissions = bot_member.permissions(context)?;
-
-                // for some reason if the scope of `guild` is too large the compiler loses its mind
-                if permissions.manage_roles() {
-                    let guild = context.guild().ok_or(JinxError::new("expected to be in a guild"))?;
-                    let highest_role = guild.member_highest_role(&bot_member);
-                    if let Some(highest_role) = highest_role {
-                        let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
-                        let mut roles: Vec<&Role> = guild.roles.values()
-                            .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
-                            .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
-                            .filter(|role| !role.managed) // managed roles can't be managed
-                            .collect();
-                        roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
-                        roles.into_iter()
-                            .map(|role| role.id)
-                            .collect()
-                    } else {
-                        Default::default()
-                    }
+            // for some reason if the scope of `guild` is too large the compiler loses its mind
+            if permissions.manage_roles() {
+                let guild = context.guild().ok_or(JinxError::new("expected to be in a guild"))?;
+                let highest_role = guild.member_highest_role(&bot_member);
+                if let Some(highest_role) = highest_role {
+                    let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
+                    let mut roles: Vec<&Role> = guild.roles.values()
+                        .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
+                        .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
+                        .filter(|role| !role.managed) // managed roles can't be managed
+                        .collect();
+                    roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
+                    roles.into_iter()
+                        .map(|role| role.id)
+                        .collect()
                 } else {
                     Default::default()
                 }
-            };
-
-            let id_prefix = format!("{}_", context.id());
-            let product_select_id = format!("{}{}", id_prefix, PRODUCT_SELECT_ID);
-            let role_select_id = format!("{}{}", id_prefix, ROLE_SELECT_ID);
-            let link_button_id = format!("{}{}", id_prefix, LINK_PRODUCT_BUTTON);
-            let unlink_button_id = format!("{}{}", id_prefix, UNLINK_PRODUCT_BUTTON);
-            let custom_ids = vec![
-                product_select_id.clone(),
-                role_select_id.clone(),
-                link_button_id.clone(),
-                unlink_button_id.clone(),
-            ];
-            let components = vec![
-                CreateActionRow::SelectMenu(CreateSelectMenu::new(product_select_id.clone(), CreateSelectMenuKind::String { options: product_select_options }).placeholder("Product Name").min_values(1).max_values(product_select_options_len)),
-                CreateActionRow::SelectMenu(CreateSelectMenu::new(role_select_id.clone(), CreateSelectMenuKind::Role { default_roles: None }).placeholder("Role to Grant").min_values(1).max_values(MAX_SELECT_VALUES)),
-                CreateActionRow::Buttons(vec![CreateButton::new(link_button_id.clone()).label("Link"), CreateButton::new(unlink_button_id.clone()).label("Unlink")]),
-            ];
-            let reply = CreateReply::default()
-                .ephemeral(true)
-                .content("Select products and roles to link. All selected products will grant all selected roles.")
-                .components(components);
-            let reply_handle = context.send(reply).await?;
-
-            let mut selected_products: Option<Vec<String>> = None;
-            let mut selected_roles: Option<Vec<RoleId>> = None;
-
-            fn assign_selection_result<T: Clone>(target: &mut Option<Vec<T>>, values: &[T]) {
-                if !values.is_empty() {
-                    *target = Some(values.to_vec());
-                } else {
-                    *target = None;
-                }
+            } else {
+                Default::default()
             }
+        };
 
-            while let Some(component_interaction) = serenity::ComponentInteractionCollector::new(context)
-                .author_id(context.author().id)
-                .channel_id(context.channel_id())
-                .timeout(Duration::from_secs(600)) // 10 minute timeout on the form
-                .custom_ids(custom_ids.clone()) // wtf, this API is trash
-                .await
-            {
-                // some absolutely ridiculous trick to get the select values out of Discord's javascript-centric API
-                let custom_id = component_interaction.data.custom_id.as_str();
-                match &component_interaction.data.kind {
-                    ComponentInteractionDataKind::StringSelect { values } if custom_id == product_select_id.as_str() => {
-                        assign_selection_result(&mut selected_products, values)
-                    }
-                    ComponentInteractionDataKind::RoleSelect { values } if custom_id == role_select_id.as_str() => {
-                        assign_selection_result(&mut selected_roles, values)
-                    }
-                    ComponentInteractionDataKind::Button => {
-                        let link = custom_id == link_button_id.as_str();
-                        let unlink = custom_id == unlink_button_id.as_str();
-                        if link | unlink {
-                            // user pressed either submit button
-                            if selected_products.is_some() && selected_roles.is_some() {
-                                let product_ids = selected_products.take().unwrap();
-                                let roles = selected_roles.take().unwrap();
-
-                                let mut message_lines = String::new();
-                                let mut warned_roles: HashSet<u64, ahash::RandomState> = HashSet::with_hasher(Default::default());
-                                for product_id in product_ids {
-                                    let product_name = product_lookup.get(product_id.as_str())
-                                        .map(|name| format!("\"{}\"", name))
-                                        .unwrap_or_else(|| product_id.clone());
-                                    for role in &roles {
-                                        if link {
-                                            context.data().db.link_product(guild_id, product_id.clone(), *role).await?;
-                                        } else {
-                                            context.data().db.unlink_product(guild_id, product_id.clone(), *role).await?;
-                                        }
-                                        message_lines.push_str(format!("\n- {}→<@&{}>", product_name, role.get()).as_str());
-                                        // if we're in link mode, then generate warnings
-                                        if link && !assignable_roles.contains(role) && !warned_roles.contains(&role.get()) {
-                                            warned_roles.insert(role.get());
-                                        }
-                                    }
-                                }
-
-                                let (action_name, action_verb) = if link {
-                                    ("Link", "created")
-                                } else {
-                                    ("Unlink", "removed")
-                                };
-                                let embed = CreateEmbed::default()
-                                    .title(format!("Product {} Successful", action_name))
-                                    .description(format!("The following product→role links have been {}:{}", action_verb, message_lines))
-                                    .color(Colour::DARK_GREEN);
-                                let reply = CreateReply::default()
-                                    .content("")
-                                    .embed(embed)
-                                    .components(Default::default());
-                                let reply = if warned_roles.is_empty() {
-                                    reply
-                                } else {
-                                    // warn if the roles cannot be assigned (too high, or we lack the perm)
-                                    let mut warning_lines = String::new();
-                                    for role in warned_roles {
-                                        warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
-                                    }
-                                    let embed = CreateEmbed::default()
-                                        .title("Warning")
-                                        .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
-                                        .color(Colour::ORANGE);
-                                    reply.embed(embed)
-                                };
-                                reply_handle.edit(context, reply).await?;
-                            } else {
-                                let embed = CreateEmbed::default()
-                                    .title("Product Link Failed")
-                                    .description("Please try again, and select both a product and a role to link.")
-                                    .color(Colour::RED);
-
-                                reply_handle.edit(
-                                    context,
-                                    CreateReply::default()
-                                        .content("")
-                                        .embed(embed)
-                                        .components(Default::default()),
-                                ).await?;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-
-                // regardless of what component got poked we acknowledge it
-                component_interaction.create_response(context, CreateInteractionResponse::Acknowledge).await?;
+        let mut warned_roles: HashSet<u64, ahash::RandomState> = HashSet::with_hasher(Default::default());
+        for role in &roles {
+            context.data().db.link_product(guild_id, product_id.clone(), *role).await?;
+            if !assignable_roles.contains(role) && !warned_roles.contains(&role.get()) {
+                warned_roles.insert(role.get());
             }
         }
+
+        let roles = context.data().db.get_roles(guild_id, product_id).await?;
+        let mut message_lines = String::new();
+        for role in roles {
+            message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
+        }
+
+        let embed = CreateEmbed::default()
+            .title("Product Link Successful")
+            .description(format!("{} will now grant the following roles:{}", product, message_lines))
+            .color(Colour::DARK_GREEN);
+        let reply = CreateReply::default()
+            .embed(embed)
+            .components(Default::default())
+            .ephemeral(true);
+        let reply = if warned_roles.is_empty() {
+            reply
+        } else {
+            // warn if the roles cannot be assigned (too high, or we lack the perm)
+            let mut warning_lines = String::new();
+            for role in warned_roles {
+                warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
+            }
+            let embed = CreateEmbed::default()
+                .title("Warning")
+                .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
+                .color(Colour::ORANGE);
+            reply.embed(embed)
+        };
+        context.send(reply).await?;
     } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
+        context.send(CreateReply::default().content("Product not found.").ephemeral(true)).await?;
+    }
+
+    Ok(())
+}
+
+/// Unlink a product from roles.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild",
+)]
+pub(super) async fn unlink_product(
+    context: Context<'_>,
+    #[description = "Product to modify role links for"]
+    #[autocomplete = "product_autocomplete"] product: String,
+    #[description = "Roles to unlink"] roles: Vec<RoleId>,
+) -> Result<(), Error> {
+    let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
+
+    if let Some(product_id) = product_id {
+        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+
+        for role in &roles {
+            context.data().db.unlink_product(guild_id, product_id.clone(), *role).await?;
+        }
+
+        let roles = context.data().db.get_roles(guild_id, product_id).await?;
+        let mut message_lines = String::new();
+        for role in roles {
+            message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
+        }
+
+        let embed = CreateEmbed::default()
+            .title("Product Link Successful")
+            .description(format!("{} will now grant the following roles:{}", product, message_lines))
+            .color(Colour::DARK_GREEN);
+        let reply = CreateReply::default()
+            .embed(embed)
+            .components(Default::default())
+            .ephemeral(true);
+        context.send(reply).await?;
+    } else {
+        context.send(CreateReply::default().content("Product not found.").ephemeral(true)).await?;
     }
 
     Ok(())
