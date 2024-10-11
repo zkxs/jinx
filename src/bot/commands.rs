@@ -14,7 +14,6 @@ use serenity::{ButtonStyle, Colour, ComponentInteractionDataKind, CreateActionRo
 use std::collections::{HashMap, HashSet};
 use std::sync::{atomic, LazyLock};
 use std::time::Duration;
-use radix_trie::{Trie, TrieCommon};
 use tracing::{debug, info, warn};
 
 // discord component ids
@@ -26,7 +25,7 @@ const LINK_PRODUCT_BUTTON: &str = "link_product_button";
 const UNLINK_PRODUCT_BUTTON: &str = "unlink_product_button";
 
 /// Message shown to admins when the Jinxxy API key is missing
-static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
+pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
 
 static GLOBAL_JINXXY_API_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
     r"^sk_[a-f0-9]{32}$", // jinxxy API key `sk_9bba2064ee8c20aa4fd6b015eed2001a`
@@ -865,66 +864,19 @@ async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, E
     Ok(license_id)
 }
 
-struct ProductData {
-    product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
-    product_name_trie: Trie<String, ()>,
-}
-
-impl ProductData {
-    async fn new(context: Context<'_>) -> Result<ProductData, Error> {
-        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-        if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-            let products = jinxxy::get_products(&api_key).await?;
-
-            // build trie
-            let mut product_name_trie = Trie::new();
-            for product_name in products.iter().map(|product| product.name.clone()) {
-                product_name_trie.insert(product_name, ());
-            }
-
-            // build map
-            let product_name_to_id_map = products.into_iter()
-                .map(|product| (product.name, product.id))
-                .collect();
-
-            Ok(ProductData {
-                product_name_to_id_map,
-                product_name_trie,
-            })
-        } else {
-            Err(JinxError::boxed(MISSING_API_KEY_MESSAGE))
-        }
-    }
-}
-
-/// Fake check that just initializes product state
-async fn product_init_check(context: Context<'_>) -> Result<bool, Error> {
-    debug!("{} product_init_check", context.id());
-    if context.invocation_data::<ProductData>().await.is_none() {
-        let product_data = ProductData::new(context).await?;
-        context.set_invocation_data::<ProductData>(product_data).await;
-        debug!("Created product autocomplete state");
-    }
-    Ok(true)
-}
-
 /// Initializes autocomplete data, and then does the product autocomplete
-async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
+async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item=String> {
     debug!("{} product_autocomplete", context.id());
-    if let Some(product_data) = context.invocation_data::<ProductData>().await.as_deref() {
-        product_autocomplete_inner(product_data, product_prefix)
-    } else {
-        Box::new(std::iter::empty())
-    }
-}
+    let result = context.data().api_cache.get(&context, |cache_entry| {
+        cache_entry.product_names_with_prefix(product_prefix)
+    }).await;
 
-/// Does the product autocomplete
-fn product_autocomplete_inner(product_data: &ProductData, product_prefix: &str) -> Box<dyn Iterator<Item = String> + Send + Sync> {
-    if let Some(subtrie) = product_data.product_name_trie.subtrie(product_prefix) {
-        let vec: Vec<String> = subtrie.keys().cloned().collect();
-        Box::new(vec.into_iter())
-    } else {
-        Box::new(std::iter::empty())
+    match result {
+        Ok(result) => result,
+        Err(e) => {
+            warn!("Failed to read API cache: {:?}", e);
+            Box::new(std::iter::empty())
+        }
     }
 }
 
@@ -935,11 +887,11 @@ fn product_autocomplete_inner(product_data: &ProductData, product_prefix: &str) 
     default_member_permissions = "MANAGE_ROLES",
     install_context = "Guild",
     interaction_context = "Guild",
-    check = "product_init_check"
 )]
 pub(super) async fn link_product(
     context: Context<'_>,
-    #[description = "Product to modify role links for"] #[autocomplete = "product_autocomplete"] product: String,
+    #[description = "Product to modify role links for"]
+    #[autocomplete = "product_autocomplete"] product: String,
     #[description = "Roles to link"] roles: Vec<RoleId>,
 ) -> Result<(), Error> {
     debug!("{} link_product", context.id());

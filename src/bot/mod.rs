@@ -18,6 +18,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
+use crate::bot::cache::ApiCache;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -65,6 +66,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
 /// User data, which is stored and accessible in all command invocations
 struct Data {
     db: Arc<JinxDb>,
+    api_cache: ApiCache,
 }
 
 pub async fn run_bot() -> Result<(), Error> {
@@ -139,7 +141,8 @@ pub async fn run_bot() -> Result<(), Error> {
                 debug!("framework setup complete");
 
                 Ok(Data {
-                    db
+                    db,
+                    api_cache: Default::default(),
                 })
             })
         })
