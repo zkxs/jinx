@@ -1,14 +1,14 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::commands::util::license_to_id;
+use crate::bot::commands::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, license_to_id};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
-use serenity::{ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, Role, RoleId};
+use serenity::{ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, RoleId};
 use std::collections::{HashMap, HashSet};
 use tracing::warn;
 
@@ -153,50 +153,6 @@ pub(in crate::bot) async fn create_post(
                 .content(format!("Could not get info for your Jinxxy user: {}", e));
             context.send(reply).await?;
         }
-    }
-    Ok(())
-}
-
-/// List all product→role links
-#[poise::command(
-    slash_command,
-    guild_only,
-    default_member_permissions = "MANAGE_ROLES",
-    install_context = "Guild",
-    interaction_context = "Guild"
-)]
-pub(in crate::bot) async fn list_links(
-    context: Context<'_>,
-) -> Result<(), Error> {
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let mut links = context.data().db.get_links(guild_id).await?;
-        let message = if links.is_empty() {
-            "No product→role links configured".to_string()
-        } else {
-            links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
-            let mut message: String = "All product→role links:".to_string();
-            let mut current_role = None;
-            let products = jinxxy::get_products(&api_key).await?;
-            let products: HashMap<String, String, ahash::RandomState> = products.into_iter()
-                .map(|product| (product.id, product.name))
-                .collect();
-            for (product_id, role) in links {
-                let product_name = products.get(&product_id)
-                    .map(|name| format!("\"{}\"", name))
-                    .unwrap_or_else(|| product_id.clone());
-                if current_role != Some(role) {
-                    current_role = Some(role);
-                    message.push_str(format!("\n- <@&{}> granted by {}", role.get(), product_name).as_str());
-                } else {
-                    message.push_str(format!(", {}", product_name).as_str());
-                }
-            }
-            message
-        };
-        context.send(CreateReply::default().content(message).ephemeral(true)).await?;
-    } else {
-        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
     }
     Ok(())
 }
@@ -469,7 +425,7 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> imp
     }
 }
 
-/// Link a product to roles. Activating a license for the product will grant linked roles.
+/// Link a product to a role. Activating a license for the product will grant all linked roles.
 #[poise::command(
     slash_command,
     guild_only,
@@ -481,45 +437,21 @@ pub(in crate::bot) async fn link_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Roles to link"] roles: Vec<RoleId>,
+    #[description = "Role to link"] roles: Vec<RoleId>, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if let Some(product_id) = product_id {
+    if roles.is_empty() {
+        context.send(CreateReply::default().content("No role provided").ephemeral(true)).await?;
+    } else if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-        let assignable_roles: HashSet<RoleId, ahash::RandomState> = {
-            let bot_id = context.framework().bot_id;
-            let bot_member = guild_id.member(context, bot_id).await?;
-            let permissions = bot_member.permissions(context)?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
 
-            // for some reason if the scope of `guild` is too large the compiler loses its mind
-            if permissions.manage_roles() {
-                let guild = context.guild().ok_or(JinxError::new("expected to be in a guild"))?;
-                let highest_role = guild.member_highest_role(&bot_member);
-                if let Some(highest_role) = highest_role {
-                    let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
-                    let mut roles: Vec<&Role> = guild.roles.values()
-                        .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
-                        .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
-                        .filter(|role| !role.managed) // managed roles can't be managed
-                        .collect();
-                    roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
-                    roles.into_iter()
-                        .map(|role| role.id)
-                        .collect()
-                } else {
-                    Default::default()
-                }
-            } else {
-                Default::default()
-            }
-        };
-
-        let mut warned_roles: HashSet<u64, ahash::RandomState> = HashSet::with_hasher(Default::default());
+        let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> = HashSet::with_hasher(Default::default());
         for role in &roles {
             context.data().db.link_product(guild_id, product_id.clone(), *role).await?;
-            if !assignable_roles.contains(role) && !warned_roles.contains(&role.get()) {
-                warned_roles.insert(role.get());
+            if !assignable_roles.contains(role) && !unassignable_roles.contains(role) {
+                unassignable_roles.insert(*role);
             }
         }
 
@@ -535,21 +467,11 @@ pub(in crate::bot) async fn link_product(
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default()
             .embed(embed)
-            .components(Default::default())
             .ephemeral(true);
-        let reply = if warned_roles.is_empty() {
-            reply
-        } else {
-            // warn if the roles cannot be assigned (too high, or we lack the perm)
-            let mut warning_lines = String::new();
-            for role in warned_roles {
-                warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
-            }
-            let embed = CreateEmbed::default()
-                .title("Warning")
-                .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
-                .color(Colour::ORANGE);
+        let reply = if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
             reply.embed(embed)
+        } else {
+            reply
         };
         context.send(reply).await?;
     } else {
@@ -559,7 +481,7 @@ pub(in crate::bot) async fn link_product(
     Ok(())
 }
 
-/// Unlink a product from roles.
+/// Unlink a product from a role.
 #[poise::command(
     slash_command,
     guild_only,
@@ -571,12 +493,15 @@ pub(in crate::bot) async fn unlink_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
     #[autocomplete = "product_autocomplete"] product: String,
-    #[description = "Roles to unlink"] roles: Vec<RoleId>,
+    #[description = "Role to unlink"] roles: Vec<RoleId>, // note that Discord does not presently support varadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
-    if let Some(product_id) = product_id {
+    if roles.is_empty() {
+        context.send(CreateReply::default().content("No role provided").ephemeral(true)).await?;
+    } else if let Some(product_id) = product_id {
         let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
 
         for role in &roles {
             context.data().db.unlink_product(guild_id, product_id.clone(), *role).await?;
@@ -584,7 +509,7 @@ pub(in crate::bot) async fn unlink_product(
 
         let roles = context.data().db.get_roles(guild_id, product_id).await?;
         let mut message_lines = String::new();
-        for role in roles {
+        for role in &roles {
             message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
         }
 
@@ -594,12 +519,78 @@ pub(in crate::bot) async fn unlink_product(
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default()
             .embed(embed)
-            .components(Default::default())
             .ephemeral(true);
+        let reply = if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
+            reply.embed(embed)
+        } else {
+            reply
+        };
         context.send(reply).await?;
     } else {
         context.send(CreateReply::default().content("Product not found.").ephemeral(true)).await?;
     }
 
+    Ok(())
+}
+
+/// List all product→role links
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn list_links(
+    context: Context<'_>,
+) -> Result<(), Error> {
+    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let mut links = context.data().db.get_links(guild_id).await?;
+        let message = if links.is_empty() {
+            "No product→role links configured".to_string()
+        } else {
+            links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
+
+            let mut message = String::new();
+            let mut current_role = None;
+            let products = jinxxy::get_products(&api_key).await?;
+            let products: HashMap<String, String, ahash::RandomState> = products.into_iter()
+                .map(|product| (product.id, product.name))
+                .collect();
+            for (product_id, role) in &links {
+                let product_name = products.get(product_id)
+                    .map(|name| format!("\"{}\"", name))
+                    .unwrap_or_else(|| product_id.clone());
+                if current_role != Some(role) {
+                    current_role = Some(role);
+                    if message.is_empty() {
+                        message.push_str(format!("- <@&{}> granted by {}", role.get(), product_name).as_str());
+                    } else {
+                        message.push_str(format!("\n- <@&{}> granted by {}", role.get(), product_name).as_str());
+                    }
+                } else {
+                    message.push_str(format!(", {}", product_name).as_str());
+                }
+            }
+            message
+        };
+        let unassignable_embed = create_role_warning_from_roles(&assignable_roles, links.iter().map(|(_product_id, role_id)| *role_id));
+        let embed = CreateEmbed::default()
+            .title("All product→role links")
+            .description(message);
+        let reply = CreateReply::default()
+            .embed(embed)
+            .ephemeral(true);
+        let reply = if let Some(embed) = unassignable_embed {
+            reply.embed(embed)
+        } else {
+            reply
+        };
+        context.send(reply).await?;
+    } else {
+        context.send(CreateReply::default().content(MISSING_API_KEY_MESSAGE).ephemeral(true)).await?;
+    }
     Ok(())
 }

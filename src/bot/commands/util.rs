@@ -4,9 +4,12 @@
 //! Utils used by bot commands.
 
 use crate::bot::Context;
+use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::{bot, license};
-use poise::serenity_prelude::GuildId;
+use poise::serenity_prelude as serenity;
+use serenity::{Colour, CreateEmbed, GuildId, Role, RoleId};
+use std::collections::HashSet;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -18,7 +21,7 @@ pub async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
 /// Set (or reset) guild commands for this guild.
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
-pub async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), crate::bot::Error> {
+pub async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), Error> {
     bot::set_guild_commands(context, &context.data().db, guild_id, force_owner, force_creator).await
 }
 
@@ -38,4 +41,66 @@ pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String
         }
     };
     Ok(license_id)
+}
+
+pub async fn assignable_roles(context: &Context<'_>, guild_id: GuildId) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
+    let bot_id = context.framework().bot_id;
+    let bot_member = guild_id.member(context, bot_id).await?;
+    let permissions = bot_member.permissions(context)?;
+
+    let assignable_roles = if permissions.manage_roles() {
+        // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
+        let guild = context.guild().ok_or(JinxError::new("expected to be in a guild"))?;
+        let highest_role = guild.member_highest_role(&bot_member);
+        if let Some(highest_role) = highest_role {
+            let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
+            let mut roles: Vec<&Role> = guild.roles.values()
+                .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
+                .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
+                .filter(|role| !role.managed) // managed roles can't be managed
+                .collect();
+            roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
+            roles.into_iter()
+                .map(|role| role.id)
+                .collect()
+        } else {
+            Default::default()
+        }
+    } else {
+        Default::default()
+    };
+
+    Ok(assignable_roles)
+}
+
+/// warn if the roles cannot be assigned (too high, or we lack the perm)
+pub fn create_role_warning_from_roles<T: Iterator<Item=RoleId>>(assignable_roles: &HashSet<RoleId, ahash::RandomState>, roles: T) -> Option<CreateEmbed> {
+    let roles: HashSet<RoleId, ahash::RandomState> = roles.into_iter().collect();
+    let mut unassignable_roles: Vec<RoleId> = roles.difference(assignable_roles).copied().collect();
+    create_role_warning(&mut unassignable_roles)
+}
+
+/// warn if the roles cannot be assigned (too high, or we lack the perm)
+pub fn create_role_warning_from_unassignable<T: Iterator<Item=RoleId>>(unassignable_roles: T) -> Option<CreateEmbed> {
+    let mut unassignable_roles: Vec<RoleId> = unassignable_roles.into_iter().collect();
+    create_role_warning(&mut unassignable_roles)
+}
+
+/// warn if the roles cannot be assigned (too high, or we lack the perm)
+fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmbed> {
+    if unassignable_roles.is_empty() {
+        None
+    } else {
+        unassignable_roles.sort_unstable();
+
+        let mut warning_lines = String::new();
+        for role in unassignable_roles {
+            warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
+        }
+        let embed = CreateEmbed::default()
+            .title("Warning")
+            .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
+            .color(Colour::ORANGE);
+        Some(embed)
+    }
 }
