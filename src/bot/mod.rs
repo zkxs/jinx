@@ -17,8 +17,7 @@ use rand::prelude::*;
 use serenity::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
 use std::fmt::Debug;
 use std::sync::{Arc, LazyLock};
-use std::time::Duration;
-use tokio::time::Instant;
+use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;

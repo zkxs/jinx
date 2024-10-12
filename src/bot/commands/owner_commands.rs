@@ -9,7 +9,7 @@ use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, UserId};
 use std::sync::atomic;
-use std::time::Duration;
+use tokio::time::Duration;
 use tracing::{debug, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;

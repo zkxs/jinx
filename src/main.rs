@@ -6,7 +6,7 @@ use clap::Parser;
 use std::process::ExitCode;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
+use tokio::time::Duration;
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 use tracing::info;
 use tracing_subscriber::EnvFilter;

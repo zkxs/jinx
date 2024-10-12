@@ -3,9 +3,9 @@
 
 //! HTTP API calls
 
+use crate::constants;
 use std::sync::LazyLock;
 use std::time::Duration;
-use crate::constants;
 
 pub mod jinxxy;
 pub mod update_checker;

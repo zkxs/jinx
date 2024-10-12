@@ -16,8 +16,7 @@ use crate::http::jinxxy;
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
-use tokio::time::Instant;
+use tokio::time::{Duration, Instant};
 use tracing::{debug, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
