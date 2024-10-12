@@ -294,7 +294,8 @@ async fn event_handler_inner<'a>(
                         });
                     if let Some(license_key) = license_key {
                         let license_type = license::identify_license(license_key);
-                        debug!("got license which looks like {}", license_type);
+                        let user_id = modal_interaction.user.id;
+                        debug!("got license from <@{}> which looks like {}", user_id, license_type);
 
                         /* Generic fail message. This message is deterministic based solely on the user-provided string,
                          * which prevents leaking information regarding license validity. For example, different messages
@@ -304,7 +305,7 @@ async fn event_handler_inner<'a>(
                          * - An invalid license
                          */
                         let send_fail_message = || async {
-                            let user_id = modal_interaction.user.id;
+                            
                             if license_type.is_license() {
                                 debug!("failed to verify license for <@{}> which looks like {}", user_id.get(), license_type);
                             } else {
@@ -342,7 +343,6 @@ async fn event_handler_inner<'a>(
                             };
                             if let Some(license_info) = license_response {
                                 let member = modal_interaction.member.as_ref().ok_or(JinxError::new("expected to be in a guild"))?;
-                                let user_id = member.user.id;
 
                                 let (activations, mut validation) = if license_info.activations == 0 {
                                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
@@ -382,7 +382,7 @@ async fn event_handler_inner<'a>(
                                 } else {
                                     // log if multiple activations for this user
                                     if validation.multiple {
-                                        warn!("{} is about to activate \"{}\". User already has multiple activations: {:?}", user_id, license_key, activations);
+                                        warn!("<@{}> is about to activate \"{}\". User already has multiple activations: {:?}", user_id, license_key, activations);
                                     }
 
                                     // calculate if we should grant roles
@@ -398,7 +398,7 @@ async fn event_handler_inner<'a>(
 
                                         // log if multiple activations for different users
                                         if validation.multiple {
-                                            warn!("{} just activated \"{}\" in {}. User already has multiple activations: {:?}", user_id, license_key, new_activation_id, activations);
+                                            warn!("<@{}> just activated \"{}\" in {}. User already has multiple activations: {:?}", user_id, license_key, new_activation_id, activations);
                                         }
 
                                         // create roles if no non-us activations
@@ -511,7 +511,7 @@ async fn event_handler_inner<'a>(
         }
         FullEvent::InteractionCreate { interaction: Interaction::Command(command_interaction) } => {
             debug!(
-                "command \"{}\" invoked in {:?} by {}",
+                "command \"{}\" invoked in {:?} by <@{}>",
                 command_interaction.data.name,
                 command_interaction.guild_id.map(|guild| guild.get()),
                 command_interaction.user.id.get()
