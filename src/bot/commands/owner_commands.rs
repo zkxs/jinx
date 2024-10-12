@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::util::{check_owner, success_reply};
+use crate::bot::util::{check_owner, success_reply};
 use crate::bot::Context;
 use crate::error::JinxError;
 use crate::SHOULD_RESTART;

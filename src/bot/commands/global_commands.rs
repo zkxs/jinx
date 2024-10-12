@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use super::util::{check_owner, error_reply, set_guild_commands, success_reply};
+use crate::bot::util::{check_owner, error_reply, set_guild_commands, success_reply};
 use crate::bot::Context;
 use crate::constants;
 use crate::error::JinxError;
@@ -112,7 +112,7 @@ pub(in crate::bot) async fn init(
                 // I suspect this is a discord/serenity/poise bug.
                 // For some <id>, <nonce>, this looks like:
                 // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
-                set_guild_commands(context, guild_id, Some(true), None).await?;
+                set_guild_commands(&context, &context.data().db, guild_id, Some(true), None).await?;
 
                 success_reply("Success", "Owner commands installed.")
             } else {
@@ -121,7 +121,7 @@ pub(in crate::bot) async fn init(
         } else if api_key == "uninstall_owner_commands" {
             if check_owner(context).await? {
                 context.data().db.set_owner_guild(guild_id, false).await?;
-                set_guild_commands(context, guild_id, Some(false), None).await?;
+                set_guild_commands(&context, &context.data().db, guild_id, Some(false), None).await?;
                 success_reply("Success", "Owner commands uninstalled.")
             } else {
                 error_reply("Not an owner")
@@ -129,7 +129,7 @@ pub(in crate::bot) async fn init(
         } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
             // normal /init <key> use ends up in this branch
             context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
-            set_guild_commands(context, guild_id, None, Some(true)).await?;
+            set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
             success_reply("Success", "API key set and additional slash commands enabled. Please continue bot setup.")
         } else {
             // user has given us some mystery garbage value for their API key
@@ -138,7 +138,7 @@ pub(in crate::bot) async fn init(
         }
     } else if context.data().db.get_jinxxy_api_key(guild_id).await?.is_some() {
         // re-initialize commands but only if API key is already set
-        set_guild_commands(context, guild_id, None, Some(true)).await?;
+        set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
 
         success_reply("Success", "Commands reinstalled.")
     } else {

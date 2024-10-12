@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::commands::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, error_reply, license_to_id, success_reply};
+use crate::bot::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, error_reply, license_to_id, success_reply};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;

@@ -3,10 +3,12 @@
 
 //! Utils used by bot commands.
 
-use crate::bot::Context;
+use crate::bot::{Context, CREATOR_COMMANDS, OWNER_COMMANDS};
+use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::{bot, license};
+use crate::license;
+use poise::serenity_prelude::Http;
 use poise::{serenity_prelude as serenity, CreateReply};
 use serenity::{Colour, CreateEmbed, GuildId, Role, RoleId};
 use std::collections::HashSet;
@@ -14,15 +16,30 @@ use std::collections::HashSet;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Check if the calling user is a bot owner
-pub async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
+pub(super) async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
     Ok(context.data().db.is_user_owner(context.author().id.get()).await?)
 }
 
 /// Set (or reset) guild commands for this guild.
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
-pub async fn set_guild_commands(context: Context<'_>, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), Error> {
-    bot::set_guild_commands(context, &context.data().db, guild_id, force_owner, force_creator).await
+pub async fn set_guild_commands(http: impl AsRef<Http>, db: &JinxDb, guild_id: GuildId, force_owner: Option<bool>, force_creator: Option<bool>) -> Result<(), Error> {
+    let owner = if let Some(owner) = force_owner {
+        owner
+    } else {
+        db.is_owner_guild(guild_id).await?
+    };
+    let creator = if let Some(creator) = force_creator {
+        creator
+    } else {
+        db.get_jinxxy_api_key(guild_id).await?.is_some()
+    };
+    let owner_commands = owner.then_some(OWNER_COMMANDS.iter()).into_iter().flatten();
+    let creator_commands = creator.then_some(CREATOR_COMMANDS.iter()).into_iter().flatten();
+    let command_iter = owner_commands.chain(creator_commands);
+    let commands = poise::builtins::create_application_commands(command_iter);
+    guild_id.set_commands(http, commands).await?;
+    Ok(())
 }
 
 /// Get a license ID from whatever the heck the user provided. This can proxy IDs through, so it may
@@ -43,7 +60,7 @@ pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String
     Ok(license_id)
 }
 
-pub async fn assignable_roles(context: &Context<'_>, guild_id: GuildId) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
+pub(super) async fn assignable_roles(context: &Context<'_>, guild_id: GuildId) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
     let bot_id = context.framework().bot_id;
     let bot_member = guild_id.member(context, bot_id).await?;
     let permissions = bot_member.permissions(context)?;
