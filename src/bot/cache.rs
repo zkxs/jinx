@@ -79,7 +79,9 @@ impl ApiCache {
     /// Remove expired cache entries
     pub fn clean(&self) {
         self.map.retain(|_guild_id, cache_entry| !cache_entry.is_expired());
-        if self.map.capacity() > 1024 {
+
+        // if the capacity is much larger than the actual usage, then try shrinking
+        if self.map.capacity() / self.map.len() >= 16 {
             self.map.shrink_to_fit();
         }
     }
