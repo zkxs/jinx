@@ -18,6 +18,9 @@
 - foreign keys on the sqlite tables
 - clean up message formatting (reduce information overload of `/user_info` and `/license_info`)
 - verify api key on setup for real vs just using a regex
+  - say "hi username"
+  - nag if missing API scopes
+- consistency pass on "verify", "register", "activate" language
 
 ## Stretch Goals
 

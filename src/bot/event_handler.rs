@@ -97,9 +97,11 @@ async fn event_handler_inner<'a>(
                             }
                         });
                     if let Some(license_key) = license_key {
-                        let license_type = license::identify_license(license_key);
+                        let guild_id = modal_interaction.guild_id.ok_or(JinxError::new("expected to be in a guild"))?;
                         let user_id = modal_interaction.user.id;
-                        debug!("got license from <@{}> which looks like {}", user_id, license_type);
+                        let license_type = license::identify_license(license_key);
+
+                        debug!("got license in {} from <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
 
                         /* Generic fail message. This message is deterministic based solely on the user-provided string,
                          * which prevents leaking information regarding license validity. For example, different messages
@@ -110,9 +112,10 @@ async fn event_handler_inner<'a>(
                          */
                         let send_fail_message = || async {
                             if license_type.is_license() {
-                                debug!("failed to verify license for <@{}> which looks like {}", user_id.get(), license_type);
+                                debug!("failed to verify license in {} for <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
                             } else {
-                                debug!("failed to verify license \"{}\" for <@{}> which looks like {}", license_key, user_id.get(), license_type);
+                                // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
+                                debug!("failed to verify license \"{}\" in {} for <@{}> which looks like {}", license_key, guild_id.get(), user_id.get(), license_type);
                             }
 
                             let description = if license_type.is_jinxxy_license() {
@@ -135,7 +138,6 @@ async fn event_handler_inner<'a>(
                             Ok::<(), Error>(())
                         };
 
-                        let guild_id = modal_interaction.guild_id.ok_or(JinxError::new("expected to be in a guild"))?;
                         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id).await? {
                             let license = license_type.create_untrusted_jinxxy_license(license_key);
                             let license_response = if let Some(license) = license {
@@ -172,7 +174,7 @@ async fn event_handler_inner<'a>(
                                                 .for_each(|user_id| message.push_str(format!("\n- <@{}>", user_id).as_str()));
                                             message
                                         };
-                                        info!("{}", message);
+                                        info!("in {} for license id {}, {}", guild_id, license_info.license_id, message);
                                         let embed = CreateEmbed::default()
                                             .title("Activation Attempt Failed")
                                             .description(message)
@@ -185,7 +187,7 @@ async fn event_handler_inner<'a>(
                                 } else {
                                     // log if multiple activations for this user
                                     if validation.multiple {
-                                        warn!("<@{}> is about to activate \"{}\". User already has multiple activations: {:?}", user_id, license_key, activations);
+                                        warn!("in {} <@{}> is about to activate {}. User already has multiple activations: {:?}", guild_id.get(), user_id.get(), license_info.license_id, activations);
                                     }
 
                                     // calculate if we should grant roles
@@ -201,7 +203,7 @@ async fn event_handler_inner<'a>(
 
                                         // log if multiple activations for different users
                                         if validation.multiple {
-                                            warn!("<@{}> just activated \"{}\" in {}. User already has multiple activations: {:?}", user_id, license_key, new_activation_id, activations);
+                                            warn!("in {} <@{}> just activated {} via {}. User already has multiple activations: {:?}", guild_id.get(), user_id.get(), license_info.license_id, new_activation_id, activations);
                                         }
 
                                         // create roles if no non-us activations
@@ -210,7 +212,7 @@ async fn event_handler_inner<'a>(
                                     if validation.deadlocked() {
                                         // Two different people just race-conditioned their way to multiple activations so this license is now rendered unusable ever again.
                                         // A moderator can use `/deactivate_license` to fix this manually.
-                                        warn!("license \"{}\" is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable", license_key);
+                                        warn!("in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable", guild_id.get(), license_info.license_id);
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
@@ -238,7 +240,7 @@ async fn event_handler_inner<'a>(
                                                 }
                                                 Err(e) => {
                                                     errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
-                                                    warn!("error granting role: {:?}", e);
+                                                    warn!("in {} error granting role: {:?}", guild_id.get(), e);
                                                 }
                                             }
                                         }
