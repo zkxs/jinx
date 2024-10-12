@@ -508,22 +508,19 @@ pub(in crate::bot) async fn list_links(
     context: Context<'_>,
 ) -> Result<(), Error> {
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
-        let mut links = context.data().db.get_links(guild_id).await?;
-        let message = if links.is_empty() {
-            "No product→role links configured".to_string()
-        } else {
-            links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
 
+    let assignable_roles = assignable_roles(&context, guild_id).await?;
+    let mut links = context.data().db.get_links(guild_id).await?;
+    let message = if links.is_empty() {
+        "No product→role links configured".to_string()
+    } else {
+        links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
+        context.data().api_cache.get(&context, |cache| {
             let mut message = String::new();
             let mut current_role = None;
-            let products = jinxxy::get_products(&api_key).await?;
-            let products: HashMap<String, String, ahash::RandomState> = products.into_iter()
-                .map(|product| (product.id, product.name))
-                .collect();
+
             for (product_id, role) in &links {
-                let product_name = products.get(product_id)
+                let product_name = cache.product_id_to_name(product_id)
                     .map(|name| format!("\"{}\"", name))
                     .unwrap_or_else(|| product_id.clone());
                 if current_role != Some(role) {
@@ -538,22 +535,21 @@ pub(in crate::bot) async fn list_links(
                 }
             }
             message
-        };
-        let unassignable_embed = create_role_warning_from_roles(&assignable_roles, links.iter().map(|(_product_id, role_id)| *role_id));
-        let embed = CreateEmbed::default()
-            .title("All product→role links")
-            .description(message);
-        let reply = CreateReply::default()
-            .embed(embed)
-            .ephemeral(true);
-        if let Some(embed) = unassignable_embed {
-            reply.embed(embed)
-        } else {
-            reply
-        }
-    } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        }).await?
     };
+    let unassignable_embed = create_role_warning_from_roles(&assignable_roles, links.iter().map(|(_product_id, role_id)| *role_id));
+    let embed = CreateEmbed::default()
+        .title("All product→role links")
+        .description(message);
+    let reply = CreateReply::default()
+        .embed(embed)
+        .ephemeral(true);
+    let reply = if let Some(embed) = unassignable_embed {
+        reply.embed(embed)
+    } else {
+        reply
+    };
+
     context.send(reply).await?;
     Ok(())
 }

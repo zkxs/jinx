@@ -88,6 +88,7 @@ impl ApiCache {
 }
 
 pub struct GuildCache {
+    product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
     product_name_trie: Trie<u8, String>,
     create_time: Instant,
@@ -115,7 +116,12 @@ impl GuildCache {
             }
             let product_name_trie = trie_builder.build();
 
-            // build map
+            // build forward map
+            let product_id_to_name_map = products.iter()
+                .map(|product| (product.id.to_string(), product.name.to_string()))
+                .collect();
+
+            // build reverse map
             let product_name_to_id_map = products.into_iter()
                 .map(|product| (product.name, product.id))
                 .collect();
@@ -123,6 +129,7 @@ impl GuildCache {
             let create_time = Instant::now();
 
             Ok(GuildCache {
+                product_id_to_name_map,
                 product_name_to_id_map,
                 product_name_trie,
                 create_time,
@@ -135,6 +142,10 @@ impl GuildCache {
     fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
         self.product_name_trie.predictive_search(prefix.to_lowercase())
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
+    }
+
+    pub fn product_id_to_name(&self, product_id: &str) -> Option<&str> {
+        self.product_id_to_name_map.get(product_id).map(|str| str.as_str())
     }
 
     fn product_name_to_id(&self, product_name: &str) -> Option<&str> {

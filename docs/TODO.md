@@ -16,7 +16,8 @@
 - Evaluate if a single thread can handle load or if this needs the full tokio multithreaded executor
 - indices on the sqlite tables
 - foreign keys on the sqlite tables
-- clean up message formatting (use embeds more, reduce information overload of `/user_info` and `/license_info`)
+- clean up message formatting (reduce information overload of `/user_info` and `/license_info`)
+- verify api key on setup for real vs just using a regex
 
 ## Stretch Goals
 
