@@ -244,7 +244,7 @@ async fn event_handler_inner<'a>(
             }
         }
         FullEvent::GuildDelete { incomplete, full } => {
-            info!("GuildDelete guild={} full={:?}", incomplete.id.get(), full)
+            info!("GuildDelete guild={:?} full={:?}", incomplete, full)
         }
         FullEvent::CacheReady { guilds } => {
             /* the docs claim this happens "when the cache has received and inserted all data from
