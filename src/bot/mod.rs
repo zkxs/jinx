@@ -244,7 +244,10 @@ async fn event_handler_inner<'a>(
             }
         }
         FullEvent::GuildDelete { incomplete, full } => {
-            info!("GuildDelete guild={:?} full={:?}", incomplete, full)
+            // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
+            if incomplete.unavailable || full.is_some() {
+                info!("GuildDelete guild={:?} full={:?}", incomplete, full)
+            }
         }
         FullEvent::CacheReady { guilds } => {
             /* the docs claim this happens "when the cache has received and inserted all data from
@@ -305,7 +308,7 @@ async fn event_handler_inner<'a>(
                          * - An invalid license
                          */
                         let send_fail_message = || async {
-                            
+
                             if license_type.is_license() {
                                 debug!("failed to verify license for <@{}> which looks like {}", user_id.get(), license_type);
                             } else {
