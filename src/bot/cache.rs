@@ -81,7 +81,16 @@ impl ApiCache {
         self.map.retain(|_guild_id, cache_entry| !cache_entry.is_expired());
 
         // if the capacity is much larger than the actual usage, then try shrinking
-        if self.map.capacity() / self.map.len() >= 16 {
+        let len = self.map.len();
+        let capacity = self.map.capacity();
+
+        let shrink = if len == 0 {
+            capacity > 16 // edge case to avoid dividing by zero
+        } else {
+            capacity / len >= 16 // if load factor is beyond some arbitrary threshold
+        };
+
+        if shrink {
             self.map.shrink_to_fit();
         }
     }
