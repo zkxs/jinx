@@ -72,8 +72,8 @@ Jinx comes with several slash commands for server administrators and moderators.
 | -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
 | `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                        |
 | `/set_log_channel [channel]`           | Manage Server       | Set (or unset) channel for bot to log to.                                                   |
-| `/link_product`                        | Manage Roles        | Link a product to a role. Activating a license for the product will grant all linked roles. |
-| `/unlink_product`                      | Manage Roles        | Unlink product from roles.                                                                  |
+| `/link_product <product> <role>`       | Manage Roles        | Link a product to a role. Activating a license for the product will grant all linked roles. |
+| `/unlink_product <product> <role>`     | Manage Roles        | Unlink product from roles.                                                                  |
 | `/list_links`                          | Manage Roles        | List all product→role links.                                                                |
 | `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                          |
 | `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                               |
