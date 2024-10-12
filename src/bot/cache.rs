@@ -63,14 +63,25 @@ impl ApiCache {
     }
 
     pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.map.capacity()
+    }
+
+    pub fn product_count(&self) -> usize {
         self.map.iter()
-            .map(|entry| entry.value().len())
+            .map(|entry| entry.value().product_count())
             .sum()
     }
 
     /// Remove expired cache entries
     pub fn clean(&self) {
         self.map.retain(|_guild_id, cache_entry| !cache_entry.is_expired());
+        if self.map.capacity() > 1024 {
+            self.map.shrink_to_fit();
+        }
     }
 
     pub async fn product_names_with_prefix<'a>(&self, context: &Context<'_>, prefix: &'a str) -> Result<Vec<String>, Error> {
@@ -151,7 +162,7 @@ impl GuildCache {
         self.product_name_to_id_map.get(product_name).map(|str| str.as_str())
     }
 
-    fn len(&self) -> usize {
+    fn product_count(&self) -> usize {
         self.product_name_to_id_map.len()
     }
 
