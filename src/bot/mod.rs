@@ -146,7 +146,7 @@ pub async fn run_bot() -> Result<(), Error> {
 
                 let api_cache = Arc::new(ApiCache::default());
 
-                // set up the task to periodically optimize the DB
+                // set up the task to periodically clean the API cache
                 {
                     let api_cache_clone = api_cache.clone();
                     tokio::task::spawn(async move {
