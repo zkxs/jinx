@@ -2,7 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
-use crate::bot::util::set_guild_commands;
+use crate::bot::util::{set_guild_commands, MessageExtensions};
 use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -61,11 +61,7 @@ async fn event_handler_inner<'a>(
             warn!("Ratelimit event: {:?}", data);
         }
         FullEvent::Message { new_message } => {
-            // Message::is_private() is deprecated with: "Check if guild_id is None if the message is received from the gateway."
-            // meanwhile, Message.guild_id says: "This value will only be present if this message was received over the gateway, therefore do not use this to check if message is in DMs, it is not a reliable method."
-            // so fuck me, I guess.
-            if new_message.guild_id.is_none() {
-                // probably a DM
+            if new_message.fixed_is_private(context).await {
                 debug!("Received DM {}: {}", new_message.id.get(), new_message.content);
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
                 // Guaranteed not a DM, because guild_id is set
@@ -77,10 +73,7 @@ async fn event_handler_inner<'a>(
         }
         FullEvent::MessageUpdate { old_if_available, new, event } => {
             let _ = old_if_available;
-
-            // see comment from above event where I explain why this specific check is fucked
-            if event.guild_id.is_none() {
-                // probably a DM
+            if event.fixed_is_private(context).await {
                 if let Some(new) = new {
                     debug!("DM {} updated: {}", event.id.get(), new.content);
                 } else {

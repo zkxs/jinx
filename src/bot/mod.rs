@@ -13,7 +13,7 @@ use crate::bot::event_handler::event_handler;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use commands::*;
-use poise::{serenity_prelude as serenity, Command};
+use poise::{serenity_prelude as serenity, Command, PrefixFrameworkOptions};
 use serenity::GatewayIntents;
 use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
@@ -114,6 +114,22 @@ pub async fn run_bot() -> Result<(), Error> {
                 Box::pin(error_handler(e))
             },
             initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
+            prefix_options: PrefixFrameworkOptions { // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
+                prefix: None,
+                additional_prefixes: Vec::new(),
+                dynamic_prefix: None,
+                stripped_dynamic_prefix: None,
+                mention_as_prefix: false,
+                edit_tracker: None,
+                execute_untracked_edits: false,
+                ignore_edits_if_not_yet_responded: true,
+                execute_self_messages: false,
+                ignore_bots: true,
+                ignore_thread_creation: true,
+                case_insensitive_commands: false,
+                non_command_message: None,
+                ..Default::default()
+            },
             ..Default::default()
         })
         .setup(|ctx, _ready, _framework| {

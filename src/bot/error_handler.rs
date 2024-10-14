@@ -84,7 +84,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
             error!("Dynamic prefix error: {:?}", error);
             None
         }
-        FrameworkError::UnknownCommand { ctx, trigger, .. } => PoiseError::debug("Unknown command", ctx, trigger),
+        FrameworkError::UnknownCommand { ctx, trigger, .. } => PoiseError::debug("Unknown prefix command", ctx, trigger),
         FrameworkError::UnknownInteraction { ctx, interaction, .. } => PoiseError::debug("Unknown interaction", ctx, interaction),
         FrameworkError::NonCommandMessage { ctx, error, .. } => PoiseError::debug("Non-command message", ctx, error),
         FrameworkError::__NonExhaustive(_) => {

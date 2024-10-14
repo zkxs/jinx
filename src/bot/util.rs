@@ -8,10 +8,10 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
-use poise::serenity_prelude::Http;
 use poise::{serenity_prelude as serenity, CreateReply};
-use serenity::{Colour, CreateEmbed, GuildId, Role, RoleId};
+use serenity::{CacheHttp, ChannelId, Colour, CreateEmbed, GuildId, Http, Message, MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId};
 use std::collections::HashSet;
+use tracing::warn;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -142,4 +142,112 @@ pub fn error_reply(message: impl Into<String>) -> CreateReply {
     CreateReply::default()
         .ephemeral(true)
         .embed(embed)
+}
+
+pub trait MessageExtensions {
+    /// Fixed check for if a message is private.
+    ///
+    /// Message::is_private() is deprecated with: "Check if guild_id is None if the message is received from the gateway."
+    ///
+    /// Meanwhile, Message.guild_id says: "This value will only be present if this message was received over the gateway, therefore do not use this to check if message is in DMs, it is not a reliable method."
+    ///
+    /// Fuck me, I guess. This check attempts to fix Serenity's shit.
+    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> bool;
+}
+
+impl<T> MessageExtensions for T
+where
+    T: GetChannelId + GetGuildId + GetMessageKind + GetMessageFlags,
+{
+    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> bool {
+        if self.get_guild_id().is_none() {
+            if self.get_kind().map(|kind| matches!(kind, MessageType::Regular | MessageType::InlineReply)).unwrap_or(false) {
+                if self.get_flags().map(|flags| matches!(flags, MessageFlags::IS_CROSSPOST | MessageFlags::IS_VOICE_MESSAGE | MessageFlags::EPHEMERAL | MessageFlags::LOADING | MessageFlags::URGENT)).unwrap_or(false) {
+                    // the message has some weird flags set, so even if it's TECHNICALLY a private message it's definitely not a normal one
+                    false
+                } else {
+                    // we couldn't get flags, or they looked normal
+                    match self.get_channel_id().to_channel(cache_http).await {
+                        Ok(channel) => {
+                            channel.private().is_some()
+                        }
+                        Err(e) => {
+                            // couldn't get the channel from the cache
+                            warn!("Could not determine if {} is a private channel: {:?}", self.get_channel_id().get(), e);
+                            false
+                        }
+                    }
+                }
+            } else {
+                // the message was not a regular message, or we couldn't get the message kind
+                false
+            }
+        } else {
+            // guild is not set, so it's definitely not a DM
+            false
+        }
+    }
+}
+
+trait GetChannelId {
+    fn get_channel_id(&self) -> ChannelId;
+}
+
+impl GetChannelId for Message {
+    fn get_channel_id(&self) -> ChannelId {
+        self.channel_id
+    }
+}
+
+impl GetChannelId for MessageUpdateEvent {
+    fn get_channel_id(&self) -> ChannelId {
+        self.channel_id
+    }
+}
+
+trait GetGuildId {
+    fn get_guild_id(&self) -> Option<GuildId>;
+}
+
+impl GetGuildId for Message {
+    fn get_guild_id(&self) -> Option<GuildId> {
+        self.guild_id
+    }
+}
+
+impl GetGuildId for MessageUpdateEvent {
+    fn get_guild_id(&self) -> Option<GuildId> {
+        self.guild_id
+    }
+}
+
+trait GetMessageKind {
+    fn get_kind(&self) -> Option<MessageType>;
+}
+
+impl GetMessageKind for Message {
+    fn get_kind(&self) -> Option<MessageType> {
+        Some(self.kind)
+    }
+}
+impl GetMessageKind for MessageUpdateEvent {
+    fn get_kind(&self) -> Option<MessageType> {
+        self.kind
+    }
+}
+
+trait GetMessageFlags {
+    fn get_flags(&self) -> Option<MessageFlags>;
+}
+
+impl GetMessageFlags for Message {
+    fn get_flags(&self) -> Option<MessageFlags> {
+        self.flags
+    }
+}
+
+impl GetMessageFlags for MessageUpdateEvent {
+    fn get_flags(&self) -> Option<MessageFlags> {
+        self.flags.flatten()
+    }
 }
