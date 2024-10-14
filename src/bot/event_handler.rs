@@ -60,6 +60,34 @@ async fn event_handler_inner<'a>(
         FullEvent::Ratelimit { data } => {
             warn!("Ratelimit event: {:?}", data);
         }
+        FullEvent::Message { new_message } => {
+            // Message::is_private() is deprecated with: "Check if guild_id is None if the message is received from the gateway."
+            // meanwhile, Message.guild_id says: "This value will only be present if this message was received over the gateway, therefore do not use this to check if message is in DMs, it is not a reliable method."
+            // so fuck me, I guess.
+            if new_message.guild_id.is_none() {
+                // probably a DM
+                debug!("Received DM {}: {}", new_message.id.get(), new_message.content);
+            } else if new_message.mentions_me(context).await.unwrap_or(false) {
+                // Guaranteed not a DM, because guild_id is set
+                debug!("Mentioned in guild {} in message {}: {}", new_message.guild_id.unwrap().get(), new_message.id.get(), new_message.content);
+                if let Err(e) = new_message.react(context, '👀').await {
+                    warn!("Unable to react: {:?}", e);
+                }
+            }
+        }
+        FullEvent::MessageUpdate { old_if_available, new, event } => {
+            let _ = old_if_available;
+
+            // see comment from above event where I explain why this specific check is fucked
+            if event.guild_id.is_none() {
+                // probably a DM
+                if let Some(new) = new {
+                    debug!("DM {} updated: {}", event.id.get(), new.content);
+                } else {
+                    debug!("DM {} updated", event.id.get());
+                }
+            }
+        }
         FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
             #[allow(
                 clippy::single_match
