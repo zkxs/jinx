@@ -9,7 +9,18 @@ use crate::http::jinxxy;
 use crate::license;
 use poise::serenity_prelude::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
 use poise::{serenity_prelude as serenity, FrameworkContext};
+use regex::Regex;
+use std::sync::LazyLock;
 use tracing::{debug, error, info, warn};
+
+static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
+).unwrap()); // in case you are wondering the above is not a real key: it's only an example
+
+thread_local! {
+    // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
+    static EASTER_EGG_REGEX: Regex = GLOBAL_EASTER_EGG_REGEX.clone();
+}
 
 /// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.
 pub async fn event_handler<'a>(
@@ -51,31 +62,58 @@ async fn event_handler_inner<'a>(
             }
         }
         FullEvent::CacheReady { guilds } => {
-            /* the docs claim this happens "when the cache has received and inserted all data from
-             * guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
-             * ALSO happens every single time any new guild is added.
-             */
+            /*
+            the docs claim this happens "when the cache has received and inserted all data from
+            guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
+            ALSO happens every single time any new guild is added.
+            */
             debug!("cache ready! {} guilds.", guilds.len());
         }
         FullEvent::Ratelimit { data } => {
             warn!("Ratelimit event: {:?}", data);
         }
         FullEvent::Message { new_message } => {
+            /*
+            fun fact: even without MESSAGE_CONTENT intent, we still get message content in a few exceptional cases:
+            - Content in messages that an app sends
+            - Content in DMs with the app
+            - Content in which the app is mentioned
+            - Content of the message a message context menu command is used on
+
+            So, basically any case where Discord thinks a user may actually intend for the bot to see the message.
+            */
+
             if new_message.fixed_is_private(context).await {
                 debug!("Received DM {}: {}", new_message.id.get(), new_message.content);
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
-                // Guaranteed not a DM, because guild_id is set
                 debug!("Mentioned in guild {} in message {}: {}", new_message.guild_id.unwrap().get(), new_message.id.get(), new_message.content);
-                if let Err(e) = new_message.react(context, '👀').await {
-                    warn!("Unable to react: {:?}", e);
+
+                // since we got mentioned we might as well do something funny here
+                if data.db.is_user_owner(new_message.author.id.get()).await? && EASTER_EGG_REGEX.with(|regex| regex.is_match(new_message.content.as_str())) {
+                    // Easter egg: when the owner says something matching a specific regex, try to reply
+                    if let Err(e) = new_message.reply_ping(context, "no, you! 😳").await {
+                        warn!("Unable to reply to owner easter-egg prompt. Falling back to reaction. Error: {:?}", e);
+                        if let Err(e) = new_message.react(context, '😳').await {
+                            warn!("Unable to react to owner easter-egg prompt: {:?}", e);
+                        }
+                    }
+                } else {
+                    // if anyone mentions the bot and we haven't already done the Easter egg, then try and add a reaction
+                    let result = new_message.react(context, '👀').await;
+                    if let Err(e) = result {
+                        warn!("Unable to react to bot mention: {:?}", e);
+                    }
                 }
             }
         }
         FullEvent::MessageUpdate { old_if_available, new, event } => {
-            let _ = old_if_available;
             if event.fixed_is_private(context).await {
                 if let Some(new) = new {
-                    debug!("DM {} updated: {}", event.id.get(), new.content);
+                    if let Some(old) = old_if_available {
+                        debug!("DM {} updated:\nold: {}\nnew: {}", event.id.get(), old.content, new.content);
+                    } else {
+                        debug!("DM {} updated: {}", event.id.get(), new.content);
+                    }
                 } else {
                     debug!("DM {} updated", event.id.get());
                 }
@@ -124,13 +162,14 @@ async fn event_handler_inner<'a>(
 
                         debug!("got license in {} from <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
 
-                        /* Generic fail message. This message is deterministic based solely on the user-provided string,
-                         * which prevents leaking information regarding license validity. For example, different messages
-                         * for different contexts could let someone distinguish between:
-                         * - A valid license that has already been activated by someone else
-                         * - A valid, previously unactivated license that was activated by someone else while going through this flow
-                         * - An invalid license
-                         */
+                        /*
+                        Generic fail message. This message is deterministic based solely on the user-provided string,
+                        which prevents leaking information regarding license validity. For example, different messages
+                        for different contexts could let someone distinguish between:
+                        - A valid license that has already been activated by someone else
+                        - A valid, previously unactivated license that was activated by someone else while going through this flow
+                        - An invalid license
+                        */
                         let send_fail_message = || async {
                             if license_type.is_license() {
                                 debug!("failed to verify license in {} for <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
