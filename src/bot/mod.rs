@@ -14,6 +14,7 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use commands::*;
 use poise::{serenity_prelude as serenity, Command};
+use serenity::GatewayIntents;
 use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info};
@@ -76,7 +77,9 @@ pub async fn run_bot() -> Result<(), Error> {
     debug!("DB opened");
     let discord_token = db.get_discord_token().await?
         .ok_or(JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
-    let intents = serenity::GatewayIntents::non_privileged();
+    let intents = GatewayIntents::GUILDS
+        .union(GatewayIntents::GUILD_MESSAGES)
+        .union(GatewayIntents::DIRECT_MESSAGES);
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
