@@ -1,14 +1,23 @@
 # Jinx
 
 Jinx is a Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
-license keys. Install via the link below, or find us in the [Discord App Directory][app directory]. Note that Jinx is
-not affiliated with Jinxxy: this is an independent project.
-
-If you have feedback or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
+license keys. Note that Jinx is not affiliated with Jinxxy: this is an independent project.
 
 > [!IMPORTANT]
-> **[Click here to install the bot][bot install]**  
+> **[Click here to add the bot to your server][bot install]**  
 > <small>(and then go follow the [installation instructions](#installation))</small>
+
+Features include:
+
+- Licenses can only be activated by a single Discord user.
+  - The server owner can deactivate a license. This may be useful if a buyer needs to change Discord accounts and wants to move the license over.
+  - Jinx can log license activations and suspicious activity to a Discord channel.
+  - Ability to lock a license, preventing it from being used to grant roles in the future.
+- Flexible role configuration
+  - Products can grant more than one role at a time. For example, you might have a shared role that all buyers get and then additional per-product roles.
+  - No limit on number of linked products or roles. (Some similar bots support a maximum of 25 products due to a certain Discord limitation).
+
+If you have suggestions, feedback, or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
 
 ## User Experience
 
@@ -28,7 +37,7 @@ message is shown:
 ## Installation
 
 > [!IMPORTANT]
-> **[Click here to install the bot][bot install]**  
+> **[Click here to add the bot to your server][bot install]**  
 > <small>(if you haven't already done so)</small>
 
 When installing the bot, a "jinx" role will be automatically created in your server.
