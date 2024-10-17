@@ -5,7 +5,7 @@ use crate::bot::util::{assignable_roles, create_role_warning_from_roles, create_
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::GetProfileUrl as _;
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
@@ -126,7 +126,7 @@ pub(in crate::bot) async fn create_post(
             let embed = CreateEmbed::default()
                 .title("Jinxxy Product Registration")
                 .description(format!("Press the button below to register a Jinxxy license key for any of {} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>).", jinxxy_user.name_possessive()));
-            let embed = if let Some(profile_image_url) = jinxxy_user.profile_image_url {
+            let embed = if let Some(profile_image_url) = jinxxy_user.profile_image_url() {
                 embed.thumbnail(profile_image_url)
             } else {
                 embed

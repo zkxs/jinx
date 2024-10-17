@@ -4,13 +4,15 @@
 use crate::bot::util::{check_owner, success_reply};
 use crate::bot::Context;
 use crate::error::JinxError;
+use crate::http::jinxxy;
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::SHOULD_RESTART;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
-use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, UserId};
+use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
 use tokio::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -205,17 +207,36 @@ pub(in crate::bot) async fn verify_guild(
     #[description = "ID of guild"] guild_id: String,
     #[description = "Optional ID of expected owner"] owner_id: Option<UserId>,
 ) -> Result<(), Error> {
-    let embed = match guild_id.parse::<u64>() {
+    let reply = match guild_id.parse::<u64>() {
         Ok(guild_id) => {
+            struct GuildData {
+                id: GuildId,
+                owner_id: UserId,
+                name: String,
+                description: Option<String>,
+                thumbnail_url: Option<String>,
+            }
+
+            fn to_guild_data(guild: GuildRef) -> GuildData {
+                GuildData {
+                    id: guild.id,
+                    owner_id: guild.owner_id,
+                    name: guild.name.clone(),
+                    description: guild.description.clone(),
+                    thumbnail_url: guild.icon.map(|icon| format!("https://cdn.discordapp.com/icons/{}/{}.webp?size=128", guild.id.get(), icon)),
+                }
+            }
+
             if guild_id == 0 {
                 // guild was invalid (0)
-                CreateEmbed::default()
+                let embed = CreateEmbed::default()
                     .title("Guild Verification Error")
                     .color(Colour::RED)
-                    .description("Guild was invalid (id of 0)")
-            } else if let Some(guild) = GuildId::new(guild_id).to_guild_cached(&context) {
+                    .description("Guild was invalid (id of 0)");
+                CreateReply::default().embed(embed)
+            } else if let Some(guild) = GuildId::new(guild_id).to_guild_cached(&context).map(|guild| to_guild_data(guild)) {
                 // guild was valid!
-                if let Some(expected_owner_id) = owner_id {
+                let verify_embed = if let Some(expected_owner_id) = owner_id {
                     // we have an expected owner to check
                     if guild.owner_id == expected_owner_id {
                         CreateEmbed::default()
@@ -230,33 +251,86 @@ pub(in crate::bot) async fn verify_guild(
                     }
                 } else {
                     // we don't have an expected owner to check, so just print the actual owner
-                    debug!("GUILD DEBUG: {:?}", *guild);
                     CreateEmbed::default()
                         .title("Guild Verification Result")
                         .color(Colour::DARK_GREEN)
                         .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
-                }
+                };
+
+                let api_embed = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild.id).await? {
+                    match jinxxy::get_own_user(&api_key).await {
+                        Ok(auth_user) => {
+                            let embed = CreateEmbed::default()
+                                .title("API Verification Success")
+                                .color(Colour::DARK_GREEN);
+                            let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
+                                embed.thumbnail(profile_image_url)
+                            } else {
+                                embed
+                            };
+
+                            let scopes = format!("{:?}", auth_user.scopes);
+                            let profile_url = auth_user.profile_url();
+                            let display_name = auth_user.into_display_name();
+                            let message = if let Some(profile_url) = profile_url {
+                                format!("[{display_name}]({profile_url}) has scopes {scopes}")
+                            } else {
+                                format!("{display_name} has scopes {scopes}")
+                            };
+
+                            embed.description(message)
+                        }
+                        Err(e) => {
+                            CreateEmbed::default()
+                                .title("API Verification Error")
+                                .color(Colour::RED)
+                                .description(format!("API key invalid: {}", e))
+                        }
+                    }
+                } else {
+                    CreateEmbed::default()
+                        .title("API Verification Skipped")
+                        .color(Colour::ORANGE)
+                        .description("API key was unset")
+                };
+
+                let guild_embed = CreateEmbed::default()
+                    .title("Guild Information")
+                    .description(format!(
+                        "Name: {}\n\
+                        Description: {:?}",
+                        guild.name,
+                        guild.description
+                    ));
+                let guild_embed = if let Some(thumbnail_url) = guild.thumbnail_url {
+                    guild_embed.thumbnail(thumbnail_url)
+                } else {
+                    guild_embed
+                };
+
+                CreateReply::default()
+                    .embed(verify_embed)
+                    .embed(api_embed)
+                    .embed(guild_embed)
             } else {
                 // guild was not cached
-                CreateEmbed::default()
+                let embed = CreateEmbed::default()
                     .title("Guild Verification Error")
                     .color(Colour::RED)
-                    .description("Guild not in cache")
+                    .description("Guild not in cache");
+                CreateReply::default().embed(embed)
             }
         }
         Err(e) => {
             // guild was invalid (not a number)
-            CreateEmbed::default()
+            let embed = CreateEmbed::default()
                 .title("Guild Verification Error")
                 .color(Colour::RED)
-                .description(format!("Guild was invalid (parse error: {})", e))
+                .description(format!("Guild was invalid (parse error: {})", e));
+            CreateReply::default().embed(embed)
         }
     };
 
-    context.send(
-        CreateReply::default()
-            .embed(embed)
-            .ephemeral(true)
-    ).await?;
+    context.send(reply.ephemeral(true)).await?;
     Ok(())
 }

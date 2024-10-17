@@ -249,7 +249,7 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
 pub struct DisplayUser {
     /// Custom display name, or username if no display name is set.
     pub display_name: String,
-    pub profile_image_url: Option<String>,
+    profile_image_url: Option<String>,
 }
 
 impl DisplayUser {
@@ -260,6 +260,12 @@ impl DisplayUser {
         } else {
             format!("{}'s", self.display_name)
         }
+    }
+}
+
+impl GetProfileImageUrl for DisplayUser {
+    fn profile_image_url(&self) -> Option<&str> {
+        self.profile_image_url.as_deref()
     }
 }
 
@@ -294,4 +300,8 @@ impl<T: GetUsername> GetProfileUrl for T {
     fn profile_url(&self) -> Option<String> {
         self.username().map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
     }
+}
+
+pub trait GetProfileImageUrl {
+    fn profile_image_url(&self) -> Option<&str>;
 }

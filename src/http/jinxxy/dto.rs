@@ -3,7 +3,7 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::GetUsername;
+use crate::http::jinxxy::{GetProfileImageUrl, GetUsername};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use serde::{Deserialize, Serialize};
@@ -98,7 +98,7 @@ pub struct AuthUser {
     username: Option<String>,
     profile_image: Option<ProfileImage>,
     /// API scopes
-    scopes: HashSet<String>,
+    pub scopes: HashSet<String>,
 }
 
 impl AuthUser {
@@ -148,6 +148,14 @@ impl AuthUser {
 impl GetUsername for AuthUser {
     fn username(&self) -> Option<&str> {
         self.username.as_deref()
+    }
+}
+
+impl GetProfileImageUrl for AuthUser {
+    fn profile_image_url(&self) -> Option<&str> {
+        self.profile_image.as_ref()
+            .map(|inner| inner.url.as_str())
+            .filter(|url| !url.is_empty())
     }
 }
 
