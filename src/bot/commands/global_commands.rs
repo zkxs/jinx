@@ -5,7 +5,7 @@ use crate::bot::util::{check_owner, error_reply, set_guild_commands, success_rep
 use crate::bot::Context;
 use crate::constants;
 use crate::error::JinxError;
-use crate::http::update_checker;
+use crate::http::{jinxxy, update_checker};
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use regex::Regex;
@@ -128,9 +128,27 @@ pub(in crate::bot) async fn init(
             }
         } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
             // normal /init <key> use ends up in this branch
-            context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
-            set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
-            success_reply("Success", "API key set and additional slash commands enabled. Please continue bot setup.")
+            match jinxxy::get_own_user(&api_key).await {
+                Ok(auth_user) => {
+                    let has_required_scopes = auth_user.has_required_scopes();
+                    let display_name = auth_user.into_display_name();
+                    context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
+                    set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
+                    let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
+                    if has_required_scopes {
+                        reply
+                    } else {
+                        let embed = CreateEmbed::default()
+                            .title("Permission Warning")
+                            .color(Colour::ORANGE)
+                            .description("Provided API key is missing at least one of the mandatory scopes. Jinx commands may not work correctly. Please double-check your API key setup against the documentation [here](<https://github.com/zkxs/jinx#installation>).");
+                        reply.embed(embed)
+                    }
+                }
+                Err(e) => {
+                    error_reply(format!("Error verifying API key: {e}"))
+                }
+            }
         } else {
             // user has given us some mystery garbage value for their API key
             debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup

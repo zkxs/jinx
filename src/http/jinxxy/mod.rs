@@ -7,7 +7,7 @@ mod dto;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::error::JinxError;
-pub use dto::{FullProduct, LicenseActivation, PartialProduct};
+pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header;
 use tracing::debug;
@@ -27,7 +27,7 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
 }
 
 /// Get the user the API key belongs to
-pub async fn get_own_user(api_key: &str) -> Result<User, Error> {
+pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
     let response = HTTP_CLIENT.get(format!("{}me", JINXXY_BASE_URL))
         .headers(get_headers(api_key))
         .send()
@@ -36,8 +36,8 @@ pub async fn get_own_user(api_key: &str) -> Result<User, Error> {
         JinxError::fail(format!("/me returned status code {}", response.status().as_u16()))?;
         unreachable!()
     }
-    let response: dto::AuthUser = response.json().await?;
-    Ok(response.into())
+    let response: AuthUser = response.json().await?;
+    Ok(response)
 }
 
 /// Represents all allowed license formats
@@ -245,14 +245,14 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     Ok(response.into())
 }
 
-/// Not part of the Jinxxy API: this is an internal DTO
-pub struct User {
+/// Not part of the Jinxxy API: this is an internal DTO that is only used for `/create_post`
+pub struct DisplayUser {
     /// Custom display name, or username if no display name is set.
     pub display_name: String,
     pub profile_image_url: Option<String>,
 }
 
-impl User {
+impl DisplayUser {
     /// Get possessive form of this user's display name
     pub fn name_possessive(&self) -> String {
         if self.display_name.ends_with('s') {
@@ -268,6 +268,7 @@ pub struct LicenseInfo {
     pub license_id: String,
     pub short_key: String,
     pub user_id: String,
+    /// Account's username; used in profile URL
     pub username: Option<String>,
     pub product_id: String,
     pub product_name: String,
@@ -275,9 +276,22 @@ pub struct LicenseInfo {
     pub activations: u32,
 }
 
-impl LicenseInfo {
-    pub fn profile_url(&self) -> Option<String> {
-        self.username.as_ref()
-            .map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
+trait GetUsername {
+    fn username(&self) -> Option<&str>;
+}
+
+impl GetUsername for LicenseInfo {
+    fn username(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
+}
+
+pub trait GetProfileUrl {
+    fn profile_url(&self) -> Option<String>;
+}
+
+impl<T: GetUsername> GetProfileUrl for T {
+    fn profile_url(&self) -> Option<String> {
+        self.username().map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
     }
 }

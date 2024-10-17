@@ -5,6 +5,7 @@ use crate::bot::util::{assignable_roles, create_role_warning_from_roles, create_
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
+use crate::http::jinxxy::GetProfileUrl as _;
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
@@ -121,6 +122,7 @@ pub(in crate::bot) async fn create_post(
         .ok_or(JinxError::new("Jinxxy API key is not set"))?;
     let reply = match jinxxy::get_own_user(&api_key).await {
         Ok(jinxxy_user) => {
+            let jinxxy_user: jinxxy::DisplayUser = jinxxy_user.into(); // convert into just the data we need for this command
             let embed = CreateEmbed::default()
                 .title("Jinxxy Product Registration")
                 .description(format!("Press the button below to register a Jinxxy license key for any of {} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>).", jinxxy_user.name_possessive()));

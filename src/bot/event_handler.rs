@@ -15,7 +15,7 @@ use tracing::{debug, error, info, warn};
 
 static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
     r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
-).unwrap()); // in case you are wondering the above is not a real key: it's only an example
+).unwrap());
 
 thread_local! {
     // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention

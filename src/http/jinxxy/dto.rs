@@ -3,7 +3,9 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
+use crate::http::jinxxy::GetUsername;
 use crate::license::LOCKING_USER_ID;
+use ahash::HashSet;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -95,18 +97,61 @@ pub struct AuthUser {
     /// Account's username; used in profile URL
     username: Option<String>,
     profile_image: Option<ProfileImage>,
+    /// API scopes
+    scopes: HashSet<String>,
 }
 
 impl AuthUser {
-    fn into_display_name(self) -> String {
+    pub fn into_display_name(self) -> String {
         match self.name {
             Some(name) if !name.is_empty() && !name.trim().is_empty() => name,
             _ => self.username.unwrap_or_else(|| "`null`".to_string()),
         }
     }
+
+    /// Check if this API key has all the required scopes
+    pub fn has_required_scopes(&self) -> bool {
+        self.has_scope_licenses_read() && self.has_scope_licenses_write() && self.has_scope_products_read()
+    }
+
+    /// Check if this API key has the `products_read` scope
+    fn has_scope_products_read(&self) -> bool {
+        self.scopes.contains("products_read")
+    }
+
+    // /// Check if this API key has the `orders_read` scope
+    // fn has_scope_orders_read(&self) -> bool {
+    //     self.scopes.contains("orders_read")
+    // }
+
+    // /// Check if this API key has the `discount_codes_read` scope
+    // fn has_scope_discount_codes_read(&self) -> bool {
+    //     self.scopes.contains("discount_codes_read")
+    // }
+
+    // /// Check if this API key has the `customers_read` scope
+    // fn has_scope_customers_read(&self) -> bool {
+    //     self.scopes.contains("customers_read")
+    // }
+
+    /// Check if this API key has the `licenses_read` scope
+    fn has_scope_licenses_read(&self) -> bool {
+        self.scopes.contains("licenses_read")
+    }
+
+    /// Check if this API key has the `licenses_write` scope
+    fn has_scope_licenses_write(&self) -> bool {
+        self.scopes.contains("licenses_write")
+    }
 }
 
-impl From<AuthUser> for super::User {
+impl GetUsername for AuthUser {
+    fn username(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
+}
+
+impl From<AuthUser> for super::DisplayUser {
     fn from(mut auth_user: AuthUser) -> Self {
         let profile_image_url = auth_user.profile_image.take()
             .map(|profile_image| profile_image.url)
