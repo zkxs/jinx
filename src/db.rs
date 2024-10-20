@@ -463,6 +463,18 @@ impl JinxDb {
         Ok(())
     }
 
+    /// Check if a guild is a test guild
+    pub async fn is_test_guild(&self, guild: GuildId) -> Result<bool> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("SELECT test FROM guild WHERE guild_id = :guild")?;
+            let test = statement.query_row(named_params! {":guild": guild.get()}, |row| {
+                let test: bool = row.get(0)?;
+                Ok(test)
+            }).optional()?;
+            Ok(test.unwrap_or(false))
+        }).await
+    }
+
     /// Set or unset this guild as an owner guild (gets extra slash commands)
     pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> Result<()> {
         self.connection.call(move |connection| {
