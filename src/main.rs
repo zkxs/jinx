@@ -74,8 +74,7 @@ async fn main() -> ExitCode {
         None => {
             // Init logging
             tracing_subscriber::fmt()
-                .with_env_filter(EnvFilter::try_new("info,jinx=debug").unwrap())
-                // .with_env_filter(EnvFilter::try_new("trace,tungstenite=debug,tokio_tungstenite=debug,serenity=debug,rustls=info").unwrap()) // for debugging
+                .with_env_filter(EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").unwrap())
                 .init();
 
             info!("starting {} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
