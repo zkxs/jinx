@@ -83,7 +83,8 @@ pub async fn run_bot() -> Result<(), Error> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            // all commands must appear in this list otherwise poise won't recoginize interactions for them
+            // all commands must appear in this list otherwise poise won't recognize interactions for them
+            // this vec is terribly redundant, but because we can't clone Command and it ONLY takes a Vec<Command>, this is the only option.
             commands: vec![
                 announce(),
                 announce_test(),
