@@ -131,6 +131,8 @@ pub async fn check_license(
             );
             if response.status().is_success() {
                 let response: dto::License = response.json().await?;
+                let mut response: LicenseInfo = response.into();
+                //TODO: inject product version name
                 Ok(Some(response.into()))
             } else {
                 debug!("could not look up user-provided license id \"{license_id}\"");
@@ -190,13 +192,24 @@ pub async fn check_license(
                     unreachable!()
                 }
                 let response: dto::License = response.json().await?;
-                Ok(Some(response.into()))
+                let mut response: LicenseInfo = response.into();
+                //TODO: inject product version name
+                Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license key \"{license_key}\"");
                 Ok(None)
             }
         }
     }
+}
+
+async fn add_product_version_name_to_license_info(
+    api_key: &str,
+    license_info: &mut LicenseInfo,
+) -> Result<(), Error> {
+    let product = get_product(api_key, &license_info.product_id).await?;
+    let _ = license_info.product_version_name.insert("foo".to_string()); //TODO
+    Ok(())
 }
 
 /// Get list of all license activations
@@ -351,6 +364,19 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     Ok(response.into())
 }
 
+/// Upgrade products from partial data to full data. This is expensive, as it has to call an API in a loop.
+pub async fn get_full_products(
+    api_key: &str,
+    partial_products: Vec<PartialProduct>,
+) -> Result<Vec<FullProduct>, Error> {
+    let mut products = Vec::with_capacity(partial_products.len());
+    for partial_product in partial_products {
+        let full_product = get_product(api_key, &partial_product.id).await?;
+        products.push(full_product);
+    }
+    Ok(products)
+}
+
 /// Not part of the Jinxxy API: this is an internal DTO that is only used for `/create_post`
 pub struct DisplayUser {
     /// Custom display name, or username if no display name is set.
@@ -385,7 +411,15 @@ pub struct LicenseInfo {
     pub product_id: String,
     pub product_name: String,
     pub product_version_id: Option<String>,
+    pub product_version_name: Option<String>,
     pub activations: u32,
+}
+
+/// Not part of the Jinxxy API: this is an internal DTO
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+pub struct ProductVersionId {
+    pub product_id: String,
+    pub product_version_id: Option<String>,
 }
 
 trait GetUsername {

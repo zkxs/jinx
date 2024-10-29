@@ -13,7 +13,7 @@
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::PartialProduct;
+use crate::http::jinxxy::{FullProduct, PartialProduct, ProductVersionId};
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
 use std::collections::{HashMap, HashSet};
@@ -121,20 +121,47 @@ impl ApiCache {
         &self,
         context: &Context<'_>,
         product_name: &str,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<ProductVersionId>, Error> {
         self.get(context, |cache_entry| {
-            cache_entry
-                .product_name_to_id(product_name)
-                .map(|str| str.to_string())
+            cache_entry.product_name_to_id(product_name).cloned()
         })
         .await
     }
 }
 
+/// Get a display name from a product name and a version name
+fn product_display_name(product_name: &str, product_version_name: Option<&str>) -> String {
+    let mut name = match product_version_name {
+        Some(product_version_name) => format!("{product_name} {product_version_name}"),
+        None => product_name.to_string(),
+    };
+
+    // truncate name to meet discord's 100 character autocomplete limit
+    if name.len() > 100 {
+        debug!("\"{}\".len() > 100; truncating…", name);
+
+        // byte len is > 100 so there must be at least one char, so we can disregard that edge case
+
+        // get the index after the 100th) char
+        let last_char_index = name
+            .char_indices()
+            .nth(100)
+            .map(|index| index.0) // start index of char 101 == index after char 100
+            .unwrap_or_else(|| name.len()); // index after end of last char
+
+        name.truncate(last_char_index);
+    }
+
+    name
+}
+
 #[derive(Clone)]
 pub struct GuildCache {
-    product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
-    product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
+    /// id to name
+    product_id_to_name_map: HashMap<ProductVersionId, String, ahash::RandomState>,
+    /// name to id
+    product_name_to_id_map: HashMap<String, ProductVersionId, ahash::RandomState>,
+    /// completes lowercase name to name with correct case
     product_name_trie: Trie<u8, String>,
     create_time: Instant,
 }
@@ -142,24 +169,44 @@ pub struct GuildCache {
 impl GuildCache {
     async fn new(context: &Context<'_>, guild_id: GuildId) -> Result<GuildCache, Error> {
         if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-            let products: Vec<PartialProduct> = jinxxy::get_products(&api_key)
+            let partial_products: Vec<PartialProduct> = jinxxy::get_products(&api_key).await?;
+
+            let products: Vec<FullProduct> = jinxxy::get_full_products(&api_key, partial_products)
                 .await?
                 .into_iter()
-                .filter(|product| !product.name.is_empty())
-                .map(|mut product| {
-                    product.fix_name_for_discord();
-                    product
+                .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
+                .collect();
+
+            // convert into map tuples
+            let product_id_name_tuples: Vec<(ProductVersionId, String)> = products
+                .into_iter()
+                .flat_map(|product| {
+                    let null_id = ProductVersionId {
+                        product_id: product.id.clone(),
+                        product_version_id: None,
+                    };
+                    let null_name = product_display_name(&product.name, None);
+                    let null_iter = std::iter::once((null_id, null_name));
+                    let iter = product.versions.into_iter().map(move |version| {
+                        let id = ProductVersionId {
+                            product_id: product.id.clone(),
+                            product_version_id: Some(version.id),
+                        };
+                        let name = product_display_name(&product.name, Some(&version.name));
+                        (id, name)
+                    });
+                    null_iter.chain(iter)
                 })
                 .collect();
 
             // check for duplicate product names
             {
                 let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
-                products.iter().for_each(|product| {
-                    if !dupe_set.insert(product.name.as_str()) {
+                product_id_name_tuples.iter().for_each(|(id, name)| {
+                    if !dupe_set.insert(name.as_str()) {
                         warn!(
-                            "product {} \"{}\" has the same name as some other product",
-                            product.id, product.name
+                            "product {:?} \"{}\" has the same name as some other product",
+                            id, name
                         )
                     }
                 });
@@ -167,21 +214,18 @@ impl GuildCache {
 
             // build trie
             let mut trie_builder = TrieBuilder::new();
-            for product_name in products.iter().map(|product| product.name.as_str()) {
-                trie_builder.push(product_name.to_lowercase(), product_name.to_string());
+            for (_id, name) in product_id_name_tuples.iter() {
+                trie_builder.push(name.to_lowercase(), name.to_string());
             }
             let product_name_trie = trie_builder.build();
 
             // build forward map
-            let product_id_to_name_map = products
-                .iter()
-                .map(|product| (product.id.to_string(), product.name.to_string()))
-                .collect();
+            let product_id_to_name_map = product_id_name_tuples.iter().cloned().collect();
 
             // build reverse map
-            let product_name_to_id_map = products
+            let product_name_to_id_map = product_id_name_tuples
                 .into_iter()
-                .map(|product| (product.name, product.id))
+                .map(|(id, name)| (name, id))
                 .collect();
 
             let create_time = Instant::now();
@@ -206,16 +250,14 @@ impl GuildCache {
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
-    pub fn product_id_to_name(&self, product_id: &str) -> Option<&str> {
+    pub fn product_id_to_name(&self, product_id: &ProductVersionId) -> Option<&str> {
         self.product_id_to_name_map
             .get(product_id)
             .map(|str| str.as_str())
     }
 
-    fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
-        self.product_name_to_id_map
-            .get(product_name)
-            .map(|str| str.as_str())
+    fn product_name_to_id(&self, product_name: &str) -> Option<&ProductVersionId> {
+        self.product_name_to_id_map.get(product_name)
     }
 
     fn product_count(&self) -> usize {

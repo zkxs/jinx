@@ -39,13 +39,10 @@ impl From<License> for super::LicenseInfo {
             short_key: license.short_key,
             user_id: license.user.id,
             username: license.user.username,
-            product_id: license.inventory_item.item.id,
+            product_id: license.inventory_item.target_id,
             product_name: license.inventory_item.item.name,
-            product_version_id: license
-                .inventory_item
-                .item
-                .version
-                .map(|version| version.id),
+            product_version_id: license.inventory_item.target_version_id,
+            product_version_name: None, // this gets injected later after some async stuff happens, don't worry about it for now
             activations: license.activations.total_count,
         }
     }
@@ -62,32 +59,19 @@ pub struct LicenseUser {
 #[derive(Debug, Deserialize)]
 pub struct LicenseInventoryItem {
     // this also has an item `id` field which may be able to be cross-referenced with the order API
+    /// Product ID
+    target_id: String,
+    /// Product version ID
+    target_version_id: Option<String>,
+    /// More product metadata
     item: LicenseInventoryItemItem,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseInventoryItemItem {
     // yes I know this name is ridiculous, but it's how the API response is structured ¯\_(ツ)_/¯
-    /// Product ID
-    id: String,
     /// Product Name
     name: String,
-    /// Product version (can be used to sell different feature sets in the same product)
-    version: Option<LicenseInventoryItemItemVersion>,
-}
-
-impl From<LicenseInventoryItemItem> for PartialProduct {
-    fn from(item: LicenseInventoryItemItem) -> Self {
-        Self {
-            id: item.id,
-            name: item.name,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LicenseInventoryItemItemVersion {
-    id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,27 +176,6 @@ pub struct PartialProduct {
     pub id: String,
     /// Product Name
     pub name: String,
-}
-
-impl PartialProduct {
-    /// Fix product name to be compatible with Discord autocomplete
-    pub fn fix_name_for_discord(&mut self) {
-        if self.name.len() > 100 {
-            debug!("\"{}\".len() > 100; truncating…", self.name);
-
-            // byte len is > 100 so there must be at least one char, so we can disregard that edge case
-
-            // get the index after the 100th) char
-            let last_char_index = self
-                .name
-                .char_indices()
-                .nth(100)
-                .map(|index| index.0) // start index of char 101 == index after char 100
-                .unwrap_or_else(|| self.name.len()); // index after end of last char
-
-            self.name.truncate(last_char_index);
-        }
-    }
 }
 
 /// In addition to all the fields of [`PartialProduct`], this also contains price and version information
