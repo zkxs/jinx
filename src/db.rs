@@ -417,8 +417,10 @@ impl JinxDb {
     pub async fn get_log_channel(&self, guild: GuildId) -> Result<Option<ChannelId>> {
         let channel_id = self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("SELECT log_channel_id FROM guild WHERE guild_id = ?")?;
-            let result: Option<u64> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
-            Ok(result)
+            let result: Option<Option<u64>> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
+            // inner optional is for if the guild has no log channel set
+            // outer optional is for if the guild does not exist in our DB
+            Ok(result.flatten())
         }).await?;
         Ok(channel_id.map(ChannelId::new))
     }
