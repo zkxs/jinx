@@ -10,6 +10,7 @@ use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header;
+use tokio::time::Instant;
 use tracing::debug;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -28,10 +29,12 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
 
 /// Get the user the API key belongs to
 pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.get(format!("{}me", JINXXY_BASE_URL))
         .headers(get_headers(api_key))
         .send()
         .await?;
+    debug!("/GET me took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("/me returned status code {}", response.status().as_u16()))?;
         unreachable!()
@@ -64,11 +67,13 @@ pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Op
             } else {
                 "key"
             };
+            let start_time = Instant::now();
             let response = HTTP_CLIENT.get(format!("{}licenses", JINXXY_BASE_URL))
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
                 .await?;
+            debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
             if !response.status().is_success() {
                 JinxError::fail(format!("/licenses returned status code {}", response.status().as_u16()))?;
                 unreachable!()
@@ -99,10 +104,12 @@ pub async fn check_license(api_key: &str, license: LicenseKey<'_>) -> Result<Opt
     match license {
         LicenseKey::Id(license_id) => {
             // look up license directly by ID
+            let start_time = Instant::now();
             let response = HTTP_CLIENT.get(format!("{}licenses/{}", JINXXY_BASE_URL, license_id))
                 .headers(get_headers(api_key))
                 .send()
                 .await?;
+            debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
             if response.status().is_success() {
                 let response: dto::License = response.json().await?;
                 Ok(Some(response.into()))
@@ -125,11 +132,13 @@ pub async fn check_license(api_key: &str, license: LicenseKey<'_>) -> Result<Opt
             } else {
                 "key"
             };
+            let start_time = Instant::now();
             let response = HTTP_CLIENT.get(format!("{}licenses", JINXXY_BASE_URL))
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
                 .await?;
+            debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
             if !response.status().is_success() {
                 JinxError::fail(format!("/licenses returned status code {}", response.status().as_u16()))?;
                 unreachable!()
@@ -137,10 +146,12 @@ pub async fn check_license(api_key: &str, license: LicenseKey<'_>) -> Result<Opt
             let response: dto::LicenseList = response.json().await?;
             if let Some(result) = response.results.first() {
                 // now look up the license directly by ID
+                let start_time = Instant::now();
                 let response = HTTP_CLIENT.get(format!("{}licenses/{}", JINXXY_BASE_URL, result.id))
                     .headers(get_headers(api_key))
                     .send()
                     .await?;
+                debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
                 if !response.status().is_success() {
                     JinxError::fail(format!("/licenses/<id> returned status code {}", response.status().as_u16()))?;
                     unreachable!()
@@ -161,10 +172,12 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
     //TODO: ...actually... ugh this thing is a list. Is this thing cache-safe?
     //TODO: stop calling db from outside this function
     //TODO: `search_query` field "A search query to filter results"
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.get(format!("{}licenses/{}/activations", JINXXY_BASE_URL, license_id))
         .headers(get_headers(api_key))
         .send()
         .await?;
+    debug!("GET /licenses/<id>/activations took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("/licenses/<id>/activations returned status code {}", response.status().as_u16()))?;
         unreachable!()
@@ -177,12 +190,14 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
 /// Create a new license activation
 pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> Result<String, Error> {
     let body = dto::CreateLicenseActivation::from_user_id(user_id);
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.post(format!("{}licenses/{}/activations", JINXXY_BASE_URL, license_id))
         .headers(get_headers(api_key))
         .header(header::CONTENT_TYPE, "application/json")
         .json(&body)
         .send()
         .await?;
+    debug!("POST /licenses/<id>/activations took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("POST /licenses/<id>/activations returned status code {}", response.status().as_u16()))?;
         unreachable!()
@@ -193,10 +208,12 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
 pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool, Error> {
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.delete(format!("{}licenses/{}/activations/{}", JINXXY_BASE_URL, license_id, activation_id))
         .headers(get_headers(api_key))
         .send()
         .await?;
+    debug!("DELETE /licenses/<id>/activations took {}ms", start_time.elapsed().as_millis());
     if response.status().is_success() {
         Ok(true)
     } else {
@@ -216,10 +233,12 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
 /// Look up a product
 pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct, Error> {
     //TODO: add disk cache for this
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.get(format!("{}products/{}", JINXXY_BASE_URL, product_id))
         .headers(get_headers(api_key))
         .send()
         .await?;
+    debug!("GET /products/<id> took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("/products/<id> returned status code {}", response.status().as_u16()))?;
         unreachable!()
@@ -232,10 +251,12 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
 /// Get all products on this account
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     //TODO: add disk cache for this (see above issue with list caching)
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.get(format!("{}products", JINXXY_BASE_URL))
         .headers(get_headers(api_key))
         .send()
         .await?;
+    debug!("GET /products took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("/products returned status code {}", response.status().as_u16()))?;
         unreachable!()

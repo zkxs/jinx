@@ -10,6 +10,7 @@ use semver::Version;
 use serde::Deserialize;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
+use tokio::time::Instant;
 use tracing::{debug, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -80,8 +81,10 @@ async fn get_latest_release() -> Result<RemoteVersion, Error> {
         .build()
         .map_err(|e| format!("Failed to build update check HTTP request: {e}"))?;
 
+    let start_time = Instant::now();
     let response = HTTP_CLIENT.execute(request).await
         .map_err(|e| format!("Update check failed: {e}"))?;
+    debug!("update check took {}ms", start_time.elapsed().as_millis());
 
     //TODO: implement etag-based caching
 
