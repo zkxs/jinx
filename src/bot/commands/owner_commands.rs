@@ -143,6 +143,8 @@ async fn announce_internal<const TEST_ONLY: bool>(
     title: Option<String>,
     message: String,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
+
     let message = message.replace(r"\n", "\n");
     let embed = CreateEmbed::default().description(message);
     let embed = if let Some(title) = title {
@@ -156,7 +158,6 @@ async fn announce_internal<const TEST_ONLY: bool>(
     let message = CreateMessage::default().embed(embed);
     let channels = context.data().db.get_log_channels::<TEST_ONLY>().await?;
     let channel_count = channels.len();
-    context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
     let mut successful_messages: usize = 0;
     for channel in channels {
         match channel.send_message(context, message.clone()).await {
@@ -207,6 +208,8 @@ pub(in crate::bot) async fn verify_guild(
     #[description = "ID of guild"] guild_id: String,
     #[description = "Optional ID of expected owner"] owner_id: Option<UserId>,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+    
     let reply = match guild_id.parse::<u64>() {
         Ok(guild_id) => {
             if guild_id == 0 {

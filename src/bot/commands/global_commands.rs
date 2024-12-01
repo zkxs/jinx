@@ -56,6 +56,7 @@ pub(in crate::bot) async fn help(
 pub(in crate::bot) async fn version(
     context: Context<'_>,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
     let embed = CreateEmbed::default()
         .title("Version Check")
         .description(constants::DISCORD_BOT_VERSION);
@@ -94,6 +95,7 @@ pub(in crate::bot) async fn init(
     context: Context<'_>,
     #[description = "Jinxxy API key"] api_key: Option<String>,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     // handle trimming the string

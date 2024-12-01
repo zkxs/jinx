@@ -60,6 +60,8 @@ pub(in crate::bot) async fn set_log_channel(
     context: Context<'_>,
     #[description = "user to query licenses for"] channel: Option<ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     // if setting a channel, then attempt to write a test log to the channel
@@ -112,6 +114,8 @@ pub(in crate::bot) async fn set_log_channel(
 pub(in crate::bot) async fn create_post(
     context: Context<'_>,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let channel = context.channel_id();
 
     let components = vec![
@@ -166,6 +170,8 @@ pub async fn user_info(
     context: Context<'_>,
     #[description = "user to query licenses for"] user: serenity::User,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -248,6 +254,8 @@ pub async fn deactivate_license(
     #[description = "user to deactivate license for"] user: serenity::User,
     #[description = "Jinxxy license to deactivate for user"] license: String,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -283,6 +291,8 @@ pub async fn license_info(
     context: Context<'_>,
     #[description = "Jinxxy license to query activations for"] license: String,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -327,6 +337,8 @@ pub async fn lock_license(
     context: Context<'_>,
     #[description = "Jinxxy license to lock"] license: String,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -358,6 +370,8 @@ pub async fn unlock_license(
     context: Context<'_>,
     #[description = "Jinxxy license to unlock"] license: String,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
@@ -412,6 +426,8 @@ pub(in crate::bot) async fn link_product(
     #[autocomplete = "product_autocomplete"] product: String,
     #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
     let reply = if let Some(product_id) = product_id {
@@ -464,6 +480,8 @@ pub(in crate::bot) async fn unlink_product(
     #[autocomplete = "product_autocomplete"] product: String,
     #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
     let reply = if let Some(product_id) = product_id {
@@ -509,6 +527,8 @@ pub(in crate::bot) async fn unlink_product(
 pub(in crate::bot) async fn list_links(
     context: Context<'_>,
 ) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+    
     let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
     let assignable_roles = assignable_roles(&context, guild_id).await?;
