@@ -29,9 +29,12 @@ pub async fn event_handler<'a>(
     framework_context: FrameworkContext<'a, Data, Error>,
     data: &'a Data,
 ) -> Result<(), Error> {
+    debug!("event_handler start");
     let result = event_handler_inner(context, event, framework_context, data).await;
     if let Err(e) = &result {
         error!("Unhandled error in event handler: {:?}", e)
+    } else {
+        debug!("event_handler stop");
     }
     result
 }
@@ -135,6 +138,8 @@ async fn event_handler_inner<'a>(
             }
         }
         FullEvent::InteractionCreate { interaction: Interaction::Modal(modal_interaction) } => {
+            // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
+            modal_interaction.defer_ephemeral(context).await?;
             #[allow(
                 clippy::single_match
             )] // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
