@@ -7,7 +7,7 @@ use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
-use poise::serenity_prelude::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, FullEvent, InputTextStyle, Interaction};
+use poise::serenity_prelude::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateMessage, CreateModal, EditInteractionResponse, FullEvent, InputTextStyle, Interaction};
 use poise::{serenity_prelude as serenity, FrameworkContext};
 use regex::Regex;
 use std::sync::LazyLock;
@@ -193,10 +193,9 @@ async fn event_handler_inner<'a>(
                                 .title("Registration Failure")
                                 .description(description)
                                 .color(Colour::RED);
-                            let message = CreateInteractionResponseMessage::default()
-                                .ephemeral(true)
+                            let edit = EditInteractionResponse::default()
                                 .embed(embed);
-                            modal_interaction.create_response(context, CreateInteractionResponse::Message(message)).await?;
+                            modal_interaction.edit_response(context, edit).await?;
                             Ok::<(), Error>(())
                         };
 
@@ -320,10 +319,9 @@ async fn event_handler_inner<'a>(
                                         };
 
                                         // let the user know what happened
-                                        let modal_response_message = CreateInteractionResponseMessage::default()
-                                            .ephemeral(true)
+                                        let edit = EditInteractionResponse::default()
                                             .embed(embed);
-                                        modal_interaction.create_response(context, CreateInteractionResponse::Message(modal_response_message)).await?;
+                                        modal_interaction.edit_response(context, edit).await?;
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
@@ -356,10 +354,9 @@ async fn event_handler_inner<'a>(
                                 .title("Jinx Misconfiguration")
                                 .description("Jinxxy API key is not set: please contact the server administrator for support.")
                                 .color(Colour::RED);
-                            let message = CreateInteractionResponseMessage::default()
-                                .ephemeral(true)
+                            let edit = EditInteractionResponse::default()
                                 .embed(embed);
-                            modal_interaction.create_response(context, CreateInteractionResponse::Message(message)).await?;
+                            modal_interaction.edit_response(context, edit).await?;
                         }
                     } else {
                         // User did not provide a license string, or provided all whitespace or something weird like that.
@@ -367,10 +364,9 @@ async fn event_handler_inner<'a>(
                             .title("Registration Failure")
                             .description("You must provide a license key")
                             .color(Colour::RED);
-                        let message = CreateInteractionResponseMessage::default()
-                            .ephemeral(true)
+                        let edit = EditInteractionResponse::default()
                             .embed(embed);
-                        modal_interaction.create_response(context, CreateInteractionResponse::Message(message)).await?;
+                        modal_interaction.edit_response(context, edit).await?;
                     }
                 }
                 _ => {}
