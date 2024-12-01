@@ -29,12 +29,9 @@ pub async fn event_handler<'a>(
     framework_context: FrameworkContext<'a, Data, Error>,
     data: &'a Data,
 ) -> Result<(), Error> {
-    debug!("event_handler start");
     let result = event_handler_inner(context, event, framework_context, data).await;
     if let Err(e) = &result {
         error!("Unhandled error in event handler: {:?}", e)
-    } else {
-        debug!("event_handler stop");
     }
     result
 }
