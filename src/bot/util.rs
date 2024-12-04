@@ -62,7 +62,8 @@ pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String
 
 pub(super) async fn assignable_roles(context: &Context<'_>) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
     let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let bot_member = guild_id.current_user_member(context).await?;
+    let bot_id = context.framework().bot_id;
+    let bot_member = guild_id.member(context, bot_id).await?;
 
     // Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
     // This is nonsensical because I want to see if a member has Manage Roles, which cannot be overridden at the channel level.
