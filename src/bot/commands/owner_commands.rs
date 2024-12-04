@@ -182,7 +182,7 @@ pub(in crate::bot) async fn set_test(
     context: Context<'_>,
     #[description = "is this a test guild?"] test: bool,
 ) -> Result<(), Error> {
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     context.data().db.set_test(guild_id, test).await?;
 
@@ -209,7 +209,7 @@ pub(in crate::bot) async fn verify_guild(
     #[description = "Optional ID of expected owner"] owner_id: Option<UserId>,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
-    
+
     let reply = match guild_id.parse::<u64>() {
         Ok(guild_id) => {
             if guild_id == 0 {

@@ -96,7 +96,7 @@ pub(in crate::bot) async fn init(
     #[description = "Jinxxy API key"] api_key: Option<String>,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     // handle trimming the string
     let api_key = api_key

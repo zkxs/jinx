@@ -158,7 +158,7 @@ async fn event_handler_inner<'a>(
                             }
                         });
                     if let Some(license_key) = license_key {
-                        let guild_id = modal_interaction.guild_id.ok_or(JinxError::new("expected to be in a guild"))?;
+                        let guild_id = modal_interaction.guild_id.ok_or_else(|| JinxError::new("expected to be in a guild"))?;
                         let user_id = modal_interaction.user.id;
                         let license_type = license::identify_license(license_key);
 
@@ -208,7 +208,7 @@ async fn event_handler_inner<'a>(
                                 None
                             };
                             if let Some(license_info) = license_response {
-                                let member = modal_interaction.member.as_ref().ok_or(JinxError::new("expected to be in a guild"))?;
+                                let member = modal_interaction.member.as_ref().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
                                 let (activations, mut validation) = if license_info.activations == 0 {
                                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them

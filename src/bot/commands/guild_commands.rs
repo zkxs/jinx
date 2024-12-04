@@ -29,7 +29,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 pub(in crate::bot) async fn stats(
     context: Context<'_>,
 ) -> Result<(), Error> {
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
     let license_activation_count = context.data().db.guild_license_activation_count(guild_id).await.unwrap();
     let product_role_count = context.data().db.guild_product_role_count(guild_id).await.unwrap();
 
@@ -62,7 +62,7 @@ pub(in crate::bot) async fn set_log_channel(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     // if setting a channel, then attempt to write a test log to the channel
     let test_result = match channel {
@@ -122,8 +122,8 @@ pub(in crate::bot) async fn create_post(
         CreateActionRow::Buttons(vec![CreateButton::new(REGISTER_BUTTON_ID).label("Register").style(ButtonStyle::Primary)]),
     ];
 
-    let api_key = context.data().db.get_jinxxy_api_key(context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?).await?
-        .ok_or(JinxError::new("Jinxxy API key is not set"))?;
+    let api_key = context.data().db.get_jinxxy_api_key(context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?).await?
+        .ok_or_else(|| JinxError::new("Jinxxy API key is not set"))?;
     let reply = match jinxxy::get_own_user(&api_key).await {
         Ok(jinxxy_user) => {
             let jinxxy_user: jinxxy::DisplayUser = jinxxy_user.into(); // convert into just the data we need for this command
@@ -172,7 +172,7 @@ pub async fn user_info(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
@@ -256,7 +256,7 @@ pub async fn deactivate_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
@@ -293,7 +293,7 @@ pub async fn license_info(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
@@ -339,7 +339,7 @@ pub async fn lock_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
@@ -372,7 +372,7 @@ pub async fn unlock_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
@@ -431,8 +431,8 @@ pub(in crate::bot) async fn link_product(
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
     let reply = if let Some(product_id) = product_id {
-        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let assignable_roles = assignable_roles(&context).await?;
 
         let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> = HashSet::with_hasher(Default::default());
         context.data().db.link_product(guild_id, product_id.clone(), role).await?;
@@ -485,8 +485,8 @@ pub(in crate::bot) async fn unlink_product(
     let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
 
     let reply = if let Some(product_id) = product_id {
-        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let assignable_roles = assignable_roles(&context).await?;
 
         context.data().db.unlink_product(guild_id, product_id.clone(), role).await?;
 
@@ -528,10 +528,10 @@ pub(in crate::bot) async fn list_links(
     context: Context<'_>,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
-    
-    let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
 
-    let assignable_roles = assignable_roles(&context, guild_id).await?;
+    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    let assignable_roles = assignable_roles(&context).await?;
     let mut links = context.data().db.get_links(guild_id).await?;
     let message = if links.is_empty() {
         "No product→role links configured".to_string()

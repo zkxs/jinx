@@ -76,7 +76,7 @@ pub async fn run_bot() -> Result<(), Error> {
     let db = JinxDb::open().await?;
     debug!("DB opened");
     let discord_token = db.get_discord_token().await?
-        .ok_or(JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
+        .ok_or_else(|| JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
     let intents = GatewayIntents::GUILDS
         .union(GatewayIntents::GUILD_MESSAGES)
         .union(GatewayIntents::DIRECT_MESSAGES);

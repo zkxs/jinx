@@ -37,7 +37,7 @@ impl ApiCache {
     where
         F: FnOnce(&GuildCache) -> T,
     {
-        let guild_id = context.guild_id().ok_or(JinxError::new("expected to be in a guild"))?;
+        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
         let result = match self.map.entry(guild_id) {
             Entry::Occupied(entry) => {
                 let cache_entry = entry.get();
