@@ -72,6 +72,7 @@ feature-depth = 1
 ignore = [
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
+    { id = "RUSTSEC-2024-0388", reason = "derivative being unmaintained is not my problem to solve. If anything it's on poise." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
 ]
@@ -102,7 +103,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception", # used by wasi
     "BSL-1.0", # used by ryu
     "MPL-2.0", # used by webpki-roots
-    "Unicode-DFS-2016", # used by unicode-ident
+    "Unicode-3.0", # used by unicode-ident
     "Zlib", # used by miniz_oide, tinyvecs
     "OpenSSL", # used by ring
 ]
@@ -228,6 +229,8 @@ skip = [
     { crate = "rustls-webpki@0.101.7", reason = "reqwest@0.11.27 uses old version" },
     { crate = "tokio-rustls@0.24.1", reason = "reqwest@0.11.27 uses old version" },
     { crate = "webpki-roots@0.25.4", reason = "reqwest@0.11.27 uses old version" },
+    { crate = "thiserror@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
+    { crate = "thiserror-impl@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
