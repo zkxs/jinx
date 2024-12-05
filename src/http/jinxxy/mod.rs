@@ -34,7 +34,7 @@ pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
         .headers(get_headers(api_key))
         .send()
         .await?;
-    debug!("/GET me took {}ms", start_time.elapsed().as_millis());
+    debug!("GET /me took {}ms", start_time.elapsed().as_millis());
     if !response.status().is_success() {
         JinxError::fail(format!("/me returned status code {}", response.status().as_u16()))?;
         unreachable!()
