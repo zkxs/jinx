@@ -44,6 +44,7 @@ async fn event_handler_inner<'a>(
     data: &'a Data,
 ) -> Result<(), Error> {
     match event {
+        // bot was added to a guild
         FullEvent::GuildCreate { guild, is_new } => {
             // is_new == Some(false) when we're just restarting the bot
             // is_new == Some(true) when a new guild adds the bot
@@ -55,23 +56,26 @@ async fn event_handler_inner<'a>(
                 error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
             }
         }
+        // bot was removed from a guild (kick, ban, or guild deleted)
         FullEvent::GuildDelete { incomplete, full } => {
             // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
             if incomplete.unavailable || full.is_some() {
                 info!("GuildDelete guild={:?} full={:?}", incomplete, full)
             }
         }
+        /*
+        the docs claim this happens "when the cache has received and inserted all data from
+        guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
+        ALSO happens every single time any new guild is added.
+        */
         FullEvent::CacheReady { guilds } => {
-            /*
-            the docs claim this happens "when the cache has received and inserted all data from
-            guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
-            ALSO happens every single time any new guild is added.
-            */
             debug!("cache ready! {} guilds.", guilds.len());
         }
+        // I'm curious if this ever happens. I'll debug log it for now and worry about it later.
         FullEvent::Ratelimit { data } => {
             warn!("Ratelimit event: {:?}", data);
         }
+        // handle incoming messages (channel/DM/etc)
         FullEvent::Message { new_message } => {
             /*
             fun fact: even without MESSAGE_CONTENT intent, we still get message content in a few exceptional cases:
@@ -106,7 +110,10 @@ async fn event_handler_inner<'a>(
                 }
             }
         }
+        // handle when messages are edited
         FullEvent::MessageUpdate { old_if_available, new, event } => {
+            // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
+            // this DOES work on DMs
             if event.fixed_is_private(context).await {
                 if let Some(new) = new {
                     if let Some(old) = old_if_available {
@@ -119,11 +126,13 @@ async fn event_handler_inner<'a>(
                 }
             }
         }
+        // handle component interactions
         FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
             #[allow(
                 clippy::single_match
             )] // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
             match component_interaction.data.custom_id.as_str() {
+                // create the register form when a user presses the register button
                 REGISTER_BUTTON_ID => {
                     let components = vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Short, "License Key", LICENSE_KEY_ID).placeholder("XXXX-cd071c534191"))];
                     let modal = CreateModal::new(REGISTER_MODAL_ID, "License Registration")
@@ -134,13 +143,15 @@ async fn event_handler_inner<'a>(
                 _ => {}
             }
         }
+        // handle modal interactions
         FullEvent::InteractionCreate { interaction: Interaction::Modal(modal_interaction) } => {
             // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
             modal_interaction.defer_ephemeral(context).await?;
-            #[allow(
-                clippy::single_match
-            )] // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
+
+            // likely to add more matches later, so I'm suppressing this lint because it's obnoxious to switch between `if let` and `match`
+            #[allow(clippy::single_match)]
             match modal_interaction.data.custom_id.as_str() {
+                // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                 REGISTER_MODAL_ID => {
                     let license_key = modal_interaction.data.components.iter()
                         .flat_map(|row| row.components.iter())
@@ -318,10 +329,18 @@ async fn event_handler_inner<'a>(
                                                 .color(Colour::ORANGE)
                                         };
 
-                                        // let the user know what happened
+                                        /*
+                                        Let the user know what happened.
+                                        Note that this can fail if the interaction has been invalidated, which happens in some cases:
+                                        - 3s after a non-acked interaction
+                                        - 15m after an acked interaction
+                                         */
                                         let edit = EditInteractionResponse::default()
                                             .embed(embed);
-                                        modal_interaction.edit_response(context, edit).await?;
+                                        let user_notification_result = modal_interaction.edit_response(context, edit).await;
+                                        if let Err(error) = user_notification_result {
+                                            error!("Error notifying user of license activation: {:?}", error);
+                                        }
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
