@@ -207,10 +207,6 @@ mod test {
 
         assert_eq!(tuples.len(), results.len(), "actual and expected result lengths did not match");
 
-        for result in &results {
-            println!("{}", result);
-        }
-
         for tuple in tuples {
             let (_, expected) = tuple;
             assert!(results.iter().any(|actual| actual == expected), "could not find expected value: {}", expected);
