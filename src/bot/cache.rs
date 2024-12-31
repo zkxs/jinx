@@ -181,3 +181,39 @@ impl GuildCache {
         self.create_time.elapsed() > CACHE_EXPIRY_TIME
     }
 }
+
+#[cfg(test)]
+mod test {
+    use trie_rs::map::TrieBuilder;
+
+    #[test]
+    fn test_trie_empty_prefix() {
+        let tuples = [
+            ("foo", "foo_data"),
+            ("bar", "bar_data"),
+            ("baz", "baz_data"),
+        ];
+
+        let mut trie_builder = TrieBuilder::new();
+        for (key, value) in tuples.iter() {
+            trie_builder.push(key, value.to_string());
+        }
+        let trie = trie_builder.build();
+
+        let results: Vec<String> = trie.predictive_search("")
+            .map(|(_key, value): (Vec<u8>, &String)| value)
+            .map(|value| value.to_string())
+            .collect();
+
+        assert_eq!(tuples.len(), results.len(), "actual and expected result lengths did not match");
+
+        for result in &results {
+            println!("{}", result);
+        }
+
+        for tuple in tuples {
+            let (_, expected) = tuple;
+            assert!(results.iter().any(|actual| actual == expected), "could not find expected value: {}", expected);
+        }
+    }
+}
