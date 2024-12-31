@@ -11,7 +11,7 @@ keywords = ["jinxxy", "discord", "bot", "license", "activation"]
 rust-version = "1.80.1"
 
 [dependencies]
-tokio = "1" # Async runtime
+tokio = { version = "1", features = ["rt-multi-thread"] } # Async runtime
 tokio-graceful-shutdown = "0.15" # Handles SIGINT/SIGTERM/Ctrl+C
 poise = { git = "https://github.com/zkxs/poise.git", branch = "current", features = ["unstable"] } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1
 reqwest = { version = "0.11", features = ["gzip", "json"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise

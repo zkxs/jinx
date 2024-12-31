@@ -33,7 +33,7 @@ const DISCORD_ID_PARSE_ERROR_MESSAGE: &str = "Failed to parse Discord ID";
 /// If we should restart the bot on shutdown
 static SHOULD_RESTART: AtomicBool = AtomicBool::new(false);
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
     let cli_args = JinxArgs::parse();
     match cli_args.command {
