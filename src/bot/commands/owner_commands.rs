@@ -12,7 +12,7 @@ use poise::CreateReply;
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
 use tokio::time::Duration;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -46,6 +46,13 @@ pub(in crate::bot) async fn owner_stats(
             shard_list.push_str(format!("\n- {} {:?} {}", shard_id, info.latency, info.stage).as_str());
         }
     }
+    let tokio_metrics = tokio::runtime::Handle::current().metrics();
+    let tokio_num_workers = tokio_metrics.num_workers();
+    let tokio_num_alive_tasks = tokio_metrics.num_alive_tasks();
+    let tokio_global_queue_depth = tokio_metrics.global_queue_depth();
+
+    debug!("tokio metrics: {tokio_metrics:?}");
+
     let message = format!(
         "db_size={db_size} KiB\n\
         users={user_count}\n\
@@ -57,7 +64,10 @@ pub(in crate::bot) async fn owner_stats(
         API cache products={api_cache_products}\n\
         API cache len={api_cache_len}\n\
         API cache capacity={api_cache_capacity}\n\
-        shards={shard_count}{shard_list}"
+        shards={shard_count}{shard_list}\n\
+        tokio_num_workers={tokio_num_workers}\n\
+        tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
+        tokio_global_queue_depth={tokio_global_queue_depth}"
     );
     let embed = CreateEmbed::default()
         .title("Jinx Owner Stats")
