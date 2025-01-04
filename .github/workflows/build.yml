@@ -31,7 +31,7 @@ jobs:
         run: rustup component add rustfmt
       - uses: actions/checkout@v4
       - name: Format
-        run: cargo format --check
+        run: cargo fmt --check
   build:
     # only run for pushes to tags or non-dependabot branches
     if: startsWith(github.ref, 'refs/tags/') || (startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/'))

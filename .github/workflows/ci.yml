@@ -30,7 +30,7 @@ jobs:
         run: rustup component add rustfmt
       - uses: actions/checkout@v4
       - name: Format
-        run: cargo format --check
+        run: cargo fmt --check
   test:
     strategy:
       matrix:
