@@ -37,7 +37,9 @@ impl ApiCache {
     where
         F: FnOnce(&GuildCache) -> T,
     {
-        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let guild_id = context
+            .guild_id()
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
         let result = match self.map.entry(guild_id) {
             Entry::Occupied(entry) => {
                 let cache_entry = entry.get();
@@ -71,14 +73,16 @@ impl ApiCache {
     }
 
     pub fn product_count(&self) -> usize {
-        self.map.iter()
+        self.map
+            .iter()
             .map(|entry| entry.value().product_count())
             .sum()
     }
 
     /// Remove expired cache entries
     pub fn clean(&self) {
-        self.map.retain(|_guild_id, cache_entry| !cache_entry.is_expired());
+        self.map
+            .retain(|_guild_id, cache_entry| !cache_entry.is_expired());
 
         // if the capacity is much larger than the actual usage, then try shrinking
         let len = self.map.len();
@@ -95,16 +99,28 @@ impl ApiCache {
         }
     }
 
-    pub async fn product_names_with_prefix<'a>(&self, context: &Context<'_>, prefix: &'a str) -> Result<Vec<String>, Error> {
+    pub async fn product_names_with_prefix<'a>(
+        &self,
+        context: &Context<'_>,
+        prefix: &'a str,
+    ) -> Result<Vec<String>, Error> {
         self.get(context, |cache_entry| {
             cache_entry.product_names_with_prefix(prefix).collect()
-        }).await
+        })
+        .await
     }
 
-    pub async fn product_name_to_id(&self, context: &Context<'_>, product_name: &str) -> Result<Option<String>, Error> {
+    pub async fn product_name_to_id(
+        &self,
+        context: &Context<'_>,
+        product_name: &str,
+    ) -> Result<Option<String>, Error> {
         self.get(context, |cache_entry| {
-            cache_entry.product_name_to_id(product_name).map(|str| str.to_string())
-        }).await
+            cache_entry
+                .product_name_to_id(product_name)
+                .map(|str| str.to_string())
+        })
+        .await
     }
 }
 
@@ -125,7 +141,10 @@ impl GuildCache {
                 let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
                 products.iter().for_each(|product| {
                     if !dupe_set.insert(product.name.as_str()) {
-                        warn!("product {} \"{}\" has the same name as some other product", product.id, product.name)
+                        warn!(
+                            "product {} \"{}\" has the same name as some other product",
+                            product.id, product.name
+                        )
                     }
                 });
             }
@@ -138,12 +157,14 @@ impl GuildCache {
             let product_name_trie = trie_builder.build();
 
             // build forward map
-            let product_id_to_name_map = products.iter()
+            let product_id_to_name_map = products
+                .iter()
                 .map(|product| (product.id.to_string(), product.name.to_string()))
                 .collect();
 
             // build reverse map
-            let product_name_to_id_map = products.into_iter()
+            let product_name_to_id_map = products
+                .into_iter()
                 .map(|product| (product.name, product.id))
                 .collect();
 
@@ -160,17 +181,25 @@ impl GuildCache {
         }
     }
 
-    fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item=String> + 'a {
-        self.product_name_trie.predictive_search(prefix.to_lowercase())
+    fn product_names_with_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = String> + 'a {
+        self.product_name_trie
+            .predictive_search(prefix.to_lowercase())
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
     pub fn product_id_to_name(&self, product_id: &str) -> Option<&str> {
-        self.product_id_to_name_map.get(product_id).map(|str| str.as_str())
+        self.product_id_to_name_map
+            .get(product_id)
+            .map(|str| str.as_str())
     }
 
     fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
-        self.product_name_to_id_map.get(product_name).map(|str| str.as_str())
+        self.product_name_to_id_map
+            .get(product_name)
+            .map(|str| str.as_str())
     }
 
     fn product_count(&self) -> usize {
@@ -200,16 +229,25 @@ mod test {
         }
         let trie = trie_builder.build();
 
-        let results: Vec<String> = trie.predictive_search("")
+        let results: Vec<String> = trie
+            .predictive_search("")
             .map(|(_key, value): (Vec<u8>, &String)| value)
             .map(|value| value.to_string())
             .collect();
 
-        assert_eq!(tuples.len(), results.len(), "actual and expected result lengths did not match");
+        assert_eq!(
+            tuples.len(),
+            results.len(),
+            "actual and expected result lengths did not match"
+        );
 
         for tuple in tuples {
             let (_, expected) = tuple;
-            assert!(results.iter().any(|actual| actual == expected), "could not find expected value: {}", expected);
+            assert!(
+                results.iter().any(|actual| actual == expected),
+                "could not find expected value: {}",
+                expected
+            );
         }
     }
 }

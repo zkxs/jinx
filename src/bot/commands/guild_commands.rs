@@ -1,7 +1,10 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util::{assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable, error_reply, license_to_id, success_reply};
+use crate::bot::util::{
+    assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable,
+    error_reply, license_to_id, success_reply,
+};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -9,7 +12,10 @@ use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
-use serenity::{ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, RoleId};
+use serenity::{
+    ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
+    RoleId,
+};
 use std::collections::{HashMap, HashSet};
 use tracing::warn;
 
@@ -26,12 +32,22 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn stats(
-    context: Context<'_>,
-) -> Result<(), Error> {
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let license_activation_count = context.data().db.guild_license_activation_count(guild_id).await.unwrap();
-    let product_role_count = context.data().db.guild_product_role_count(guild_id).await.unwrap();
+pub(in crate::bot) async fn stats(context: Context<'_>) -> Result<(), Error> {
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let license_activation_count = context
+        .data()
+        .db
+        .guild_license_activation_count(guild_id)
+        .await
+        .unwrap();
+    let product_role_count = context
+        .data()
+        .db
+        .guild_product_role_count(guild_id)
+        .await
+        .unwrap();
 
     let message = format!(
         "license activations={license_activation_count}\n\
@@ -40,11 +56,9 @@ pub(in crate::bot) async fn stats(
     let embed = CreateEmbed::default()
         .title("Jinx Stats")
         .description(message);
-    context.send(
-        CreateReply::default()
-            .embed(embed)
-            .ephemeral(true)
-    ).await?;
+    context
+        .send(CreateReply::default().embed(embed).ephemeral(true))
+        .await?;
     Ok(())
 }
 
@@ -62,7 +76,9 @@ pub(in crate::bot) async fn set_log_channel(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     // if setting a channel, then attempt to write a test log to the channel
     let test_result = match channel {
@@ -70,13 +86,10 @@ pub(in crate::bot) async fn set_log_channel(
             let embed = CreateEmbed::default()
                 .title("Configuration Changed")
                 .description("I will now log to this channel.");
-            let message = CreateMessage::default()
-                .embed(embed);
+            let message = CreateMessage::default().embed(embed);
             channel.send_message(context, message).await.map(|_| ())
         }
-        None => {
-            Ok(())
-        }
+        None => Ok(()),
     };
 
     let reply = match test_result {
@@ -111,18 +124,26 @@ pub(in crate::bot) async fn set_log_channel(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn create_post(
-    context: Context<'_>,
-) -> Result<(), Error> {
+pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
     let channel = context.channel_id();
 
-    let components = vec![
-        CreateActionRow::Buttons(vec![CreateButton::new(REGISTER_BUTTON_ID).label("Register").style(ButtonStyle::Primary)]),
-    ];
+    let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(
+        REGISTER_BUTTON_ID,
+    )
+    .label("Register")
+    .style(ButtonStyle::Primary)])];
 
-    let api_key = context.data().db.get_jinxxy_api_key(context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?).await?
+    let api_key = context
+        .data()
+        .db
+        .get_jinxxy_api_key(
+            context
+                .guild_id()
+                .ok_or_else(|| JinxError::new("expected to be in a guild"))?,
+        )
+        .await?
         .ok_or_else(|| JinxError::new("Jinxxy API key is not set"))?;
     let reply = match jinxxy::get_own_user(&api_key).await {
         Ok(jinxxy_user) => {
@@ -136,9 +157,7 @@ pub(in crate::bot) async fn create_post(
                 embed
             };
 
-            let message = CreateMessage::default()
-                .embed(embed)
-                .components(components);
+            let message = CreateMessage::default().embed(embed).components(components);
 
             if let Err(e) = channel.send_message(context, message).await {
                 warn!("Error in /create_post when sending message: {:?}", e);
@@ -147,9 +166,7 @@ pub(in crate::bot) async fn create_post(
                 success_reply("Success", "Registration post created!")
             }
         }
-        Err(e) => {
-            error_reply(format!("Could not get info for your Jinxxy user: {}", e))
-        }
+        Err(e) => error_reply(format!("Could not get info for your Jinxxy user: {}", e)),
     };
 
     context.send(reply).await?;
@@ -172,10 +189,16 @@ pub async fn user_info(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
+        let license_ids = context
+            .data()
+            .db
+            .get_user_licenses(guild_id, user.id.get())
+            .await?;
         let message = if license_ids.is_empty() {
             format!("<@{}> has no license activations.", user.id.get())
         } else {
@@ -183,12 +206,18 @@ pub async fn user_info(
 
             // build a cache of product versions that we need names for
             // Map structure: product_id -> {product_version_id -> product_version_name}
-            let mut product_cache: HashMap<String, Option<HashMap<String, String, ahash::RandomState>>, ahash::RandomState> = Default::default();
+            let mut product_cache: HashMap<
+                String,
+                Option<HashMap<String, String, ahash::RandomState>>,
+                ahash::RandomState,
+            > = Default::default();
 
             for license_id in license_ids {
                 let license_info = jinxxy::check_license_id(&api_key, &license_id).await?;
                 if let Some(license_info) = license_info {
-                    let product_version_cache = if let Some(product) = product_cache.get(&license_info.product_id) {
+                    let product_version_cache = if let Some(product) =
+                        product_cache.get(&license_info.product_id)
+                    {
                         product.as_ref()
                     } else {
                         let result = jinxxy::get_product(&api_key, &license_info.product_id).await;
@@ -196,35 +225,57 @@ pub async fn user_info(
                             warn!("Error looking up product info for {}, which is in license {}: {:?}", license_info.product_id, license_id, e);
                         }
                         let result = result.ok().map(|product| {
-                            product.versions.into_iter()
+                            product
+                                .versions
+                                .into_iter()
                                 .map(|version| (version.id, version.name))
                                 .collect()
                         });
-                        product_cache.entry(license_info.product_id.clone())
-                            .or_insert(result).as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
+                        product_cache
+                            .entry(license_info.product_id.clone())
+                            .or_insert(result)
+                            .as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
                     };
                     let product_version_name = product_version_cache
-                        .and_then(|cache| license_info.product_version_id.as_ref().and_then(|version_id| cache.get(version_id)))
+                        .and_then(|cache| {
+                            license_info
+                                .product_version_id
+                                .as_ref()
+                                .and_then(|version_id| cache.get(version_id))
+                        })
                         .map(|version| format!("\"{}\"", version))
                         .unwrap_or("`null`".to_string());
 
-                    let locked = context.data().db.is_license_locked(guild_id, license_id.clone()).await?;
+                    let locked = context
+                        .data()
+                        .db
+                        .is_license_locked(guild_id, license_id.clone())
+                        .await?;
 
                     let username = if let Some(username) = &license_info.username {
-                        format!("[{}](<{}>)", username, license_info.profile_url().ok_or_else(|| JinxError::new("expected profile_url to exist when username is set"))?)
+                        format!(
+                            "[{}](<{}>)",
+                            username,
+                            license_info.profile_url().ok_or_else(|| JinxError::new(
+                                "expected profile_url to exist when username is set"
+                            ))?
+                        )
                     } else {
                         format!("`{}`", license_info.user_id)
                     };
 
-                    message.push_str(format!(
-                        "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
-                        license_info.short_key,
-                        license_info.activations, // this field came from Jinxxy and is up to date
-                        locked, // this field came from the local DB and may be out of sync
-                        username,
-                        license_info.product_name,
-                        product_version_name
-                    ).as_str());
+                    message.push_str(
+                        format!(
+                            "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
+                            license_info.short_key,
+                            license_info.activations, // this field came from Jinxxy and is up to date
+                            locked, // this field came from the local DB and may be out of sync
+                            username,
+                            license_info.product_name,
+                            product_version_name
+                        )
+                        .as_str(),
+                    );
                 } else {
                     // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
                     message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
@@ -256,18 +307,35 @@ pub async fn deactivate_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activations = context.data().db.get_user_license_activations(guild_id, user.id.get(), license_id.clone()).await?;
+            let activations = context
+                .data()
+                .db
+                .get_user_license_activations(guild_id, user.id.get(), license_id.clone())
+                .await?;
             for activation_id in activations {
                 let license_id = license_id.clone();
                 jinxxy::delete_license_activation(&api_key, &license_id, &activation_id).await?;
-                context.data().db.deactivate_license(guild_id, license_id, activation_id, user.id.get()).await?;
+                context
+                    .data()
+                    .db
+                    .deactivate_license(guild_id, license_id, activation_id, user.id.get())
+                    .await?;
             }
-            success_reply("Success", format!("All of <@{}>'s activations for `{}` have been deleted.", user.id.get(), license))
+            success_reply(
+                "Success",
+                format!(
+                    "All of <@{}>'s activations for `{}` have been deleted.",
+                    user.id.get(),
+                    license
+                ),
+            )
         } else {
             error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
@@ -293,13 +361,19 @@ pub async fn license_info(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB: this avoids doing some expensive Jinxxy API requests
-            let license_users = context.data().db.get_license_users(guild_id, license_id).await?;
+            let license_users = context
+                .data()
+                .db
+                .get_license_users(guild_id, license_id)
+                .await?;
             let message = if license_users.is_empty() {
                 format!("`{}` is valid, but has no registered users.", license)
             } else {
@@ -339,14 +413,27 @@ pub async fn lock_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activation_id = jinxxy::create_license_activation(&api_key, &license_id, LOCKING_USER_ID).await?;
-            context.data().db.activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID).await?;
-            success_reply("Success", format!("License `{}` is now locked and cannot be used to grant roles.", license))
+            let activation_id =
+                jinxxy::create_license_activation(&api_key, &license_id, LOCKING_USER_ID).await?;
+            context
+                .data()
+                .db
+                .activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID)
+                .await?;
+            success_reply(
+                "Success",
+                format!(
+                    "License `{}` is now locked and cannot be used to grant roles.",
+                    license
+                ),
+            )
         } else {
             error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
@@ -372,20 +459,31 @@ pub async fn unlock_license(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(&api_key, &license_id).await?;
-            let lock_activation_id = activations.into_iter()
+            let lock_activation_id = activations
+                .into_iter()
                 .find(|activation| activation.is_lock())
                 .map(|activation| activation.id);
 
             let message = if let Some(lock_activation_id) = lock_activation_id {
-                jinxxy::delete_license_activation(&api_key, &license_id, &lock_activation_id).await?;
-                context.data().db.deactivate_license(guild_id, license_id, lock_activation_id, LOCKING_USER_ID).await?;
-                format!("License `{}` is now unlocked and may be used to grant roles.", license)
+                jinxxy::delete_license_activation(&api_key, &license_id, &lock_activation_id)
+                    .await?;
+                context
+                    .data()
+                    .db
+                    .deactivate_license(guild_id, license_id, lock_activation_id, LOCKING_USER_ID)
+                    .await?;
+                format!(
+                    "License `{}` is now unlocked and may be used to grant roles.",
+                    license
+                )
             } else {
                 format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license)
             };
@@ -402,8 +500,16 @@ pub async fn unlock_license(
 }
 
 /// Initializes autocomplete data, and then does the product autocomplete
-async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item=String> {
-    match context.data().api_cache.product_names_with_prefix(&context, product_prefix).await {
+async fn product_autocomplete(
+    context: Context<'_>,
+    product_prefix: &str,
+) -> impl Iterator<Item = String> {
+    match context
+        .data()
+        .api_cache
+        .product_names_with_prefix(&context, product_prefix)
+        .await
+    {
         Ok(result) => result.into_iter(),
         Err(e) => {
             warn!("Failed to read API cache: {:?}", e);
@@ -418,24 +524,36 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> imp
     guild_only,
     default_member_permissions = "MANAGE_ROLES",
     install_context = "Guild",
-    interaction_context = "Guild",
+    interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn link_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
-    #[autocomplete = "product_autocomplete"] product: String,
+    #[autocomplete = "product_autocomplete"]
+    product: String,
     #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
+    let product_id = context
+        .data()
+        .api_cache
+        .product_name_to_id(&context, &product)
+        .await?;
 
     let reply = if let Some(product_id) = product_id {
-        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let guild_id = context
+            .guild_id()
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context).await?;
 
-        let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> = HashSet::with_hasher(Default::default());
-        context.data().db.link_product(guild_id, product_id.clone(), role).await?;
+        let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> =
+            HashSet::with_hasher(Default::default());
+        context
+            .data()
+            .db
+            .link_product(guild_id, product_id.clone(), role)
+            .await?;
         if !assignable_roles.contains(&role) && !unassignable_roles.contains(&role) {
             unassignable_roles.insert(role);
         }
@@ -448,11 +566,12 @@ pub(in crate::bot) async fn link_product(
 
         let embed = CreateEmbed::default()
             .title("Product Link Successful")
-            .description(format!("{} will now grant the following roles:{}", product, message_lines))
+            .description(format!(
+                "{} will now grant the following roles:{}",
+                product, message_lines
+            ))
             .color(Colour::DARK_GREEN);
-        let reply = CreateReply::default()
-            .embed(embed)
-            .ephemeral(true);
+        let reply = CreateReply::default().embed(embed).ephemeral(true);
         if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
             reply.embed(embed)
         } else {
@@ -472,23 +591,34 @@ pub(in crate::bot) async fn link_product(
     guild_only,
     default_member_permissions = "MANAGE_ROLES",
     install_context = "Guild",
-    interaction_context = "Guild",
+    interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn unlink_product(
     context: Context<'_>,
     #[description = "Product to modify role links for"]
-    #[autocomplete = "product_autocomplete"] product: String,
+    #[autocomplete = "product_autocomplete"]
+    product: String,
     #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_id = context.data().api_cache.product_name_to_id(&context, &product).await?;
+    let product_id = context
+        .data()
+        .api_cache
+        .product_name_to_id(&context, &product)
+        .await?;
 
     let reply = if let Some(product_id) = product_id {
-        let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let guild_id = context
+            .guild_id()
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context).await?;
 
-        context.data().db.unlink_product(guild_id, product_id.clone(), role).await?;
+        context
+            .data()
+            .db
+            .unlink_product(guild_id, product_id.clone(), role)
+            .await?;
 
         let roles = context.data().db.get_roles(guild_id, product_id).await?;
         let mut message_lines = String::new();
@@ -498,11 +628,12 @@ pub(in crate::bot) async fn unlink_product(
 
         let embed = CreateEmbed::default()
             .title("Product Link Successful")
-            .description(format!("{} will now grant the following roles:{}", product, message_lines))
+            .description(format!(
+                "{} will now grant the following roles:{}",
+                product, message_lines
+            ))
             .color(Colour::DARK_GREEN);
-        let reply = CreateReply::default()
-            .embed(embed)
-            .ephemeral(true);
+        let reply = CreateReply::default().embed(embed).ephemeral(true);
         if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
             reply.embed(embed)
         } else {
@@ -524,12 +655,12 @@ pub(in crate::bot) async fn unlink_product(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn list_links(
-    context: Context<'_>,
-) -> Result<(), Error> {
+pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let assignable_roles = assignable_roles(&context).await?;
     let mut links = context.data().db.get_links(guild_id).await?;
@@ -537,35 +668,47 @@ pub(in crate::bot) async fn list_links(
         "No product→role links configured".to_string()
     } else {
         links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
-        context.data().api_cache.get(&context, |cache| {
-            let mut message = String::new();
-            let mut current_role = None;
+        context
+            .data()
+            .api_cache
+            .get(&context, |cache| {
+                let mut message = String::new();
+                let mut current_role = None;
 
-            for (product_id, role) in &links {
-                let product_name = cache.product_id_to_name(product_id)
-                    .map(|name| format!("\"{}\"", name))
-                    .unwrap_or_else(|| product_id.clone());
-                if current_role != Some(role) {
-                    current_role = Some(role);
-                    if message.is_empty() {
-                        message.push_str(format!("- <@&{}> granted by {}", role.get(), product_name).as_str());
+                for (product_id, role) in &links {
+                    let product_name = cache
+                        .product_id_to_name(product_id)
+                        .map(|name| format!("\"{}\"", name))
+                        .unwrap_or_else(|| product_id.clone());
+                    if current_role != Some(role) {
+                        current_role = Some(role);
+                        if message.is_empty() {
+                            message.push_str(
+                                format!("- <@&{}> granted by {}", role.get(), product_name)
+                                    .as_str(),
+                            );
+                        } else {
+                            message.push_str(
+                                format!("\n- <@&{}> granted by {}", role.get(), product_name)
+                                    .as_str(),
+                            );
+                        }
                     } else {
-                        message.push_str(format!("\n- <@&{}> granted by {}", role.get(), product_name).as_str());
+                        message.push_str(format!(", {}", product_name).as_str());
                     }
-                } else {
-                    message.push_str(format!(", {}", product_name).as_str());
                 }
-            }
-            message
-        }).await?
+                message
+            })
+            .await?
     };
-    let unassignable_embed = create_role_warning_from_roles(&assignable_roles, links.iter().map(|(_product_id, role_id)| *role_id));
+    let unassignable_embed = create_role_warning_from_roles(
+        &assignable_roles,
+        links.iter().map(|(_product_id, role_id)| *role_id),
+    );
     let embed = CreateEmbed::default()
         .title("All product→role links")
         .description(message);
-    let reply = CreateReply::default()
-        .embed(embed)
-        .ephemeral(true);
+    let reply = CreateReply::default().embed(embed).ephemeral(true);
     let reply = if let Some(embed) = unassignable_embed {
         reply.embed(embed)
     } else {

@@ -7,15 +7,22 @@ use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
-use poise::serenity_prelude::{ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateMessage, CreateModal, EditInteractionResponse, FullEvent, InputTextStyle, Interaction};
+use poise::serenity_prelude::{
+    ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText,
+    CreateInteractionResponse, CreateMessage, CreateModal, EditInteractionResponse, FullEvent,
+    InputTextStyle, Interaction,
+};
 use poise::{serenity_prelude as serenity, FrameworkContext};
 use regex::Regex;
 use std::sync::LazyLock;
 use tracing::{debug, error, info, warn};
 
-static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
-    r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
-).unwrap());
+static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
+    )
+    .unwrap()
+});
 
 thread_local! {
     // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
@@ -52,8 +59,13 @@ async fn event_handler_inner<'a>(
                 info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
             }
 
-            if let Err(e) = set_guild_commands(&context.http, &data.db, guild.id, None, None).await {
-                error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
+            if let Err(e) = set_guild_commands(&context.http, &data.db, guild.id, None, None).await
+            {
+                error!(
+                    "Error setting guild commands for guild {}: {:?}",
+                    guild.id.get(),
+                    e
+                );
             }
         }
         // bot was removed from a guild (kick, ban, or guild deleted)
@@ -88,12 +100,23 @@ async fn event_handler_inner<'a>(
             */
 
             if new_message.fixed_is_private(context).await {
-                debug!("Received DM {}: {}", new_message.id.get(), new_message.content);
+                debug!(
+                    "Received DM {}: {}",
+                    new_message.id.get(),
+                    new_message.content
+                );
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
-                debug!("Mentioned in guild {} in message {}: {}", new_message.guild_id.unwrap().get(), new_message.id.get(), new_message.content);
+                debug!(
+                    "Mentioned in guild {} in message {}: {}",
+                    new_message.guild_id.unwrap().get(),
+                    new_message.id.get(),
+                    new_message.content
+                );
 
                 // since we got mentioned we might as well do something funny here
-                if data.db.is_user_owner(new_message.author.id.get()).await? && EASTER_EGG_REGEX.with(|regex| regex.is_match(new_message.content.as_str())) {
+                if data.db.is_user_owner(new_message.author.id.get()).await?
+                    && EASTER_EGG_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
+                {
                     // Easter egg: when the owner says something matching a specific regex, try to reply
                     if let Err(e) = new_message.reply_ping(context, "no, you! 😳").await {
                         warn!("Unable to reply to owner easter-egg prompt. Falling back to reaction. Error: {:?}", e);
@@ -111,13 +134,22 @@ async fn event_handler_inner<'a>(
             }
         }
         // handle when messages are edited
-        FullEvent::MessageUpdate { old_if_available, new, event } => {
+        FullEvent::MessageUpdate {
+            old_if_available,
+            new,
+            event,
+        } => {
             // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
             // this DOES work on DMs
             if event.fixed_is_private(context).await {
                 if let Some(new) = new {
                     if let Some(old) = old_if_available {
-                        debug!("DM {} updated:\nold: {}\nnew: {}", event.id.get(), old.content, new.content);
+                        debug!(
+                            "DM {} updated:\nold: {}\nnew: {}",
+                            event.id.get(),
+                            old.content,
+                            new.content
+                        );
                     } else {
                         debug!("DM {} updated: {}", event.id.get(), new.content);
                     }
@@ -127,24 +159,32 @@ async fn event_handler_inner<'a>(
             }
         }
         // handle component interactions
-        FullEvent::InteractionCreate { interaction: Interaction::Component(component_interaction) } => {
-            #[allow(
-                clippy::single_match
-            )] // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
+        FullEvent::InteractionCreate {
+            interaction: Interaction::Component(component_interaction),
+        } => {
+            #[allow(clippy::single_match)]
+            // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
             match component_interaction.data.custom_id.as_str() {
                 // create the register form when a user presses the register button
                 REGISTER_BUTTON_ID => {
-                    let components = vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Short, "License Key", LICENSE_KEY_ID).placeholder("XXXX-cd071c534191"))];
+                    let components = vec![CreateActionRow::InputText(
+                        CreateInputText::new(InputTextStyle::Short, "License Key", LICENSE_KEY_ID)
+                            .placeholder("XXXX-cd071c534191"),
+                    )];
                     let modal = CreateModal::new(REGISTER_MODAL_ID, "License Registration")
                         .components(components);
                     let response = CreateInteractionResponse::Modal(modal);
-                    component_interaction.create_response(context, response).await?;
+                    component_interaction
+                        .create_response(context, response)
+                        .await?;
                 }
                 _ => {}
             }
         }
         // handle modal interactions
-        FullEvent::InteractionCreate { interaction: Interaction::Modal(modal_interaction) } => {
+        FullEvent::InteractionCreate {
+            interaction: Interaction::Modal(modal_interaction),
+        } => {
             // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
             modal_interaction.defer_ephemeral(context).await?;
 
@@ -153,12 +193,17 @@ async fn event_handler_inner<'a>(
             match modal_interaction.data.custom_id.as_str() {
                 // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                 REGISTER_MODAL_ID => {
-                    let license_key = modal_interaction.data.components.iter()
+                    let license_key = modal_interaction
+                        .data
+                        .components
+                        .iter()
                         .flat_map(|row| row.components.iter())
                         .find_map(|component| {
                             if let ActionRowComponent::InputText(input_text) = component {
                                 if input_text.custom_id == LICENSE_KEY_ID {
-                                    input_text.value.as_deref()
+                                    input_text
+                                        .value
+                                        .as_deref()
                                         .map(|value| value.trim())
                                         .filter(|value| !value.is_empty())
                                 } else {
@@ -169,11 +214,18 @@ async fn event_handler_inner<'a>(
                             }
                         });
                     if let Some(license_key) = license_key {
-                        let guild_id = modal_interaction.guild_id.ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+                        let guild_id = modal_interaction
+                            .guild_id
+                            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
                         let user_id = modal_interaction.user.id;
                         let license_type = license::identify_license(license_key);
 
-                        debug!("got license in {} from <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
+                        debug!(
+                            "got license in {} from <@{}> which looks like {}",
+                            guild_id.get(),
+                            user_id.get(),
+                            license_type
+                        );
 
                         /*
                         Generic fail message. This message is deterministic based solely on the user-provided string,
@@ -185,14 +237,20 @@ async fn event_handler_inner<'a>(
                         */
                         let send_fail_message = || async {
                             if license_type.is_license() {
-                                debug!("failed to verify license in {} for <@{}> which looks like {}", guild_id.get(), user_id.get(), license_type);
+                                debug!(
+                                    "failed to verify license in {} for <@{}> which looks like {}",
+                                    guild_id.get(),
+                                    user_id.get(),
+                                    license_type
+                                );
                             } else {
                                 // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
                                 debug!("failed to verify license \"{}\" in {} for <@{}> which looks like {}", license_key, guild_id.get(), user_id.get(), license_type);
                             }
 
                             let description = if license_type.is_jinxxy_license() {
-                                "The provided license key was not valid or is already in use".to_string()
+                                "The provided license key was not valid or is already in use"
+                                    .to_string()
                             } else {
                                 format!(
                                     "The provided license key was not valid or is already in use.\n\
@@ -204,8 +262,7 @@ async fn event_handler_inner<'a>(
                                 .title("Registration Failure")
                                 .description(description)
                                 .color(Colour::RED);
-                            let edit = EditInteractionResponse::default()
-                                .embed(embed);
+                            let edit = EditInteractionResponse::default().embed(embed);
                             modal_interaction.edit_response(context, edit).await?;
                             Ok::<(), Error>(())
                         };
@@ -219,14 +276,25 @@ async fn event_handler_inner<'a>(
                                 None
                             };
                             if let Some(license_info) = license_response {
-                                let member = modal_interaction.member.as_ref().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+                                let member = modal_interaction
+                                    .member
+                                    .as_ref()
+                                    .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-                                let (activations, mut validation) = if license_info.activations == 0 {
+                                let (activations, mut validation) = if license_info.activations == 0
+                                {
                                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
                                     (None, Default::default())
                                 } else {
-                                    let activations = jinxxy::get_license_activations(&api_key, &license_info.license_id).await?;
-                                    let validation = license::validate_jinxxy_license_activation(user_id, &activations);
+                                    let activations = jinxxy::get_license_activations(
+                                        &api_key,
+                                        &license_info.license_id,
+                                    )
+                                    .await?;
+                                    let validation = license::validate_jinxxy_license_activation(
+                                        user_id,
+                                        &activations,
+                                    );
                                     (Some(activations), validation)
                                 };
 
@@ -235,18 +303,30 @@ async fn event_handler_inner<'a>(
                                     // some other user has already activated this license. This is the NORMAL fail case. The other fail cases are abnormal.
 
                                     // send a notification to the guild owner bot log if it's set up for this guild
-                                    if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                    if let Some(log_channel) =
+                                        data.db.get_log_channel(guild_id).await?
+                                    {
                                         let message = if validation.locked {
                                             format!("<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.", user_id.get())
                                         } else {
                                             let mut message = format!("<@{}> attempted to activate a license that has already been used by:", user_id.get());
-                                            activations.iter()
+                                            activations
+                                                .iter()
                                                 .flat_map(|vec| vec.iter())
-                                                .flat_map(|activation| activation.try_into_user_id())
-                                                .for_each(|user_id| message.push_str(format!("\n- <@{}>", user_id).as_str()));
+                                                .flat_map(|activation| {
+                                                    activation.try_into_user_id()
+                                                })
+                                                .for_each(|user_id| {
+                                                    message.push_str(
+                                                        format!("\n- <@{}>", user_id).as_str(),
+                                                    )
+                                                });
                                             message
                                         };
-                                        info!("in {} for license id {}, {}", guild_id, license_info.license_id, message);
+                                        info!(
+                                            "in {} for license id {}, {}",
+                                            guild_id, license_info.license_id, message
+                                        );
                                         let embed = CreateEmbed::default()
                                             .title("Activation Attempt Failed")
                                             .description(message)
@@ -268,10 +348,29 @@ async fn event_handler_inner<'a>(
                                         true
                                     } else {
                                         // we aren't activated, so we need to create the activation... and then check again to prevent race conditions
-                                        let new_activation_id = jinxxy::create_license_activation(&api_key, &license_info.license_id, user_id.get()).await?;
-                                        data.db.activate_license(guild_id, license_info.license_id.clone(), new_activation_id.clone(), user_id.get()).await?;
-                                        let activations = jinxxy::get_license_activations(&api_key, &license_info.license_id).await?;
-                                        validation = license::validate_jinxxy_license_activation(user_id, &activations);
+                                        let new_activation_id = jinxxy::create_license_activation(
+                                            &api_key,
+                                            &license_info.license_id,
+                                            user_id.get(),
+                                        )
+                                        .await?;
+                                        data.db
+                                            .activate_license(
+                                                guild_id,
+                                                license_info.license_id.clone(),
+                                                new_activation_id.clone(),
+                                                user_id.get(),
+                                            )
+                                            .await?;
+                                        let activations = jinxxy::get_license_activations(
+                                            &api_key,
+                                            &license_info.license_id,
+                                        )
+                                        .await?;
+                                        validation = license::validate_jinxxy_license_activation(
+                                            user_id,
+                                            &activations,
+                                        );
 
                                         // log if multiple activations for different users
                                         if validation.multiple {
@@ -287,32 +386,47 @@ async fn event_handler_inner<'a>(
                                         warn!("in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable", guild_id.get(), license_info.license_id);
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
-                                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                        if let Some(log_channel) =
+                                            data.db.get_log_channel(guild_id).await?
+                                        {
                                             let message = format!("<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.", user_id.get());
                                             let embed = CreateEmbed::default()
                                                 .title("Activation Error")
                                                 .description(message)
                                                 .color(Colour::RED);
-                                            let bot_log_message = CreateMessage::default().embed(embed);
-                                            log_channel.send_message(context, bot_log_message).await?;
+                                            let bot_log_message =
+                                                CreateMessage::default().embed(embed);
+                                            log_channel
+                                                .send_message(context, bot_log_message)
+                                                .await?;
                                         }
                                     }
 
                                     if grant_roles {
-                                        let roles = data.db.get_roles(guild_id, license_info.product_id).await?;
+                                        let roles = data
+                                            .db
+                                            .get_roles(guild_id, license_info.product_id)
+                                            .await?;
                                         let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", license_info.product_name);
                                         let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), license_info.product_name);
                                         let mut errors: String = String::new();
                                         for role in roles {
                                             match member.add_role(context, role).await {
                                                 Ok(()) => {
-                                                    let bullet_point = format!("\n- <@&{}>", role.get());
+                                                    let bullet_point =
+                                                        format!("\n- <@&{}>", role.get());
                                                     client_message.push_str(bullet_point.as_str());
                                                     owner_message.push_str(bullet_point.as_str());
                                                 }
                                                 Err(e) => {
-                                                    errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
-                                                    warn!("in {} error granting role: {:?}", guild_id.get(), e);
+                                                    errors.push_str(
+                                                        format!("\n- <@&{}>", role.get()).as_str(),
+                                                    );
+                                                    warn!(
+                                                        "in {} error granting role: {:?}",
+                                                        guild_id.get(),
+                                                        e
+                                                    );
                                                 }
                                             }
                                         }
@@ -335,19 +449,25 @@ async fn event_handler_inner<'a>(
                                         - 3s after a non-acked interaction
                                         - 15m after an acked interaction
                                          */
-                                        let edit = EditInteractionResponse::default()
-                                            .embed(embed);
-                                        let user_notification_result = modal_interaction.edit_response(context, edit).await;
+                                        let edit = EditInteractionResponse::default().embed(embed);
+                                        let user_notification_result =
+                                            modal_interaction.edit_response(context, edit).await;
                                         if let Err(error) = user_notification_result {
-                                            error!("Error notifying user of license activation: {:?}", error);
+                                            error!(
+                                                "Error notifying user of license activation: {:?}",
+                                                error
+                                            );
                                         }
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
-                                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                        if let Some(log_channel) =
+                                            data.db.get_log_channel(guild_id).await?
+                                        {
                                             let embed = CreateEmbed::default()
                                                 .title("License Activation")
                                                 .description(owner_message);
-                                            let bot_log_message = CreateMessage::default().embed(embed);
+                                            let bot_log_message =
+                                                CreateMessage::default().embed(embed);
                                             let bot_log_message = if errors.is_empty() {
                                                 bot_log_message
                                             } else {
@@ -357,7 +477,9 @@ async fn event_handler_inner<'a>(
                                                     .color(Colour::RED);
                                                 bot_log_message.embed(error_embed)
                                             };
-                                            log_channel.send_message(context, bot_log_message).await?;
+                                            log_channel
+                                                .send_message(context, bot_log_message)
+                                                .await?;
                                         }
                                     } else {
                                         // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
@@ -373,8 +495,7 @@ async fn event_handler_inner<'a>(
                                 .title("Jinx Misconfiguration")
                                 .description("Jinxxy API key is not set: please contact the server administrator for support.")
                                 .color(Colour::RED);
-                            let edit = EditInteractionResponse::default()
-                                .embed(embed);
+                            let edit = EditInteractionResponse::default().embed(embed);
                             modal_interaction.edit_response(context, edit).await?;
                         }
                     } else {
@@ -383,15 +504,16 @@ async fn event_handler_inner<'a>(
                             .title("Registration Failure")
                             .description("You must provide a license key")
                             .color(Colour::RED);
-                        let edit = EditInteractionResponse::default()
-                            .embed(embed);
+                        let edit = EditInteractionResponse::default().embed(embed);
                         modal_interaction.edit_response(context, edit).await?;
                     }
                 }
                 _ => {}
             }
         }
-        FullEvent::InteractionCreate { interaction: Interaction::Command(command_interaction) } => {
+        FullEvent::InteractionCreate {
+            interaction: Interaction::Command(command_interaction),
+        } => {
             debug!(
                 "command \"{}\" invoked in {:?} by <@{}>",
                 command_interaction.data.name,

@@ -41,7 +41,11 @@ impl From<License> for super::LicenseInfo {
             username: license.user.username,
             product_id: license.inventory_item.item.id,
             product_name: license.inventory_item.item.name,
-            product_version_id: license.inventory_item.item.version.map(|version| version.id),
+            product_version_id: license
+                .inventory_item
+                .item
+                .version
+                .map(|version| version.id),
             activations: license.activations.total_count,
         }
     }
@@ -62,7 +66,8 @@ pub struct LicenseInventoryItem {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LicenseInventoryItemItem { // yes I know this name is ridiculous, but it's how the API response is structured ¯\_(ツ)_/¯
+pub struct LicenseInventoryItemItem {
+    // yes I know this name is ridiculous, but it's how the API response is structured ¯\_(ツ)_/¯
     /// Product ID
     id: String,
     /// Product Name
@@ -111,7 +116,9 @@ impl AuthUser {
 
     /// Check if this API key has all the required scopes
     pub fn has_required_scopes(&self) -> bool {
-        self.has_scope_licenses_read() && self.has_scope_licenses_write() && self.has_scope_products_read()
+        self.has_scope_licenses_read()
+            && self.has_scope_licenses_write()
+            && self.has_scope_products_read()
     }
 
     /// Check if this API key has the `products_read` scope
@@ -153,7 +160,8 @@ impl GetUsername for AuthUser {
 
 impl GetProfileImageUrl for AuthUser {
     fn profile_image_url(&self) -> Option<&str> {
-        self.profile_image.as_ref()
+        self.profile_image
+            .as_ref()
             .map(|inner| inner.url.as_str())
             .filter(|url| !url.is_empty())
     }
@@ -161,7 +169,9 @@ impl GetProfileImageUrl for AuthUser {
 
 impl From<AuthUser> for super::DisplayUser {
     fn from(mut auth_user: AuthUser) -> Self {
-        let profile_image_url = auth_user.profile_image.take()
+        let profile_image_url = auth_user
+            .profile_image
+            .take()
             .map(|profile_image| profile_image.url)
             .filter(|url| !url.is_empty());
         Self {
@@ -221,7 +231,9 @@ pub struct ProductList {
 
 impl From<ProductList> for Vec<PartialProduct> {
     fn from(product_list: ProductList) -> Self {
-        product_list.results.into_iter()
+        product_list
+            .results
+            .into_iter()
             .map(|item| item.into())
             .collect()
     }
@@ -316,13 +328,15 @@ impl JinxxyError {
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
     pub fn looks_like_403(&self) -> bool {
-        self.status_code == 403 || (self.error == "Bad Request" && self.message == "You are not authorized.")
+        self.status_code == 403
+            || (self.error == "Bad Request" && self.message == "You are not authorized.")
     }
 
     /// Check if an error looks like a 404.
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
     pub fn looks_like_404(&self) -> bool {
-        self.status_code == 404 || (self.error == "Bad Request" && self.message == "Resource not found.")
+        self.status_code == 404
+            || (self.error == "Bad Request" && self.message == "Resource not found.")
     }
 }

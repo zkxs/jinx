@@ -3,8 +3,8 @@
 
 mod cache;
 mod commands;
-mod event_handler;
 mod error_handler;
+mod event_handler;
 pub mod util;
 
 use crate::bot::cache::ApiCache;
@@ -23,18 +23,14 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 /// Message shown to admins when the Jinxxy API key is missing
-pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
+pub static MISSING_API_KEY_MESSAGE: &str =
+    "Jinxxy API key is not set: please use the `/init` command to set it.";
 
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
 /// commands to be installed globally
-static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
-    vec![
-        help(),
-        init(),
-        version(),
-    ]
-});
+static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
+    LazyLock::new(|| vec![help(), init(), version()]);
 
 /// commands to be installed only after successful Jinxxy init
 static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
@@ -111,11 +107,10 @@ pub async fn run_bot() -> Result<(), Error> {
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },
-            on_error: |e| {
-                Box::pin(error_handler(e))
-            },
+            on_error: |e| Box::pin(error_handler(e)),
             initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
-            prefix_options: PrefixFrameworkOptions { // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
+            prefix_options: PrefixFrameworkOptions {
+                // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
                 prefix: None,
                 additional_prefixes: Vec::new(),
                 dynamic_prefix: None,
@@ -137,7 +132,8 @@ pub async fn run_bot() -> Result<(), Error> {
             Box::pin(async move {
                 let db = Arc::new(db);
                 debug!("registering global commands…");
-                let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
+                let commands_to_create =
+                    poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
                 const SECONDS_PER_MINUTE: u64 = 60;
@@ -182,10 +178,7 @@ pub async fn run_bot() -> Result<(), Error> {
 
                 debug!("framework setup complete");
 
-                Ok(Data {
-                    db,
-                    api_cache,
-                })
+                Ok(Data { db, api_cache })
             })
         })
         .build();
@@ -194,7 +187,8 @@ pub async fn run_bot() -> Result<(), Error> {
 
     let mut client = serenity::ClientBuilder::new(discord_token, intents)
         .framework(framework)
-        .await.unwrap();
+        .await
+        .unwrap();
 
     debug!("client built. Starting…");
 

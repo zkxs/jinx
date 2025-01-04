@@ -38,11 +38,14 @@ async fn main() -> ExitCode {
     let cli_args = JinxArgs::parse();
     match cli_args.command {
         Some(cli_args::Command::Init { discord_token }) => {
-            let discord_token = discord_token
-                .or_else(|| std::env::var("DISCORD_TOKEN").ok());
+            let discord_token = discord_token.or_else(|| std::env::var("DISCORD_TOKEN").ok());
             if let Some(discord_token) = discord_token {
-                let db = db::JinxDb::open().await.unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
-                db.set_discord_token(discord_token).await.expect("Failed to set discord token");
+                let db = db::JinxDb::open()
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
+                db.set_discord_token(discord_token)
+                    .await
+                    .expect("Failed to set discord token");
                 ExitCode::SUCCESS
             } else {
                 eprintln!("discord token must be provided either via command-line parameter or DISCORD_TOKEN environment variable");
@@ -54,18 +57,31 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(cli_args::Command::Owner(cli_args::OwnerArgs { command })) => {
-            let db = db::JinxDb::open().await.unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
+            let db = db::JinxDb::open()
+                .await
+                .unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
             match command {
                 OwnerCommand::Add { discord_id } => {
-                    let discord_id = discord_id.parse().unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
-                    db.add_owner(discord_id).await.unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
+                    let discord_id = discord_id
+                        .parse()
+                        .unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
+                    db.add_owner(discord_id)
+                        .await
+                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
                 }
                 OwnerCommand::Rm { discord_id } => {
-                    let discord_id = discord_id.parse().unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
-                    db.delete_owner(discord_id).await.unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
+                    let discord_id = discord_id
+                        .parse()
+                        .unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
+                    db.delete_owner(discord_id)
+                        .await
+                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
                 }
                 OwnerCommand::Ls => {
-                    let owners = db.get_owners().await.unwrap_or_else(|e| panic!("{}: {:?}", DB_READ_ERROR_MESSAGE, e));
+                    let owners = db
+                        .get_owners()
+                        .await
+                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_READ_ERROR_MESSAGE, e));
                     owners.into_iter().for_each(|id| println!("{}", id));
                 }
             }
@@ -74,18 +90,23 @@ async fn main() -> ExitCode {
         None => {
             // Init logging
             tracing_subscriber::fmt()
-                .with_env_filter(EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").unwrap())
+                .with_env_filter(
+                    EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").unwrap(),
+                )
                 .init();
 
-            info!("starting {} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+            info!(
+                "starting {} {}",
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            );
 
             let result = Toplevel::new(|subsystem| async move {
                 subsystem.start(SubsystemBuilder::new("Discord bot", bot_subsystem));
             })
-                .catch_signals()
-                .handle_shutdown_requests(Duration::from_millis(1000))
-                .await;
-
+            .catch_signals()
+            .handle_shutdown_requests(Duration::from_millis(1000))
+            .await;
 
             if SHOULD_RESTART.load(atomic::Ordering::Acquire) {
                 info!("restarting now: {:?}", result);

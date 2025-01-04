@@ -15,9 +15,12 @@ use tracing::debug;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-static GLOBAL_JINXXY_API_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(
-    r"^sk_[a-f0-9]{32}$", // jinxxy API key `sk_9bba2064ee8c20aa4fd6b015eed2001a`
-).unwrap()); // in case you are wondering the above is not a real key: it's only an example
+static GLOBAL_JINXXY_API_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^sk_[a-f0-9]{32}$", // jinxxy API key `sk_9bba2064ee8c20aa4fd6b015eed2001a`
+    )
+    .unwrap()
+}); // in case you are wondering the above is not a real key: it's only an example
 
 thread_local! {
     // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
@@ -30,9 +33,7 @@ thread_local! {
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn help(
-    context: Context<'_>,
-) -> Result<(), Error> {
+pub(in crate::bot) async fn help(context: Context<'_>) -> Result<(), Error> {
     let embed = CreateEmbed::default()
         .title("Jinx Help")
         .description(
@@ -40,9 +41,7 @@ pub(in crate::bot) async fn help(
             For documentation, see https://github.com/zkxs/jinx\n\
             For support, join https://discord.gg/aKkA6m26f9"
         );
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .embed(embed);
+    let reply = CreateReply::default().ephemeral(true).embed(embed);
     context.send(reply).await?;
     Ok(())
 }
@@ -53,16 +52,12 @@ pub(in crate::bot) async fn help(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn version(
-    context: Context<'_>,
-) -> Result<(), Error> {
+pub(in crate::bot) async fn version(context: Context<'_>) -> Result<(), Error> {
     context.defer_ephemeral().await?;
     let embed = CreateEmbed::default()
         .title("Version Check")
         .description(constants::DISCORD_BOT_VERSION);
-    let reply = CreateReply::default()
-        .ephemeral(true)
-        .embed(embed);
+    let reply = CreateReply::default().ephemeral(true).embed(embed);
     let version_check = update_checker::check_for_update().await;
     let reply = if version_check.is_warn() {
         let embed = CreateEmbed::default()
@@ -96,7 +91,9 @@ pub(in crate::bot) async fn init(
     #[description = "Jinxxy API key"] api_key: Option<String>,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
-    let guild_id = context.guild_id().ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     // handle trimming the string
     let api_key = api_key
@@ -114,7 +111,8 @@ pub(in crate::bot) async fn init(
                 // I suspect this is a discord/serenity/poise bug.
                 // For some <id>, <nonce>, this looks like:
                 // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
-                set_guild_commands(&context, &context.data().db, guild_id, Some(true), None).await?;
+                set_guild_commands(&context, &context.data().db, guild_id, Some(true), None)
+                    .await?;
 
                 success_reply("Success", "Owner commands installed.")
             } else {
@@ -123,7 +121,8 @@ pub(in crate::bot) async fn init(
         } else if api_key == "uninstall_owner_commands" {
             if check_owner(context).await? {
                 context.data().db.set_owner_guild(guild_id, false).await?;
-                set_guild_commands(&context, &context.data().db, guild_id, Some(false), None).await?;
+                set_guild_commands(&context, &context.data().db, guild_id, Some(false), None)
+                    .await?;
                 success_reply("Success", "Owner commands uninstalled.")
             } else {
                 error_reply("Not an owner")
@@ -134,8 +133,13 @@ pub(in crate::bot) async fn init(
                 Ok(auth_user) => {
                     let has_required_scopes = auth_user.has_required_scopes();
                     let display_name = auth_user.into_display_name();
-                    context.data().db.set_jinxxy_api_key(guild_id, api_key.trim().to_string()).await?;
-                    set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
+                    context
+                        .data()
+                        .db
+                        .set_jinxxy_api_key(guild_id, api_key.trim().to_string())
+                        .await?;
+                    set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
+                        .await?;
                     let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
                     if has_required_scopes {
                         reply
@@ -147,16 +151,20 @@ pub(in crate::bot) async fn init(
                         reply.embed(embed)
                     }
                 }
-                Err(e) => {
-                    error_reply(format!("Error verifying API key: {e}"))
-                }
+                Err(e) => error_reply(format!("Error verifying API key: {e}")),
             }
         } else {
             // user has given us some mystery garbage value for their API key
             debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
             error_reply("Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
         }
-    } else if context.data().db.get_jinxxy_api_key(guild_id).await?.is_some() {
+    } else if context
+        .data()
+        .db
+        .get_jinxxy_api_key(guild_id)
+        .await?
+        .is_some()
+    {
         // re-initialize commands but only if API key is already set
         set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
 

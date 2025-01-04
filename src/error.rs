@@ -20,7 +20,7 @@ impl JinxError {
     /// `message` is a message that is safe to display to a user
     pub fn new<T: Into<String>>(message: T) -> Self {
         Self {
-            message: message.into()
+            message: message.into(),
         }
     }
 

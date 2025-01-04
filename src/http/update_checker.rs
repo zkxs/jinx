@@ -76,24 +76,31 @@ pub async fn check_for_update() -> VersionCheck {
 
 /// Get latest release from GitHub
 async fn get_latest_release() -> Result<RemoteVersion, Error> {
-    let request = HTTP_CLIENT.get(UPDATE_CHECK_URI)
+    let request = HTTP_CLIENT
+        .get(UPDATE_CHECK_URI)
         .header(header::ACCEPT, "application/json")
         .build()
         .map_err(|e| format!("Failed to build update check HTTP request: {e}"))?;
 
     let start_time = Instant::now();
-    let response = HTTP_CLIENT.execute(request).await
+    let response = HTTP_CLIENT
+        .execute(request)
+        .await
         .map_err(|e| format!("Update check failed: {e}"))?;
     debug!("update check took {}ms", start_time.elapsed().as_millis());
 
     //TODO: implement etag-based caching
 
     let status = response.status();
-    let result = response.json::<RemoteVersion>().await
-        .map_err(|e| JinxError::new(format!("error parsing github release {} response: {}", status.as_str(), e)))?;
+    let result = response.json::<RemoteVersion>().await.map_err(|e| {
+        JinxError::new(format!(
+            "error parsing github release {} response: {}",
+            status.as_str(),
+            e
+        ))
+    })?;
     Ok(result)
 }
-
 
 /// Status of our code version
 pub enum VersionCheck {
@@ -113,7 +120,13 @@ impl VersionCheck {
 
     /// should this version check result be errored about?
     pub fn is_error(&self) -> bool {
-        matches!(self, VersionCheck::Future(_) | VersionCheck::UnknownRemote | VersionCheck::BadLocal(_) | VersionCheck::BadRemote(_))
+        matches!(
+            self,
+            VersionCheck::Future(_)
+                | VersionCheck::UnknownRemote
+                | VersionCheck::BadLocal(_)
+                | VersionCheck::BadRemote(_)
+        )
     }
 }
 
