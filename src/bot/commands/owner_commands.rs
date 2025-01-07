@@ -50,8 +50,6 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let tokio_num_alive_tasks = tokio_metrics.num_alive_tasks();
     let tokio_global_queue_depth = tokio_metrics.global_queue_depth();
 
-    debug!("tokio metrics: {tokio_metrics:?}");
-
     let message = format!(
         "db_size={db_size} KiB\n\
         users={user_count}\n\
