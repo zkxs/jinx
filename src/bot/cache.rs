@@ -134,7 +134,11 @@ pub struct GuildCache {
 impl GuildCache {
     async fn new(context: &Context<'_>, guild_id: GuildId) -> Result<GuildCache, Error> {
         if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-            let products = jinxxy::get_products(&api_key).await?;
+            let products: Vec<_> = jinxxy::get_products(&api_key)
+                .await?
+                .into_iter()
+                .filter(|product| !product.name.is_empty() && product.name.len() <= 100)
+                .collect();
 
             // check for duplicate product names
             {
