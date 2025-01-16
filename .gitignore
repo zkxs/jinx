@@ -10,3 +10,6 @@ jinx.sqlite
 # IntelliJ stuff
 *.iml
 .idea/
+
+# vi stuff
+.*.swp
