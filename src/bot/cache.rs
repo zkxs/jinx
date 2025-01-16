@@ -40,28 +40,34 @@ impl ApiCache {
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let result = match self.map.entry(guild_id) {
+        let lookup_result = match self.map.entry(guild_id) {
             Entry::Occupied(entry) => {
                 let cache_entry = entry.get();
                 if cache_entry.is_expired() {
                     debug!("updating product cache due to expiry in {}", guild_id.get());
-                    let cache_entry = GuildCache::new(context, guild_id).await?;
-                    let mut entry = entry;
-                    entry.insert(cache_entry);
-                    f(entry.get())
+                    None
                 } else {
-                    f(cache_entry)
+                    Some(entry.get().clone())
                 }
             }
-            Entry::Vacant(entry) => {
+            Entry::Vacant(_entry) => {
                 debug!("initializing product cache in {}", guild_id.get());
-                let cache_entry = GuildCache::new(context, guild_id).await?;
-                let entry_ref = entry.insert(cache_entry);
-                f(entry_ref.value())
+                None
             }
         };
 
-        Ok(result)
+        // purposefully drop dashmap lock across await to avoid deadlocks
+        let guild_cache = if let Some(guild_cache) = lookup_result {
+            // got an unexpired entry
+            guild_cache
+        } else {
+            // expired or vacant entry
+            let guild_cache = GuildCache::new(context, guild_id).await?;
+            self.map.insert(guild_id, guild_cache.clone());
+            guild_cache
+        };
+
+        Ok(f(&guild_cache))
     }
 
     pub fn len(&self) -> usize {
@@ -124,6 +130,7 @@ impl ApiCache {
     }
 }
 
+#[derive(Clone)]
 pub struct GuildCache {
     product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
