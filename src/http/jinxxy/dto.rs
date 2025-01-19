@@ -7,7 +7,7 @@ use crate::http::jinxxy::{GetProfileImageUrl, GetUsername};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{debug, warn};
 
 const DISCORD_PREFIX: &str = "discord_";
 
@@ -192,6 +192,28 @@ pub struct PartialProduct {
     pub id: String,
     /// Product Name
     pub name: String,
+}
+
+impl PartialProduct {
+    /// Fix product name to be compatible with Discord autocomplete
+    pub fn fix_name_for_discord(&mut self) {
+        if (self.name.len() > 100) {
+            debug!("\"{}\".len() > 100; truncating...", self.name);
+
+            // byte len is > 100 so there must be at least one char, so we can disregard that edge case
+
+            // get the index after the 100th) char
+            let last_char_index = self
+                .name
+                .char_indices()
+                .skip(100) // skip to char 101
+                .next()
+                .map(|index| index.0) // start index of char 101 == index after char 100
+                .unwrap_or_else(|| self.name.len()); // index after end of last char
+
+            self.name.truncate(last_char_index);
+        }
+    }
 }
 
 /// In addition to all the fields of [`PartialProduct`], this also contains price and version information

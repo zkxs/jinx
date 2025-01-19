@@ -13,6 +13,7 @@
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
+use crate::http::jinxxy::PartialProduct;
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
 use std::collections::{HashMap, HashSet};
@@ -141,10 +142,14 @@ pub struct GuildCache {
 impl GuildCache {
     async fn new(context: &Context<'_>, guild_id: GuildId) -> Result<GuildCache, Error> {
         if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-            let products: Vec<_> = jinxxy::get_products(&api_key)
+            let products: Vec<PartialProduct> = jinxxy::get_products(&api_key)
                 .await?
                 .into_iter()
-                .filter(|product| !product.name.is_empty() && product.name.len() <= 100)
+                .filter(|product| !product.name.is_empty())
+                .map(|mut product| {
+                    product.fix_name_for_discord();
+                    product
+                })
                 .collect();
 
             // check for duplicate product names
