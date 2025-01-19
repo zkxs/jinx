@@ -545,7 +545,7 @@ pub(in crate::bot) async fn link_product(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context).await?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
 
         let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> =
             HashSet::with_hasher(Default::default());
@@ -612,7 +612,7 @@ pub(in crate::bot) async fn unlink_product(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context).await?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
 
         context
             .data()
@@ -662,7 +662,7 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let assignable_roles = assignable_roles(&context).await?;
+    let assignable_roles = assignable_roles(&context, guild_id).await?;
     let mut links = context.data().db.get_links(guild_id).await?;
     let message = if links.is_empty() {
         "No product→role links configured".to_string()

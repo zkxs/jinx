@@ -14,7 +14,7 @@ use serenity::{
     MessageUpdateEvent, Role, RoleId,
 };
 use std::collections::HashSet;
-use tracing::warn;
+use tracing::{error, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -78,46 +78,45 @@ pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String
 
 pub(super) async fn assignable_roles(
     context: &Context<'_>,
+    guild_id: GuildId,
 ) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
-    let guild_id = context
-        .guild_id()
-        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let bot_id = context.framework().bot_id;
-    let bot_member = guild_id.member(context, bot_id).await?;
+    let bot_member = guild_id.current_user_member(context).await?;
 
     // Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
     // This is nonsensical because I want to see if a member has Manage Roles, which cannot be overridden at the channel level.
-    // I'm forced to pass a channel in regardless, here.
-    let channel = context
-        .guild_channel()
-        .await
-        .ok_or_else(|| JinxError::new("expected to be in a guild channel"))?;
+    // It also causes problems, as `context.guild_channel()` fails in threads and stage text channels: https://github.com/zkxs/jinx/issues/8
+    #[allow(deprecated)]
+    let permissions = bot_member.permissions(context)?;
 
-    let assignable_roles = {
-        // for some reason if the scope of `guild_ref` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
-        let guild_ref = context
+    let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
+        // Despite the above deprecation text I pass a channel in regardless, here.
+        // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
+        let guild = context
             .guild()
-            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let permissions = guild_ref.user_permissions_in(&channel, &bot_member);
-        if permissions.manage_roles() {
-            let highest_role = guild_ref.member_highest_role(&bot_member);
-            if let Some(highest_role) = highest_role {
-                let everyone_id = guild_ref.role_by_name("@everyone").map(|role| role.id);
-                let mut roles: Vec<&Role> = guild_ref
-                    .roles
-                    .values()
-                    .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
-                    .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
-                    .filter(|role| !role.managed) // managed roles can't be managed
-                    .collect();
-                roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
-                roles.into_iter().map(|role| role.id).collect()
-            } else {
-                Default::default()
-            }
+            .ok_or(JinxError::new("expected to be in a guild"))?;
+        let highest_role = guild.member_highest_role(&bot_member);
+        if let Some(highest_role) = highest_role {
+            let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
+            let mut roles: Vec<&Role> = guild
+                .roles
+                .values()
+                .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
+                .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
+                .filter(|role| !role.managed) // managed roles can't be managed
+                .collect();
+            roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
+            roles.into_iter().map(|role| role.id).collect()
         } else {
+            // bot has no roles (this should not be possible)
+            error!(
+                "in {} bot has manage role perms but no roles!",
+                guild_id.get()
+            );
             Default::default()
         }
+    } else {
+        // bot has no manage role perms
+        Default::default()
     };
 
     Ok(assignable_roles)
