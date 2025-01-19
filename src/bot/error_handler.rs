@@ -155,7 +155,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
                     );
                 }
 
-                let result = context.send(error_reply(format!("Error: {}. Additional data has been sent to the log. Please report this to the bot developer with error code `{}`", error.title, nonce))).await;
+                let result = context.send(error_reply(error.title, format!("An unexpected error has occurred. Please report this to the bot developer with error code `{}`\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>).", nonce))).await;
                 if let Err(e) = result {
                     error!("Error sending error message: {:?}", e);
                 }

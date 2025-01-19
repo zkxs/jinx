@@ -116,7 +116,7 @@ pub(in crate::bot) async fn init(
 
                 success_reply("Success", "Owner commands installed.")
             } else {
-                error_reply("Not an owner")
+                error_reply("Error Installing Owner Commands", "Not an owner")
             }
         } else if api_key == "uninstall_owner_commands" {
             if check_owner(context).await? {
@@ -125,7 +125,7 @@ pub(in crate::bot) async fn init(
                     .await?;
                 success_reply("Success", "Owner commands uninstalled.")
             } else {
-                error_reply("Not an owner")
+                error_reply("Error Uninstalling Owner Commands", "Not an owner")
             }
         } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
             // normal /init <key> use ends up in this branch
@@ -151,12 +151,15 @@ pub(in crate::bot) async fn init(
                         reply.embed(embed)
                     }
                 }
-                Err(e) => error_reply(format!("Error verifying API key: {e}")),
+                Err(e) => error_reply(
+                    "Error Initializing Jinx",
+                    format!("Error verifying API key: {e}"),
+                ),
             }
         } else {
             // user has given us some mystery garbage value for their API key
             debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
-            error_reply("Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
+            error_reply("Error Initializing Jinx","Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
         }
     } else if context
         .data()
@@ -170,7 +173,7 @@ pub(in crate::bot) async fn init(
 
         success_reply("Success", "Commands reinstalled.")
     } else {
-        error_reply("Please provide a Jinxxy API key")
+        error_reply("Error Initializing Jinx", "Please provide a Jinxxy API key")
     };
 
     context.send(reply).await?;

@@ -169,9 +169,9 @@ pub fn success_reply(title: impl Into<String>, message: impl Into<String>) -> Cr
 }
 
 /// Create a simple error reply
-pub fn error_reply(message: impl Into<String>) -> CreateReply {
+pub fn error_reply(title: impl Into<String>, message: impl Into<String>) -> CreateReply {
     let embed = CreateEmbed::default()
-        .title("Error")
+        .title(title)
         .description(message)
         .color(Colour::RED);
     CreateReply::default().ephemeral(true).embed(embed)

@@ -108,7 +108,7 @@ pub(in crate::bot) async fn set_log_channel(
         Err(e) => {
             // test log failed, so let the user know
             warn!("Error sending message to test log channel: {:?}", e);
-            error_reply(format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e))
+            error_reply("Error Setting Log Channel", format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e))
         }
     };
 
@@ -161,12 +161,15 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
 
             if let Err(e) = channel.send_message(context, message).await {
                 warn!("Error in /create_post when sending message: {:?}", e);
-                error_reply("Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.")
+                error_reply("Error Creating Post", "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.")
             } else {
                 success_reply("Success", "Registration post created!")
             }
         }
-        Err(e) => error_reply(format!("Could not get info for your Jinxxy user: {}", e)),
+        Err(e) => error_reply(
+            "Error Creating Post",
+            format!("Could not get info for your Jinxxy user: {}", e),
+        ),
     };
 
     context.send(reply).await?;
@@ -285,7 +288,7 @@ pub async fn user_info(
         };
         success_reply("User Info", message)
     } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        error_reply("Error Getting User Info", MISSING_API_KEY_MESSAGE)
     };
 
     context.send(reply).await?;
@@ -337,10 +340,10 @@ pub async fn deactivate_license(
                 ),
             )
         } else {
-            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Deactivating License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        error_reply("Error Deactivating License", MISSING_API_KEY_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -389,10 +392,10 @@ pub async fn license_info(
             };
             success_reply("License Info", message)
         } else {
-            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Getting License Info", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        error_reply("Error Getting License Info", MISSING_API_KEY_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -435,10 +438,10 @@ pub async fn lock_license(
                 ),
             )
         } else {
-            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Locking License",format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        error_reply("Error Locking License", MISSING_API_KEY_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -490,10 +493,10 @@ pub async fn unlock_license(
 
             success_reply("Success", message)
         } else {
-            error_reply(format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Unlocking License",format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
-        error_reply(MISSING_API_KEY_MESSAGE)
+        error_reply("Error Unlocking License", MISSING_API_KEY_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -578,7 +581,7 @@ pub(in crate::bot) async fn link_product(
             reply
         }
     } else {
-        error_reply("Product not found.")
+        error_reply("Error Linking Product", "Product not found.")
     };
 
     context.send(reply).await?;
@@ -640,7 +643,7 @@ pub(in crate::bot) async fn unlink_product(
             reply
         }
     } else {
-        error_reply("Product not found.")
+        error_reply("Error Unlinking Product", "Product not found.")
     };
 
     context.send(reply).await?;
