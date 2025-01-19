@@ -197,7 +197,7 @@ pub struct PartialProduct {
 impl PartialProduct {
     /// Fix product name to be compatible with Discord autocomplete
     pub fn fix_name_for_discord(&mut self) {
-        if (self.name.len() > 100) {
+        if self.name.len() > 100 {
             debug!("\"{}\".len() > 100; truncating...", self.name);
 
             // byte len is > 100 so there must be at least one char, so we can disregard that edge case
@@ -206,8 +206,7 @@ impl PartialProduct {
             let last_char_index = self
                 .name
                 .char_indices()
-                .skip(100) // skip to char 101
-                .next()
+                .nth(100)
                 .map(|index| index.0) // start index of char 101 == index after char 100
                 .unwrap_or_else(|| self.name.len()); // index after end of last char
 

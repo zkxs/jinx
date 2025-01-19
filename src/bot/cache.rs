@@ -106,10 +106,10 @@ impl ApiCache {
         }
     }
 
-    pub async fn product_names_with_prefix<'a>(
+    pub async fn product_names_with_prefix(
         &self,
         context: &Context<'_>,
-        prefix: &'a str,
+        prefix: &str,
     ) -> Result<Vec<String>, Error> {
         self.get(context, |cache_entry| {
             cache_entry.product_names_with_prefix(prefix).collect()
