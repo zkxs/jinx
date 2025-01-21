@@ -3,6 +3,7 @@
 
 # Config files
 jinx.sqlite
+jinx.sqlite-journal
 
 # Log files
 *.log
