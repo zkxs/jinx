@@ -57,7 +57,8 @@ Finally, back in your Discord server run the following slash commands:
 
 1. Run the `/init <api_key>` command in your Sever and provide your API key. This is one-time setup.
 2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations)
-   to. (You can re-run this command without a channel if you wish to unset your log channel later).
+   to. I recommend you make this channel private so only you and your trusted moderators can see it. You will probably
+   need to grant Jinx permission to send messages to this channel.
 3. Run the `/link_product` command for each Jinxxy product you want to link to a role. Products can grant multiple role:
    run the command more than once to create more links as needed. If you make a mistake, use `/unlink_product` to fix it.
 4. Check your work using `/list_links`
