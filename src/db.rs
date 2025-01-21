@@ -10,7 +10,7 @@ use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 5;
+const SCHEMA_VERSION_VALUE: i32 = 6;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -154,6 +154,12 @@ impl JinxDb {
                         "ALTER TABLE guild ADD COLUMN gumroad_nag_count INTEGER NOT NULL DEFAULT 0",
                         (),
                     )?;
+                }
+
+                // handle schema v5 -> v6 migration
+                if schema_version < 6 {
+                    // add product-version related columns
+                    todo!()
                 }
 
                 // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
