@@ -422,6 +422,19 @@ pub struct ProductVersionId {
     pub product_version_id: Option<String>,
 }
 
+impl ProductVersionId {
+    pub fn display_name(&self) -> String {
+        crate::bot::util::product_display_name(&self.product_id, self.product_version_id.as_deref())
+    }
+
+    pub fn from_product_id(product_id: impl Into<String>) -> ProductVersionId {
+        Self {
+            product_id: product_id.into(),
+            product_version_id: None,
+        }
+    }
+}
+
 trait GetUsername {
     fn username(&self) -> Option<&str>;
 }

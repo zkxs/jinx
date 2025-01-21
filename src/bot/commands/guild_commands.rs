@@ -8,7 +8,7 @@ use crate::bot::util::{
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _, ProductVersionId};
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
@@ -539,13 +539,13 @@ pub(in crate::bot) async fn link_product(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_id = context
+    let product_version_id = context
         .data()
         .api_cache
         .product_name_to_id(&context, &product)
         .await?;
 
-    let reply = if let Some(product_id) = product_id {
+    let reply = if let Some(product_version_id) = product_version_id {
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
@@ -556,13 +556,17 @@ pub(in crate::bot) async fn link_product(
         context
             .data()
             .db
-            .link_product(guild_id, product_id.clone(), role)
+            .link_product(guild_id, product_version_id.product_id.clone(), role)
             .await?;
         if !assignable_roles.contains(&role) && !unassignable_roles.contains(&role) {
             unassignable_roles.insert(role);
         }
 
-        let roles = context.data().db.get_roles(guild_id, product_id).await?;
+        let roles = context
+            .data()
+            .db
+            .get_roles(guild_id, product_version_id.product_id)
+            .await?;
         let mut message_lines = String::new();
         for role in roles {
             message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
@@ -606,13 +610,13 @@ pub(in crate::bot) async fn unlink_product(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_id = context
+    let product_version_id = context
         .data()
         .api_cache
         .product_name_to_id(&context, &product)
         .await?;
 
-    let reply = if let Some(product_id) = product_id {
+    let reply = if let Some(product_version_id) = product_version_id {
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
@@ -621,10 +625,14 @@ pub(in crate::bot) async fn unlink_product(
         context
             .data()
             .db
-            .unlink_product(guild_id, product_id.clone(), role)
+            .unlink_product(guild_id, product_version_id.product_id.clone(), role)
             .await?;
 
-        let roles = context.data().db.get_roles(guild_id, product_id).await?;
+        let roles = context
+            .data()
+            .db
+            .get_roles(guild_id, product_version_id.product_id)
+            .await?;
         let mut message_lines = String::new();
         for role in &roles {
             message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
@@ -681,7 +689,7 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
 
                 for (product_id, role) in &links {
                     let product_name = cache
-                        .product_id_to_name(product_id)
+                        .product_version_id_to_name(&ProductVersionId::from_product_id(product_id)) //TODO: this involves some nasty cloning and can perhaps be optimized
                         .map(|name| format!("\"{}\"", name))
                         .unwrap_or_else(|| product_id.clone());
                     if current_role != Some(role) {

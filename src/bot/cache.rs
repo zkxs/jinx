@@ -10,6 +10,7 @@
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 //! I can clear the cache with some kind of background task that checks timestamps ever 60s or so.
 
+use crate::bot::util::{product_display_name, truncate_string_for_discord_autocomplete};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -129,32 +130,6 @@ impl ApiCache {
     }
 }
 
-/// Get a display name from a product name and a version name
-fn product_display_name(product_name: &str, product_version_name: Option<&str>) -> String {
-    let mut name = match product_version_name {
-        Some(product_version_name) => format!("{product_name} {product_version_name}"),
-        None => product_name.to_string(),
-    };
-
-    // truncate name to meet discord's 100 character autocomplete limit
-    if name.len() > 100 {
-        debug!("\"{}\".len() > 100; truncating…", name);
-
-        // byte len is > 100 so there must be at least one char, so we can disregard that edge case
-
-        // get the index after the 100th) char
-        let last_char_index = name
-            .char_indices()
-            .nth(100)
-            .map(|index| index.0) // start index of char 101 == index after char 100
-            .unwrap_or_else(|| name.len()); // index after end of last char
-
-        name.truncate(last_char_index);
-    }
-
-    name
-}
-
 #[derive(Clone)]
 pub struct GuildCache {
     /// id to name
@@ -185,14 +160,18 @@ impl GuildCache {
                         product_id: product.id.clone(),
                         product_version_id: None,
                     };
-                    let null_name = product_display_name(&product.name, None);
+
+                    let null_name = truncate_string_for_discord_autocomplete(product_display_name(
+                        &product.name,
+                        None,
+                    ));
                     let null_iter = std::iter::once((null_id, null_name));
                     let iter = product.versions.into_iter().map(move |version| {
                         let id = ProductVersionId {
                             product_id: product.id.clone(),
                             product_version_id: Some(version.id),
                         };
-                        let name = product_display_name(&product.name, Some(&version.name));
+                        let name = truncate_string_for_discord_autocomplete(id.display_name());
                         (id, name)
                     });
                     null_iter.chain(iter)
@@ -250,9 +229,12 @@ impl GuildCache {
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
-    pub fn product_id_to_name(&self, product_id: &ProductVersionId) -> Option<&str> {
+    pub fn product_version_id_to_name(
+        &self,
+        product_version_id: &ProductVersionId,
+    ) -> Option<&str> {
         self.product_id_to_name_map
-            .get(product_id)
+            .get(product_version_id)
             .map(|str| str.as_str())
     }
 

@@ -18,7 +18,7 @@ use serenity::{
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -180,6 +180,34 @@ pub fn error_reply(title: impl Into<String>, message: impl Into<String>) -> Crea
         .description(message)
         .color(Colour::RED);
     CreateReply::default().ephemeral(true).embed(embed)
+}
+
+/// Get a display name from a product name and a version name
+pub fn product_display_name(product_name: &str, product_version_name: Option<&str>) -> String {
+    match product_version_name {
+        Some(product_version_name) => format!("{product_name} {product_version_name}"),
+        None => product_name.to_string(),
+    }
+}
+
+/// truncate a string to meet discord's 100 character autocomplete limit
+pub fn truncate_string_for_discord_autocomplete(mut string: String) -> String {
+    if string.len() > 100 {
+        debug!("\"{}\".len() > 100; truncating…", string);
+
+        // byte len is > 100 so there must be at least one char, so we can disregard that edge case
+
+        // get the index after the 100th) char
+        let last_char_index = string
+            .char_indices()
+            .nth(100)
+            .map(|index| index.0) // start index of char 101 == index after char 100
+            .unwrap_or_else(|| string.len()); // index after end of last char
+
+        string.truncate(last_char_index);
+    }
+
+    string
 }
 
 pub trait MessageExtensions {
