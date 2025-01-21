@@ -695,14 +695,18 @@ impl JinxDb {
     }
 
     /// Get tuples of `(guild_id, log_channel_id)` with pending gumroad nag
-    pub async fn get_guilds_pending_gumroad_nag(&self) -> Result<Vec<(u64, u64)>> {
+    pub async fn get_guilds_pending_gumroad_nag(&self) -> Result<Vec<GuildGumroadInfo>> {
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare_cached(
-                    "SELECT guild_id, log_channel_id FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)",
+                    "SELECT guild_id, log_channel_id, gumroad_failure_count FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)",
                 )?;
                 let mapped_rows = statement
-                    .query_map((), |row| Ok((row.get(0)?, row.get(1)?)))?;
+                    .query_map((), |row| Ok(GuildGumroadInfo {
+                        guild_id: GuildId::new(row.get(0)?),
+                        log_channel_id: ChannelId::new(row.get(1)?),
+                        gumroad_failure_count: row.get(2)?,
+                    }))?;
                 let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
                 for row in mapped_rows {
                     vec.push(row?);
@@ -741,4 +745,11 @@ impl JinxDb {
             })
             .await
     }
+}
+
+/// Helper struct returned by [`JinxDb::get_guilds_pending_gumroad_nag`]
+pub struct GuildGumroadInfo {
+    pub guild_id: GuildId,
+    pub log_channel_id: ChannelId,
+    pub gumroad_failure_count: u64,
 }

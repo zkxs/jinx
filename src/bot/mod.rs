@@ -14,7 +14,7 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use commands::*;
 use poise::{serenity_prelude as serenity, Command, PrefixFrameworkOptions};
-use serenity::GatewayIntents;
+use serenity::{Colour, CreateEmbed, CreateMessage, GatewayIntents};
 use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info};
@@ -77,11 +77,16 @@ struct Data {
 pub async fn run_bot() -> Result<(), Error> {
     let db = JinxDb::open().await?;
     debug!("DB opened");
+
     let discord_token = db.get_discord_token().await?
         .ok_or_else(|| JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
     let intents = GatewayIntents::GUILDS
         .union(GatewayIntents::GUILD_MESSAGES)
         .union(GatewayIntents::DIRECT_MESSAGES);
+
+    // we need this thing all over the place, so wrap it in an Arc
+    let db = Arc::new(db);
+    let framework_db_clone = db.clone();
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -136,7 +141,7 @@ pub async fn run_bot() -> Result<(), Error> {
         })
         .setup(|ctx, _ready, _framework| {
             Box::pin(async move {
-                let db = Arc::new(db);
+                let db = framework_db_clone;
                 debug!("registering global commands…");
                 let commands_to_create =
                     poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
@@ -144,12 +149,12 @@ pub async fn run_bot() -> Result<(), Error> {
 
                 // set up the task to periodically optimize the DB
                 {
-                    let db_clone = db.clone();
+                    let db = db.clone();
                     tokio::task::spawn(async move {
                         loop {
                             tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
                             let start = Instant::now();
-                            if let Err(e) = db_clone.optimize().await {
+                            if let Err(e) = db.optimize().await {
                                 error!("Error optimizing DB: {:?}", e);
                             }
                             let elapsed = start.elapsed();
@@ -162,12 +167,12 @@ pub async fn run_bot() -> Result<(), Error> {
 
                 // set up the task to periodically clean the API cache
                 {
-                    let api_cache_clone = api_cache.clone();
+                    let api_cache = api_cache.clone();
                     tokio::task::spawn(async move {
                         loop {
                             tokio::time::sleep(Duration::from_secs(5 * SECONDS_PER_MINUTE)).await;
                             let start = Instant::now();
-                            api_cache_clone.clean();
+                            api_cache.clean();
                             let elapsed = start.elapsed();
                             const EXPECTED_DURATION: Duration = Duration::from_millis(5);
                             if elapsed > EXPECTED_DURATION {
@@ -193,22 +198,84 @@ pub async fn run_bot() -> Result<(), Error> {
 
     // set up the task to periodically perform gumroad nags
     {
-        //TODO: get framework reference
+        let db = db.clone();
+        let http = client.http.clone();
+        let cache = client.cache.clone();
         tokio::task::spawn(async move {
             // initial delay of 60 seconds before the first nag wave
             let mut duration = Duration::from_secs(60);
             loop {
                 tokio::time::sleep(duration).await;
+
                 // wait 1 hour for each subsequent nag wave
                 duration = Duration::from_secs(SECONDS_PER_HOUR);
                 let start = Instant::now();
 
-                //TODO: perform gumroad nags
+                let mut sent_nag_count: usize = 0;
+                match db.get_guilds_pending_gumroad_nag().await {
+                    Ok(pending_nags) => {
+                        for pending_nag in pending_nags {
+                            //TODO: remove this block of code to enable this feature for all guilds: not just test guilds
+                            if !db
+                                .is_test_guild(pending_nag.guild_id)
+                                .await
+                                .unwrap_or(false)
+                            {
+                                continue;
+                            }
+
+                            let message = format!(
+                                "Jinx has detected that a significant number ({}) of your users are providing Gumroad license keys to Jinx. \
+                                This may indicate confusion between GumCord and Jinx. To improve your user experience, please consider adding \
+                                documentation messages in your server to help direct users to the correct bots. **This is the only time this alert \
+                                will appear**: in the future you can use the `/stats` command to view the current count of failed Gumroad activation \
+                                attempts Jinx has seen.",
+                                pending_nag.gumroad_failure_count
+                            );
+                            let embed = CreateEmbed::default()
+                                .title("Jinxxy/Gumroad Confusion Alert")
+                                .description(message)
+                                .color(Colour::ORANGE);
+                            let message = CreateMessage::default().embed(embed);
+                            match pending_nag
+                                .log_channel_id
+                                .send_message((&cache, http.as_ref()), message)
+                                .await
+                            {
+                                Ok(_message) => {
+                                    match db.increment_gumroad_nag_count(pending_nag.guild_id).await
+                                    {
+                                        Ok(()) => {
+                                            sent_nag_count += 1;
+                                        }
+                                        Err(e) => {
+                                            error!("failed to increment gumroad nag count for {}: {:?}", pending_nag.guild_id.get(), e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "failed to send nag message for {}: {:?}",
+                                        pending_nag.guild_id.get(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error getting pending gumroad nags: {:?}", e);
+                    }
+                }
 
                 let elapsed = start.elapsed();
                 const EXPECTED_DURATION: Duration = Duration::from_millis(5);
                 if elapsed > EXPECTED_DURATION {
-                    info!("sent gumroad nags in {}ms", elapsed.as_millis());
+                    info!(
+                        "sent {} gumroad nags in {}ms",
+                        sent_nag_count,
+                        elapsed.as_millis()
+                    );
                 }
             }
         });

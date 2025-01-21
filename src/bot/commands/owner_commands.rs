@@ -327,17 +327,41 @@ pub(in crate::bot) async fn verify_guild(
                     };
 
                     let guild_embed = {
+                        let guild_name = guild.name;
+                        let guild_description = guild.description.unwrap_or_default();
                         let log_channel =
                             context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
+                        let license_activation_count = context
+                            .data()
+                            .db
+                            .guild_license_activation_count(guild_id)
+                            .await?;
+                        let gumroad_failure_count = context
+                            .data()
+                            .db
+                            .get_gumroad_failure_count(guild_id)
+                            .await?
+                            .unwrap_or(0);
+                        let gumroad_nag_count = context
+                            .data()
+                            .db
+                            .get_gumroad_nag_count(guild_id)
+                            .await?
+                            .unwrap_or(0);
+                        let product_role_count =
+                            context.data().db.guild_product_role_count(guild_id).await?;
                         let guild_embed = CreateEmbed::default()
                             .title("Guild Information")
                             .description(format!(
-                                "Name: {}\n\
-                                Description: {:?}\n\
-                                Log channel: {}\n\
-                                Test: {}",
-                                guild.name, guild.description, log_channel, is_test
+                                "Name={guild_name}\n\
+                                Description={guild_description}\n\
+                                Log channel={log_channel}\n\
+                                Test={is_test}\n\
+                                license activations={license_activation_count}\n\
+                                failed gumroad licenses={gumroad_failure_count}\n\
+                                gumroad nags={gumroad_nag_count}\n\
+                                product→role links={product_role_count}"
                             ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)
