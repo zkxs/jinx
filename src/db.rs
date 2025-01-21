@@ -50,30 +50,30 @@ impl JinxDb {
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS \"settings\" ( \
-                key                    TEXT PRIMARY KEY, \
-                value                  ANY \
-            ) STRICT",
+                             key                    TEXT PRIMARY KEY, \
+                             value                  ANY \
+                         ) STRICT",
                     (),
                 )?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS guild ( \
-                guild_id               INTEGER PRIMARY KEY, \
-                jinxxy_api_key         TEXT, \
-                log_channel_id         INTEGER, \
-                test                   INTEGER NOT NULL DEFAULT 0, \
-                owner                  INTEGER NOT NULL DEFAULT 0 \
-            ) STRICT",
+                             guild_id               INTEGER PRIMARY KEY, \
+                             jinxxy_api_key         TEXT, \
+                             log_channel_id         INTEGER, \
+                             test                   INTEGER NOT NULL DEFAULT 0, \
+                             owner                  INTEGER NOT NULL DEFAULT 0 \
+                         ) STRICT",
                     (),
                 )?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product_role ( \
-                guild_id               INTEGER NOT NULL, \
-                product_id             TEXT NOT NULL, \
-                role_id                INTEGER NOT NULL, \
-                PRIMARY KEY            (guild_id, product_id, role_id) \
-            ) STRICT",
+                             guild_id               INTEGER NOT NULL, \
+                             product_id             TEXT NOT NULL, \
+                             role_id                INTEGER NOT NULL, \
+                             PRIMARY KEY            (guild_id, product_id, role_id) \
+                         ) STRICT",
                     (),
                 )?;
 
@@ -84,19 +84,19 @@ impl JinxDb {
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS license_activation ( \
-                guild_id               INTEGER NOT NULL, \
-                license_id             TEXT NOT NULL, \
-                license_activation_id  TEXT NOT NULL, \
-                user_id                INTEGER NOT NULL, \
-                PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id) \
-            ) STRICT",
+                             guild_id               INTEGER NOT NULL, \
+                             license_id             TEXT NOT NULL, \
+                             license_activation_id  TEXT NOT NULL, \
+                             user_id                INTEGER NOT NULL, \
+                             PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id) \
+                         ) STRICT",
                     (),
                 )?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS \"owner\" ( \
-                owner_id               INTEGER PRIMARY KEY \
-            ) STRICT",
+                             owner_id               INTEGER PRIMARY KEY \
+                         ) STRICT",
                     (),
                 )?;
 
