@@ -261,6 +261,7 @@ pub async fn run_bot() -> Result<(), Error> {
                                     );
                                 }
                             }
+                            tokio::time::sleep(Duration::from_millis(50)).await; // rate limit to 20 TPS
                         }
                     }
                     Err(e) => {
