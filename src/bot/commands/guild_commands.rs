@@ -40,17 +40,18 @@ pub(in crate::bot) async fn stats(context: Context<'_>) -> Result<(), Error> {
         .data()
         .db
         .guild_license_activation_count(guild_id)
-        .await
-        .unwrap();
-    let product_role_count = context
+        .await?;
+    let gumroad_failure_count = context
         .data()
         .db
-        .guild_product_role_count(guild_id)
-        .await
-        .unwrap();
+        .get_gumroad_failure_count(guild_id)
+        .await?
+        .unwrap_or(0);
+    let product_role_count = context.data().db.guild_product_role_count(guild_id).await?;
 
     let message = format!(
         "license activations={license_activation_count}\n\
+        failed gumroad licenses={gumroad_failure_count}\n\
         product→role links={product_role_count}"
     );
     let embed = CreateEmbed::default()

@@ -7,6 +7,7 @@ use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
+use crate::license::LicenseType;
 use poise::serenity_prelude::{
     ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText,
     CreateInteractionResponse, CreateMessage, CreateModal, EditInteractionResponse, FullEvent,
@@ -246,6 +247,10 @@ async fn event_handler_inner<'a>(
                             } else {
                                 // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
                                 debug!("failed to verify license \"{}\" in {} for <@{}> which looks like {}", license_key, guild_id.get(), user_id.get(), license_type);
+                            }
+
+                            if matches!(license_type, LicenseType::Gumroad) {
+                                data.db.increment_gumroad_failure_count(guild_id).await?;
                             }
 
                             let description = if license_type.is_jinxxy_license() {

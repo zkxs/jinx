@@ -9,7 +9,7 @@ use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 4;
+const SCHEMA_VERSION_VALUE: i32 = 5;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -62,7 +62,9 @@ impl JinxDb {
                              jinxxy_api_key         TEXT, \
                              log_channel_id         INTEGER, \
                              test                   INTEGER NOT NULL DEFAULT 0, \
-                             owner                  INTEGER NOT NULL DEFAULT 0 \
+                             owner                  INTEGER NOT NULL DEFAULT 0, \
+                             gumroad_failure_count  INTEGER NOT NULL DEFAULT 0, \
+                             gumroad_nag_count      INTEGER NOT NULL DEFAULT 0 \
                          ) STRICT",
                     (),
                 )?;
@@ -132,6 +134,19 @@ impl JinxDb {
                 if schema_version < 4 {
                     // "guild.id" column needs to be renamed to "guild_id"
                     connection.execute("ALTER TABLE guild RENAME COLUMN id TO guild_id", ())?;
+                }
+
+                // handle schema v4 -> v5 migration
+                if schema_version < 5 {
+                    // "gumroad_failure_count" and "gumroad_nag_count" columns need to be added to "guild"
+                    connection.execute(
+                        "ALTER TABLE guild ADD COLUMN gumroad_failure_count INTEGER NOT NULL DEFAULT 0",
+                        (),
+                    )?;
+                    connection.execute(
+                        "ALTER TABLE guild ADD COLUMN gumroad_nag_count INTEGER NOT NULL DEFAULT 0",
+                        (),
+                    )?;
                 }
 
                 // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
@@ -645,6 +660,66 @@ impl JinxDb {
                     })
                     .optional()?;
                 Ok(owner.unwrap_or(false))
+            })
+            .await
+    }
+
+    /// Check gumroad failure count for a guild
+    pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> Result<Option<u64>> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT gumroad_failure_count FROM guild WHERE guild_id = :guild",
+                )?;
+                let gumroad_failure_count = statement
+                    .query_row(named_params! {":guild": guild.get()}, |row| {
+                        let gumroad_failure_count: u64 = row.get(0)?;
+                        Ok(gumroad_failure_count)
+                    })
+                    .optional()?;
+                Ok(gumroad_failure_count)
+            })
+            .await
+    }
+
+    /// Increment gumroad failure count for a guild
+    pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> Result<()> {
+        self.connection
+            .call(move |connection| {
+                let mut statement =
+                    connection.prepare_cached("UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = :guild")?;
+                statement.execute(named_params! {":guild": guild.get()})?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Check gumroad nag count for a guild
+    pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> Result<Option<u64>> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT gumroad_nag_count FROM guild WHERE guild_id = :guild",
+                )?;
+                let gumroad_nag_count = statement
+                    .query_row(named_params! {":guild": guild.get()}, |row| {
+                        let gumroad_nag_count: u64 = row.get(0)?;
+                        Ok(gumroad_nag_count)
+                    })
+                    .optional()?;
+                Ok(gumroad_nag_count)
+            })
+            .await
+    }
+
+    /// Increment gumroad nag count for a guild
+    pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> Result<()> {
+        self.connection
+            .call(move |connection| {
+                let mut statement =
+                    connection.prepare_cached("UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = :guild")?;
+                statement.execute(named_params! {":guild": guild.get()})?;
+                Ok(())
             })
             .await
     }
