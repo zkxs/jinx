@@ -270,7 +270,7 @@ pub async fn run_bot() -> Result<(), Error> {
 
                 let elapsed = start.elapsed();
                 const EXPECTED_DURATION: Duration = Duration::from_millis(5);
-                if elapsed > EXPECTED_DURATION {
+                if sent_nag_count != 0 || elapsed > EXPECTED_DURATION {
                     info!(
                         "sent {} gumroad nags in {}ms",
                         sent_nag_count,
