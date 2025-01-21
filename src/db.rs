@@ -699,7 +699,7 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare_cached(
-                    "SELECT guild_id, log_channel_id, gumroad_failure_count FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)",
+                    "SELECT guild_id, log_channel_id, gumroad_failure_count FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)",
                 )?;
                 let mapped_rows = statement
                     .query_map((), |row| Ok(GuildGumroadInfo {
