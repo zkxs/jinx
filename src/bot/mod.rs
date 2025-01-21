@@ -22,6 +22,12 @@ use tracing::{debug, error, info};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+const SECONDS_PER_MINUTE: u64 = 60;
+const MINUTES_PER_HOUR: u64 = 60;
+const HOURS_PER_DAY: u64 = 24;
+const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+const SECONDS_PER_HOUR: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+
 /// Message shown to admins when the Jinxxy API key is missing
 pub static MISSING_API_KEY_MESSAGE: &str =
     "Jinxxy API key is not set: please use the `/init` command to set it.";
@@ -136,11 +142,6 @@ pub async fn run_bot() -> Result<(), Error> {
                     poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
-                const SECONDS_PER_MINUTE: u64 = 60;
-                const MINUTES_PER_HOUR: u64 = 60;
-                const HOURS_PER_DAY: u64 = 24;
-                const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
-
                 // set up the task to periodically optimize the DB
                 {
                     let db_clone = db.clone();
@@ -189,6 +190,29 @@ pub async fn run_bot() -> Result<(), Error> {
         .framework(framework)
         .await
         .unwrap();
+
+    // set up the task to periodically perform gumroad nags
+    {
+        //TODO: get framework reference
+        tokio::task::spawn(async move {
+            // initial delay of 60 seconds before the first nag wave
+            let mut duration = Duration::from_secs(60);
+            loop {
+                tokio::time::sleep(duration).await;
+                // wait 1 hour for each subsequent nag wave
+                duration = Duration::from_secs(SECONDS_PER_HOUR);
+                let start = Instant::now();
+
+                //TODO: perform gumroad nags
+
+                let elapsed = start.elapsed();
+                const EXPECTED_DURATION: Duration = Duration::from_millis(5);
+                if elapsed > EXPECTED_DURATION {
+                    info!("sent gumroad nags in {}ms", elapsed.as_millis());
+                }
+            }
+        });
+    }
 
     debug!("client built. Starting…");
 

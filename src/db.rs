@@ -591,9 +591,9 @@ impl JinxDb {
                 // all servers, including production servers
                 connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL")
             }?;
-            let result = statement.query_and_then((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
-            let mut vec = Vec::with_capacity(result.size_hint().0);
-            for row in result {
+            let mapped_rows = statement.query_and_then((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
+            let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+            for row in mapped_rows {
                 vec.push(row?);
             }
             Ok(vec)
@@ -690,6 +690,24 @@ impl JinxDb {
                     connection.prepare_cached("UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = :guild")?;
                 statement.execute(named_params! {":guild": guild.get()})?;
                 Ok(())
+            })
+            .await
+    }
+
+    /// Get tuples of `(guild_id, log_channel_id)` with pending gumroad nag
+    pub async fn get_guilds_pending_gumroad_nag(&self) -> Result<Vec<(u64, u64)>> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT guild_id, log_channel_id FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)",
+                )?;
+                let mapped_rows = statement
+                    .query_map((), |row| Ok((row.get(0)?, row.get(1)?)))?;
+                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+                for row in mapped_rows {
+                    vec.push(row?);
+                }
+                Ok(vec)
             })
             .await
     }
