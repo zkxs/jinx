@@ -215,15 +215,6 @@ pub async fn run_bot() -> Result<(), Error> {
                 match db.get_guilds_pending_gumroad_nag().await {
                     Ok(pending_nags) => {
                         for pending_nag in pending_nags {
-                            //TODO: remove this block of code to enable this feature for all guilds: not just test guilds
-                            if !db
-                                .is_test_guild(pending_nag.guild_id)
-                                .await
-                                .unwrap_or(false)
-                            {
-                                continue;
-                            }
-
                             let message = format!(
                                 "Jinx has detected that a significant number ({}) of your users are providing Gumroad license keys to Jinx. \
                                 This may indicate confusion between GumCord and Jinx. To improve your user experience, please consider adding \
