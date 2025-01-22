@@ -248,19 +248,13 @@ mod test {
     #[test]
     #[traced_test]
     fn test_integer_license() {
-        assert_eq!(
-            identify_license("123123"),
-            LicenseType::Integer
-        );
+        assert_eq!(identify_license("123123"), LicenseType::Integer);
     }
 
     #[test]
     #[traced_test]
     fn test_unknown_license() {
-        assert_eq!(
-            identify_license("foo"),
-            LicenseType::Unknown
-        );
+        assert_eq!(identify_license("foo"), LicenseType::Unknown);
     }
 
     #[test]
