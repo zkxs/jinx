@@ -254,17 +254,18 @@ async fn event_handler_inner<'a>(
                             }
 
                             let description = if license_type.is_jinxxy_license() {
-                                "The provided license key was not valid or is already in use"
+                                "The provided Jinxxy license key was not valid or is already in use"
                                     .to_string()
                             } else {
                                 format!(
-                                    "The provided license key was not valid or is already in use.\n\
-                                    Hint: I expect a Jinxxy key, but you appear to have provided {}. Please confirm you are providing the correct value.",
+                                    "The provided Jinxxy license key was not valid or is already in use.\n\
+                                    Hint: This bot only supports Jinxxy keys, but you appear to have provided {}. \
+                                    Please confirm you are providing the correct value to the correct bot.",
                                     license_type
                                 )
                             };
                             let embed = CreateEmbed::default()
-                                .title("Registration Failure")
+                                .title("Jinxxy Product Registration Failed")
                                 .description(description)
                                 .color(Colour::RED);
                             let edit = EditInteractionResponse::default().embed(embed);
