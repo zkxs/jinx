@@ -173,7 +173,7 @@ pub(in crate::bot) async fn init(
 
         success_reply("Success", "Commands reinstalled.")
     } else {
-        error_reply("Error Initializing Jinx", "Please provide a Jinxxy API key")
+        error_reply("Error Initializing Jinx", "Please provide a Jinxxy API key. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
     };
 
     context.send(reply).await?;
