@@ -258,10 +258,9 @@ async fn event_handler_inner<'a>(
                                     .to_string()
                             } else {
                                 format!(
-                                    "The provided Jinxxy license key was not valid or is already in use.\n\
-                                    Hint: This bot only supports Jinxxy keys, but you appear to have provided {}. \
-                                    Please confirm you are providing the correct value to the correct bot.",
-                                    license_type
+                                    "The provided Jinxxy license key was not valid or is already in use.\n\n\
+                                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
+                                    Please confirm you are providing the correct value to the correct bot."
                                 )
                             };
                             let embed = CreateEmbed::default()
