@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::error::JinxError;
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::path::Path;
@@ -108,6 +109,12 @@ impl JinxDb {
                     .query_row(named_params! {":key": SCHEMA_VERSION_KEY}, |a| a.get(0))
                     .optional()?
                     .unwrap_or(SCHEMA_VERSION_VALUE);
+
+                // handle schema downgrade (or rather, DON'T handle it and throw an error)
+                if schema_version > SCHEMA_VERSION_VALUE {
+                    let message = format!("db schema version is v{schema_version}, which is newer than v{SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports.");
+                    return Err(tokio_rusqlite::Error::Other(JinxError::boxed(message)));
+                }
 
                 // handle schema v1 -> v2 migration
                 if schema_version < 2 {
