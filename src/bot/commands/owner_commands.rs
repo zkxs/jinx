@@ -11,7 +11,7 @@ use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 use tracing::{info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -25,6 +25,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
     interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Error> {
+    let start = Instant::now();
     let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
     let configured_guild_count = context.data().db.guild_count().await.unwrap();
     let license_activation_count = context.data().db.license_activation_count().await.unwrap();
@@ -49,6 +50,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let tokio_num_workers = tokio_metrics.num_workers();
     let tokio_num_alive_tasks = tokio_metrics.num_alive_tasks();
     let tokio_global_queue_depth = tokio_metrics.global_queue_depth();
+    let elapsed_ms = start.elapsed().as_millis();
 
     let message = format!(
         "db_size={db_size} KiB\n\
@@ -64,7 +66,8 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         shards={shard_count}{shard_list}\n\
         tokio_num_workers={tokio_num_workers}\n\
         tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
-        tokio_global_queue_depth={tokio_global_queue_depth}"
+        tokio_global_queue_depth={tokio_global_queue_depth}\n\
+        query time={elapsed_ms}"
     );
     let embed = CreateEmbed::default()
         .title("Jinx Owner Stats")
