@@ -198,7 +198,7 @@ impl PartialProduct {
     /// Fix product name to be compatible with Discord autocomplete
     pub fn fix_name_for_discord(&mut self) {
         if self.name.len() > 100 {
-            debug!("\"{}\".len() > 100; truncating...", self.name);
+            debug!("\"{}\".len() > 100; truncating…", self.name);
 
             // byte len is > 100 so there must be at least one char, so we can disregard that edge case
 

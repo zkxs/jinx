@@ -50,7 +50,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let tokio_num_workers = tokio_metrics.num_workers();
     let tokio_num_alive_tasks = tokio_metrics.num_alive_tasks();
     let tokio_global_queue_depth = tokio_metrics.global_queue_depth();
-    let elapsed_ms = start.elapsed().as_millis();
+    let elapsed_micros = start.elapsed().as_micros();
 
     let message = format!(
         "db_size={db_size} KiB\n\
@@ -67,7 +67,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         tokio_num_workers={tokio_num_workers}\n\
         tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
         tokio_global_queue_depth={tokio_global_queue_depth}\n\
-        query time={elapsed_ms}ms"
+        query time={elapsed_micros}μs"
     );
     let embed = CreateEmbed::default()
         .title("Jinx Owner Stats")
