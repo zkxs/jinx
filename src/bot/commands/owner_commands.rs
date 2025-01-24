@@ -67,7 +67,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         tokio_num_workers={tokio_num_workers}\n\
         tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
         tokio_global_queue_depth={tokio_global_queue_depth}\n\
-        query time={elapsed_ms}"
+        query time={elapsed_ms}ms"
     );
     let embed = CreateEmbed::default()
         .title("Jinx Owner Stats")
