@@ -60,8 +60,12 @@ async fn event_handler_inner<'a>(
                 info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
             }
 
-            if let Err(e) = set_guild_commands(&context.http, &data.db, guild.id, None, None).await
-            {
+            // reinstall guild commands
+            //TODO: when the bot starts we might receive a flurry of GuildCreate events leading to ratelimit issues when we attempt to reinstall the commands with no delay.
+            // I might be able to figure out some sort of work queue for if that ever becomes a problem. All we need is a serenity::Http and a GuildId so we should be good to handle this from a background task.
+            let guild_command_reinstall_result =
+                set_guild_commands(&context.http, &data.db, guild.id, None, None).await;
+            if let Err(e) = guild_command_reinstall_result {
                 error!(
                     "Error setting guild commands for guild {}: {:?}",
                     guild.id.get(),
