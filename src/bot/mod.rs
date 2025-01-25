@@ -287,9 +287,10 @@ pub async fn run_bot() -> Result<(), Error> {
         tokio::task::spawn(async move {
             let mut distinct_user_count = distinct_user_count;
 
-            // update once a minute
-            tokio::time::sleep(Duration::from_secs(60)).await;
             loop {
+                // update once a minute
+                tokio::time::sleep(Duration::from_secs(60)).await;
+
                 let start = Instant::now();
                 let new_distinct_user_count = db.distinct_user_count().await.unwrap();
                 let updated = if new_distinct_user_count != distinct_user_count {
