@@ -29,6 +29,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
     let configured_guild_count = context.data().db.guild_count().await.unwrap();
     let license_activation_count = context.data().db.license_activation_count().await.unwrap();
+    let distinct_user_count = context.data().db.distinct_user_count().await.unwrap();
     let product_role_count = context.data().db.product_role_count().await.unwrap();
     let api_cache_products = context.data().api_cache.product_count();
     let api_cache_len = context.data().api_cache.len();
@@ -54,11 +55,12 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
 
     let message = format!(
         "db_size={db_size} KiB\n\
-        users={user_count}\n\
+        ceched users={user_count}\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
         log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
+        distinct activators={distinct_user_count}\n\
         product→role links={product_role_count}\n\
         API cache products={api_cache_products}\n\
         API cache len={api_cache_len}\n\

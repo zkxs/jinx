@@ -515,6 +515,14 @@ impl JinxDb {
         }).await
     }
 
+    /// Get count of distinct users who have activated licenses
+    pub async fn distinct_user_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(DISTINCT user_id) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
     /// Get count of configured guilds
     pub async fn guild_count(&self) -> Result<u64> {
         self.connection

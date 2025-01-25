@@ -14,7 +14,7 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use commands::*;
 use poise::{serenity_prelude as serenity, Command, PrefixFrameworkOptions};
-use serenity::{Colour, CreateEmbed, CreateMessage, GatewayIntents};
+use serenity::{ActivityData, Colour, CreateEmbed, CreateMessage, GatewayIntents};
 use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info};
@@ -152,6 +152,7 @@ pub async fn run_bot() -> Result<(), Error> {
                     let db = db.clone();
                     tokio::task::spawn(async move {
                         loop {
+                            // 1 day per optimize. Startup optimize is handled on DB init.
                             tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
                             let start = Instant::now();
                             if let Err(e) = db.optimize().await {
@@ -170,6 +171,7 @@ pub async fn run_bot() -> Result<(), Error> {
                     let api_cache = api_cache.clone();
                     tokio::task::spawn(async move {
                         loop {
+                            // five minutes per cache clean
                             tokio::time::sleep(Duration::from_secs(5 * SECONDS_PER_MINUTE)).await;
                             let start = Instant::now();
                             api_cache.clean();
@@ -203,12 +205,8 @@ pub async fn run_bot() -> Result<(), Error> {
         let cache = client.cache.clone();
         tokio::task::spawn(async move {
             // initial delay of 60 seconds before the first nag wave
-            let mut duration = Duration::from_secs(60);
+            tokio::time::sleep(Duration::from_secs(60)).await;
             loop {
-                tokio::time::sleep(duration).await;
-
-                // wait 1 hour for each subsequent nag wave
-                duration = Duration::from_secs(SECONDS_PER_HOUR);
                 let start = Instant::now();
 
                 let mut sent_nag_count: usize = 0;
@@ -271,6 +269,40 @@ pub async fn run_bot() -> Result<(), Error> {
                         elapsed.as_millis()
                     );
                 }
+
+                // wait 1 hour for each subsequent nag wave
+                tokio::time::sleep(Duration::from_secs(SECONDS_PER_HOUR)).await;
+            }
+        });
+    }
+
+    // set up the task to periodically set the bot's status
+    {
+        let db = db.clone();
+        let shard_manager = client.shard_manager.clone();
+        tokio::task::spawn(async move {
+            // keep track of if we still need to log the first elapsed time
+            let mut first_log = true;
+            // initial delay of 15 seconds
+            tokio::time::sleep(Duration::from_secs(15)).await;
+            loop {
+                let start = Instant::now();
+                let distinct_user_count = db.distinct_user_count().await.unwrap();
+                let custom_activity =
+                    format!("Helping {distinct_user_count} users register Jinxxy products");
+                for runner in shard_manager.runners.lock().await.values() {
+                    runner
+                        .runner_tx
+                        .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
+                }
+                let elapsed = start.elapsed();
+                const EXPECTED_DURATION: Duration = Duration::from_millis(10);
+                if first_log || elapsed > EXPECTED_DURATION {
+                    // only log more than once if it takes longer than expected
+                    first_log = false;
+                    info!("updated bot activity in {}μs", elapsed.as_micros())
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
             }
         });
     }
