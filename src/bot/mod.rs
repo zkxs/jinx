@@ -193,7 +193,11 @@ pub async fn run_bot() -> Result<(), Error> {
 
     debug!("framework built");
 
+    let distinct_user_count = db.distinct_user_count().await.unwrap();
     let mut client = serenity::ClientBuilder::new(discord_token, intents)
+        .activity(ActivityData::custom(get_activity_string(
+            distinct_user_count,
+        )))
         .framework(framework)
         .await
         .unwrap();
@@ -281,28 +285,35 @@ pub async fn run_bot() -> Result<(), Error> {
         let db = db.clone();
         let shard_manager = client.shard_manager.clone();
         tokio::task::spawn(async move {
-            // keep track of if we still need to log the first elapsed time
-            let mut first_log = true;
-            // initial delay of 15 seconds
-            tokio::time::sleep(Duration::from_secs(15)).await;
+            let mut distinct_user_count = distinct_user_count;
+
+            // update once a minute
+            tokio::time::sleep(Duration::from_secs(60)).await;
             loop {
                 let start = Instant::now();
-                let distinct_user_count = db.distinct_user_count().await.unwrap();
-                let custom_activity =
-                    format!("Helping {distinct_user_count} users register Jinxxy products");
-                for runner in shard_manager.runners.lock().await.values() {
-                    runner
-                        .runner_tx
-                        .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
-                }
+                let new_distinct_user_count = db.distinct_user_count().await.unwrap();
+                let updated = if new_distinct_user_count != distinct_user_count {
+                    // only do the expensive bit if the count has actually changed
+                    distinct_user_count = new_distinct_user_count;
+                    let custom_activity = get_activity_string(new_distinct_user_count);
+                    for runner in shard_manager.runners.lock().await.values() {
+                        runner
+                            .runner_tx
+                            .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
+                    }
+                    true
+                } else {
+                    false
+                };
                 let elapsed = start.elapsed();
-                const EXPECTED_DURATION: Duration = Duration::from_millis(10);
-                if first_log || elapsed > EXPECTED_DURATION {
-                    // only log more than once if it takes longer than expected
-                    first_log = false;
-                    info!("updated bot activity in {}μs", elapsed.as_micros())
+                const EXPECTED_DURATION: Duration = Duration::from_millis(5);
+                if elapsed > EXPECTED_DURATION {
+                    info!(
+                        "updated bot activity in {}μs, real_update={}",
+                        elapsed.as_micros(),
+                        updated
+                    )
                 }
-                tokio::time::sleep(Duration::from_secs(60)).await;
             }
         });
     }
@@ -315,4 +326,8 @@ pub async fn run_bot() -> Result<(), Error> {
     client.start().await.unwrap();
 
     Ok(())
+}
+
+fn get_activity_string(distinct_user_count: u64) -> String {
+    format!("Helping {distinct_user_count} users register Jinxxy products")
 }
