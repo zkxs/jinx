@@ -326,3 +326,19 @@ where
 {
     RNG.with_borrow_mut(|rng| rng.random())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Generate some nonces just to make sure there's no panics or anything from the RefCell mutability.
+    /// This should be totally safe, though.
+    #[test]
+    fn test_generate_nonce() {
+        std::hint::black_box(generate_nonce::<u64>());
+        std::hint::black_box(generate_nonce::<u64>());
+        std::hint::black_box(generate_nonce::<u64>());
+        std::hint::black_box(generate_nonce::<u64>());
+        std::hint::black_box(generate_nonce::<u64>());
+    }
+}
