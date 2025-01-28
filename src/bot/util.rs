@@ -9,10 +9,14 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
 use poise::{serenity_prelude as serenity, CreateReply};
+use rand::distr::{Distribution, StandardUniform};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serenity::{
     CacheHttp, ChannelId, Colour, CreateEmbed, GuildId, Http, Message, MessageFlags, MessageType,
     MessageUpdateEvent, Role, RoleId,
 };
+use std::cell::RefCell;
 use std::collections::HashSet;
 use tracing::{error, warn};
 
@@ -303,4 +307,22 @@ impl GetMessageFlags for MessageUpdateEvent {
     fn get_flags(&self) -> Option<MessageFlags> {
         self.flags.flatten()
     }
+}
+
+/// Seed a new StdRng from OS entropy
+fn new_seeded_rng() -> StdRng {
+    StdRng::from_os_rng()
+}
+
+thread_local! {
+    /// Provides a local instance of StdRng for each thread
+    static RNG: RefCell<StdRng> = RefCell::new(new_seeded_rng());
+}
+
+/// Generate a random nonce from a thread-local RNG
+pub fn generate_nonce<T>() -> T
+where
+    StandardUniform: Distribution<T>,
+{
+    RNG.with_borrow_mut(|rng| rng.random())
 }
