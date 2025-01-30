@@ -114,6 +114,10 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (guild_id, license_id, user_id)",
+                    (),
+                )?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS \"owner\" ( \
@@ -614,6 +618,27 @@ impl JinxDb {
             .await
     }
 
+    /// Locally check if any activations exist for this user/license combo. This may be out of sync with Jinxxy!
+    pub async fn has_user_license_activations(
+        &self,
+        guild: GuildId,
+        user_id: u64,
+        license_id: String,
+    ) -> Result<bool> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection
+                    .prepare_cached("SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license)")?;
+                let activation_exists =
+                    statement.query_row(named_params! {":guild": guild.get(), ":user": user_id, ":license": license_id}, |row| {
+                        let exists: bool = row.get(0)?;
+                        Ok(exists)
+                    })?;
+                Ok(activation_exists)
+            })
+            .await
+    }
+
     /// Locally get all activations for a user and license has been recorded to activate. This may be out of sync with Jinxxy!
     pub async fn get_user_license_activations(
         &self,
@@ -623,7 +648,7 @@ impl JinxDb {
     ) -> Result<Vec<String>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license")?; //TODO: could use an index
+                let mut statement = connection.prepare_cached("SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license")?;
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":user": user_id, ":license": license_id},
                     |row| {

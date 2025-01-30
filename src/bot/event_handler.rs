@@ -360,9 +360,37 @@ async fn event_handler_inner<'a>(
                                         warn!("in {} <@{}> is about to activate {}. User already has multiple activations: {:?}", guild_id.get(), user_id.get(), license_info.license_id, activations);
                                     }
 
+                                    // check our db to see if we have a record there
+                                    let activation_present_in_db = data
+                                        .db
+                                        .has_user_license_activations(
+                                            guild_id,
+                                            user_id.get(),
+                                            license_info.license_id.clone(),
+                                        )
+                                        .await?;
+
                                     // calculate if we should grant roles
                                     let grant_roles = if validation.own_user {
                                         // if already activated grant roles now and skip next steps
+
+                                        if !activation_present_in_db {
+                                            if let Some(activation) =
+                                                activations.iter().flatten().next()
+                                            {
+                                                data.db
+                                                    .activate_license(
+                                                        guild_id,
+                                                        license_info.license_id.clone(),
+                                                        activation.id.clone(),
+                                                        user_id.get(),
+                                                    )
+                                                    .await?;
+                                                warn!("in {} <@{}> just activated {}, but it was not in the DB! That's weird. Restored via {}", guild_id.get(), user_id.get(), license_info.license_id, activation.id);
+                                            } else {
+                                                warn!("This should be impossible: we JUST validated this activation but now it is empty.")
+                                            }
+                                        }
                                         true
                                     } else {
                                         // we aren't activated, so we need to create the activation... and then check again to prevent race conditions
