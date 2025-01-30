@@ -20,7 +20,7 @@ const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
 
 /// Get extra headers needed for Jinxxy API calls
 fn get_headers(api_key: &str) -> header::HeaderMap {
-    let mut api_key = header::HeaderValue::try_from(api_key).unwrap();
+    let mut api_key = header::HeaderValue::try_from(api_key).expect("Failed to construct Jinxxy x-api-key header");
     api_key.set_sensitive(true);
     let mut header_map = header::HeaderMap::new();
     header_map.insert("x-api-key", api_key);

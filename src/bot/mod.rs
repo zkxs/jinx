@@ -201,14 +201,17 @@ pub async fn run_bot() -> Result<(), Error> {
 
     debug!("framework built");
 
-    let distinct_user_count = db.distinct_user_count().await.unwrap();
+    let distinct_user_count = db
+        .distinct_user_count()
+        .await
+        .expect("Failed to read distinct user count from DB");
     let mut client = serenity::ClientBuilder::new(discord_token, intents)
         .activity(ActivityData::custom(get_activity_string(
             distinct_user_count,
         )))
         .framework(framework)
         .await
-        .unwrap();
+        .expect("Failed to set bot's initial activity");
 
     // set up the task to periodically perform gumroad nags
     {
@@ -300,28 +303,35 @@ pub async fn run_bot() -> Result<(), Error> {
                 tokio::time::sleep(Duration::from_secs(60)).await;
 
                 let start = Instant::now();
-                let new_distinct_user_count = db.distinct_user_count().await.unwrap();
-                let updated = if new_distinct_user_count != distinct_user_count {
-                    // only do the expensive bit if the count has actually changed
-                    distinct_user_count = new_distinct_user_count;
-                    let custom_activity = get_activity_string(new_distinct_user_count);
-                    for runner in shard_manager.runners.lock().await.values() {
-                        runner
-                            .runner_tx
-                            .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
+                match db.distinct_user_count().await {
+                    Ok(new_distinct_user_count) => {
+                        let updated = if new_distinct_user_count != distinct_user_count {
+                            // only do the expensive bit if the count has actually changed
+                            distinct_user_count = new_distinct_user_count;
+                            let custom_activity = get_activity_string(new_distinct_user_count);
+                            for runner in shard_manager.runners.lock().await.values() {
+                                runner.runner_tx.set_activity(Some(ActivityData::custom(
+                                    custom_activity.as_str(),
+                                )));
+                            }
+                            true
+                        } else {
+                            false
+                        };
+
+                        let elapsed = start.elapsed();
+                        const EXPECTED_DURATION: Duration = Duration::from_millis(5);
+                        if elapsed > EXPECTED_DURATION {
+                            info!(
+                                "updated bot activity in {}μs, real_update={}",
+                                elapsed.as_micros(),
+                                updated
+                            )
+                        }
                     }
-                    true
-                } else {
-                    false
-                };
-                let elapsed = start.elapsed();
-                const EXPECTED_DURATION: Duration = Duration::from_millis(5);
-                if elapsed > EXPECTED_DURATION {
-                    info!(
-                        "updated bot activity in {}μs, real_update={}",
-                        elapsed.as_micros(),
-                        updated
-                    )
+                    Err(e) => {
+                        error!("Error reading distinct user count from DB: {e:?}")
+                    }
                 }
             }
         });
@@ -332,7 +342,7 @@ pub async fn run_bot() -> Result<(), Error> {
     // note that client.start() does NOT do sharding. If sharding is needed you need to use one of the alternative start functions
     // https://docs.rs/serenity/latest/serenity/gateway/index.html#sharding
     // https://discord.com/developers/docs/topics/gateway#sharding
-    client.start().await.unwrap();
+    client.start().await?;
 
     Ok(())
 }

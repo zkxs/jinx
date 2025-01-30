@@ -82,35 +82,38 @@ pub(in crate::bot) async fn set_log_channel(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    // if setting a channel, then attempt to write a test log to the channel
-    let test_result = match channel {
+    let reply = match channel {
         Some(channel) => {
+            // if setting a channel, then attempt to write a test log to the channel
             let embed = CreateEmbed::default()
                 .title("Configuration Changed")
                 .description("I will now log to this channel.");
             let message = CreateMessage::default().embed(embed);
-            channel.send_message(context, message).await.map(|_| ())
-        }
-        None => Ok(()),
-    };
+            let test_result = channel.send_message(context, message).await.map(|_| ());
 
-    let reply = match test_result {
-        Ok(()) => {
-            // test log worked, so set the channel
-            context.data().db.set_log_channel(guild_id, channel).await?;
+            match test_result {
+                Ok(()) => {
+                    // test log worked, so set the channel
+                    context
+                        .data()
+                        .db
+                        .set_log_channel(guild_id, Some(channel))
+                        .await?;
 
-            // let the user know what we just did
-            let message = if let Some(channel) = channel {
-                format!("Bot log channel set to <#{}>.", channel.get())
-            } else {
-                "Bot log channel unset.".to_string()
-            };
-            success_reply("Success", message)
+                    // let the user know what we just did
+                    let message = format!("Bot log channel set to <#{}>.", channel.get());
+                    success_reply("Success", message)
+                }
+                Err(e) => {
+                    // test log failed, so let the user know
+                    warn!("Error sending message to test log channel: {:?}", e);
+                    error_reply("Error Setting Log Channel", format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.get(), e))
+                }
+            }
         }
-        Err(e) => {
-            // test log failed, so let the user know
-            warn!("Error sending message to test log channel: {:?}", e);
-            error_reply("Error Setting Log Channel", format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.unwrap().get(), e))
+        None => {
+            context.data().db.set_log_channel(guild_id, None).await?;
+            success_reply("Success", "Bot log channel unset.")
         }
     };
 
@@ -961,10 +964,8 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
             }).await?
     };
 
-    let unassignable_embed = create_role_warning_from_roles(
-        &assignable_roles,
-        links.keys().copied(),
-    );
+    let unassignable_embed =
+        create_role_warning_from_roles(&assignable_roles, links.keys().copied());
     let embed = CreateEmbed::default()
         .title("All product→role links")
         .description(message);

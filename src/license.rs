@@ -24,7 +24,7 @@ static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
         r"^[0-9]+$", // an integer number `3245554511053325533`
         r"^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$", // payhip key `WTKP4-66NL5-HMKQW-GFSCZ`
     ])
-    .unwrap()
+    .expect("Failed to compile license heuristic RegexSet")
 }); // in case you are wondering the above are not real keys: they're only examples
 
 pub const LOCKING_USER_ID: u64 = 0;

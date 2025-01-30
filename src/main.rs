@@ -91,7 +91,7 @@ async fn main() -> ExitCode {
             // Init logging
             tracing_subscriber::fmt()
                 .with_env_filter(
-                    EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").unwrap(),
+                    EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").expect("Failed to create EnvFilter"),
                 )
                 .init();
 

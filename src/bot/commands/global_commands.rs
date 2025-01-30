@@ -19,7 +19,7 @@ static GLOBAL_JINXXY_API_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^sk_[a-f0-9]{32}$", // jinxxy API key `sk_9bba2064ee8c20aa4fd6b015eed2001a`
     )
-    .unwrap()
+    .expect("Failed to compile GLOBAL_JINXXY_API_KEY_REGEX")
 }); // in case you are wondering the above is not a real key: it's only an example
 
 thread_local! {

@@ -26,16 +26,16 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 )]
 pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
-    let db_size = context.data().db.size().await.unwrap().div_ceil(1024);
-    let configured_guild_count = context.data().db.guild_count().await.unwrap();
-    let license_activation_count = context.data().db.license_activation_count().await.unwrap();
-    let distinct_user_count = context.data().db.distinct_user_count().await.unwrap();
-    let product_role_count = context.data().db.product_role_count().await.unwrap();
+    let db_size = context.data().db.size().await?.div_ceil(1024);
+    let configured_guild_count = context.data().db.guild_count().await?;
+    let license_activation_count = context.data().db.license_activation_count().await?;
+    let distinct_user_count = context.data().db.distinct_user_count().await?;
+    let product_role_count = context.data().db.product_role_count().await?;
     let api_cache_products = context.data().api_cache.product_count();
     let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
     let api_cache_capacity = context.data().api_cache.capacity();
-    let log_channel_count = context.data().db.log_channel_count().await.unwrap();
+    let log_channel_count = context.data().db.log_channel_count().await?;
     let user_count = context.serenity_context().cache.user_count();
     let cached_guild_count = context.serenity_context().cache.guild_count();
     let shard_count = context.serenity_context().cache.shard_count();

@@ -19,7 +19,7 @@ static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .timeout(Duration::from_secs(10))
         // .connection_verbose(true) // useful for debugging
         .build()
-        .unwrap()
+        .expect("Failed to build HTTP1 client")
 });
 
 static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
@@ -35,5 +35,5 @@ static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .timeout(Duration::from_secs(10))
         // .connection_verbose(true) // useful for debugging
         .build()
-        .unwrap()
+        .expect("Failed to build HTTP2 client")
 });

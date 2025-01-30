@@ -22,7 +22,7 @@ static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
     )
-    .unwrap()
+    .expect("Failed to compile GLOBAL_EASTER_EGG_REGEX")
 });
 
 thread_local! {
@@ -111,12 +111,20 @@ async fn event_handler_inner<'a>(
                     new_message.content
                 );
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
-                debug!(
-                    "Mentioned in guild {} in message {}: {}",
-                    new_message.guild_id.unwrap().get(),
-                    new_message.id.get(),
-                    new_message.content
-                );
+                if let Some(guild_id) = new_message.guild_id {
+                    debug!(
+                        "Mentioned in guild {} in message {}: {}",
+                        guild_id.get(),
+                        new_message.id.get(),
+                        new_message.content
+                    );
+                } else {
+                    debug!(
+                        "Mentioned in non-guild-context in message {}: {}",
+                        new_message.id.get(),
+                        new_message.content
+                    );
+                }
 
                 // since we got mentioned we might as well do something funny here
                 if data.db.is_user_owner(new_message.author.id.get()).await?
@@ -415,14 +423,24 @@ async fn event_handler_inner<'a>(
                                     if grant_roles {
                                         let roles = data
                                             .db
-                                            .get_role_grants(guild_id, license_info.new_product_version_id())
+                                            .get_role_grants(
+                                                guild_id,
+                                                license_info.new_product_version_id(),
+                                            )
                                             .await?;
 
-                                        let product_display_name = if let Some(product_version_info) = license_info.product_version_info {
-                                            format!("{} (version {})", license_info.product_name, product_version_info.product_version_name)
-                                        } else {
-                                            license_info.product_name
-                                        };
+                                        let product_display_name =
+                                            if let Some(product_version_info) =
+                                                license_info.product_version_info
+                                            {
+                                                format!(
+                                                    "{} (version {})",
+                                                    license_info.product_name,
+                                                    product_version_info.product_version_name
+                                                )
+                                            } else {
+                                                license_info.product_name
+                                            };
                                         let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", product_display_name);
                                         let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), product_display_name);
                                         let mut errors: String = String::new();
