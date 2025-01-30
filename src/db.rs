@@ -93,7 +93,7 @@ impl JinxDb {
                     "CREATE TABLE IF NOT EXISTS product_version_role ( \
                              guild_id               INTEGER NOT NULL, \
                              product_id             TEXT NOT NULL, \
-                             version_id             TEXT, \
+                             version_id             TEXT NOT NULL, \
                              role_id                INTEGER NOT NULL, \
                              PRIMARY KEY            (guild_id, product_id, version_id, role_id) \
                          ) STRICT",
@@ -436,7 +436,8 @@ impl JinxDb {
     ) -> Result<()> {
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (:guild, :product, :version, :role)")?;
-            statement.execute(named_params! {":guild": guild.get(), ":product": product_version_id.product_id, ":version": product_version_id.product_version_id, ":role": role.get()})?;
+            let (product_id, version_id) = product_version_id.into_db_values();
+            statement.execute(named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id, ":role": role.get()})?;
             Ok(())
         }).await
     }
@@ -449,8 +450,9 @@ impl JinxDb {
         role: RoleId,
     ) -> Result<bool> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("DELETE FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version AND role_id = :role")?;
-            let delete_count = statement.execute(named_params! {":guild": guild.get(), ":product": product_version_id.product_id, ":version": product_version_id.product_version_id, ":role": role.get()})?;
+            let mut statement = connection.prepare_cached("DELETE FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version AND role_id = :role")?;
+            let (product_id, version_id) = product_version_id.into_db_values();
+            let delete_count = statement.execute(named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id, ":role": role.get()})?;
             Ok(delete_count != 0)
         }).await
     }
@@ -459,14 +461,15 @@ impl JinxDb {
     pub async fn get_role_grants(
         &self,
         guild: GuildId,
-        product_id: ProductVersionId,
+        product_version_id: ProductVersionId,
     ) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` and `version_role_lookup` indices
-                let mut statement = connection.prepare_cached("(SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL) UNION (SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product) UNION (SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version)")?;
+                let mut statement = connection.prepare_cached("(SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL) UNION (SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product) UNION (SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version)")?;
+                let (product_id, version_id) = product_version_id.into_db_values();
                 let result = statement.query_map(
-                    named_params! {":guild": guild.get(), ":product": product_id.product_id, ":version": product_id.product_version_id},
+                    named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id},
                     |row| {
                         let role_id: u64 = row.get(0)?;
                         Ok(RoleId::new(role_id))
@@ -511,14 +514,15 @@ impl JinxDb {
     pub async fn get_linked_roles_for_product_version(
         &self,
         guild: GuildId,
-        product_id: ProductVersionId,
+        product_version_id: ProductVersionId,
     ) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
                 // uses `version_role_lookup` index
-                let mut statement = connection.prepare_cached("SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version")?;
+                let mut statement = connection.prepare_cached("SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version")?;
+                let (product_id, version_id) = product_version_id.into_db_values();
                 let result = statement.query_map(
-                    named_params! {":guild": guild.get(), ":product": product_id.product_id, ":version": product_id.product_version_id},
+                    named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id},
                     |row| {
                         let role_id: u64 = row.get(0)?;
                         Ok(RoleId::new(role_id))
@@ -575,12 +579,9 @@ impl JinxDb {
                 )?; //TODO: could use an index
                 let product_version_result = product_version_statement.query_map([guild.get()], |row| {
                     let product_id: String = row.get(0)?;
-                    let product_version_id: Option<String> = row.get(1)?;
+                    let product_version_id: String = row.get(1)?;
                     let role_id: u64 = row.get(2)?;
-                    let product_version_id = ProductVersionId {
-                        product_id,
-                        product_version_id,
-                    };
+                    let product_version_id = ProductVersionId::from_db_values(product_id, product_version_id);
                     Ok((RoleId::new(role_id), product_version_id))
                 })?;
                 for row in product_version_result {
@@ -935,4 +936,22 @@ pub enum LinkSource {
     GlobalBlanket,
     ProductBlanket { product_id: String },
     ProductVersion(ProductVersionId),
+}
+
+impl ProductVersionId {
+    fn into_db_values(self) -> (String, String) {
+        (self.product_id, self.product_version_id.unwrap_or_default())
+    }
+
+    fn from_db_values(product_id: String, version_id: String) -> Self {
+        let product_version_id = if version_id.is_empty() {
+            None
+        } else {
+            Some(version_id)
+        };
+        Self {
+            product_id,
+            product_version_id,
+        }
+    }
 }
