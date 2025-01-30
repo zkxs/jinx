@@ -466,7 +466,7 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` and `version_role_lookup` indices
-                let mut statement = connection.prepare_cached("(SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL) UNION (SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product) UNION (SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version)")?;
+                let mut statement = connection.prepare_cached("SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL UNION SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version")?;
                 let (product_id, version_id) = product_version_id.into_db_values();
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id},
