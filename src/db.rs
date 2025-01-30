@@ -546,9 +546,10 @@ impl JinxDb {
                 let mut blanket_statement = connection.prepare_cached(
                     "SELECT blanket_role_id from guild where guild_id = ?",
                 )?;
-                let blanket_result: Option<RoleId> = blanket_statement.query_row([guild.get()], |row| {
+                let blanket_result: Option<Option<u64>> = blanket_statement.query_row([guild.get()], |row| {
                     row.get(0)
-                }).optional()?
+                }).optional()?;
+                let blanket_result = blanket_result.flatten()
                     .map(|role_id| RoleId::new(role_id));
                 if let Some(blanket_role) = blanket_result {
                     map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
