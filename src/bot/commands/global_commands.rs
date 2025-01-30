@@ -88,7 +88,7 @@ pub(in crate::bot) async fn version(context: Context<'_>) -> Result<(), Error> {
 )]
 pub(in crate::bot) async fn init(
     context: Context<'_>,
-    #[description = "Jinxxy API key"] api_key: Option<String>,
+    #[description = "Jinxxy API key"] api_key: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
     let guild_id = context
@@ -96,84 +96,67 @@ pub(in crate::bot) async fn init(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     // handle trimming the string
-    let api_key = api_key
-        .map(|api_key| api_key.trim().to_string())
-        .filter(|api_key| !api_key.is_empty());
+    let api_key = api_key.trim();
 
-    let reply = if let Some(api_key) = api_key {
+    let reply = if api_key == "install_owner_commands" {
         // here we have a bit of an easter-egg to install owner commands
-        if api_key == "install_owner_commands" {
-            if check_owner(context).await? {
-                context.data().db.set_owner_guild(guild_id, true).await?;
+        // it is done this way because you can't have secret slash commands, and /init is installed globally.
 
-                //TODO: for some reason this sometimes times out and gives a 404 if the commands have
-                // previously been deleted in the same bot process; HOWEVER it actually still succeeds.
-                // I suspect this is a discord/serenity/poise bug.
-                // For some <id>, <nonce>, this looks like:
-                // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
-                set_guild_commands(&context, &context.data().db, guild_id, Some(true), None)
-                    .await?;
+        if check_owner(context).await? {
+            context.data().db.set_owner_guild(guild_id, true).await?;
 
-                success_reply("Success", "Owner commands installed.")
-            } else {
-                error_reply("Error Installing Owner Commands", "Not an owner")
-            }
-        } else if api_key == "uninstall_owner_commands" {
-            if check_owner(context).await? {
-                context.data().db.set_owner_guild(guild_id, false).await?;
-                set_guild_commands(&context, &context.data().db, guild_id, Some(false), None)
+            //TODO: for some reason this sometimes times out and gives a 404 if the commands have
+            // previously been deleted in the same bot process; HOWEVER it actually still succeeds.
+            // I suspect this is a discord/serenity/poise bug.
+            // For some <id>, <nonce>, this looks like:
+            // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
+            set_guild_commands(&context, &context.data().db, guild_id, Some(true), None).await?;
+
+            success_reply("Success", "Owner commands installed.")
+        } else {
+            error_reply("Error Installing Owner Commands", "Not an owner")
+        }
+    } else if api_key == "uninstall_owner_commands" {
+        if check_owner(context).await? {
+            context.data().db.set_owner_guild(guild_id, false).await?;
+            set_guild_commands(&context, &context.data().db, guild_id, Some(false), None).await?;
+            success_reply("Success", "Owner commands uninstalled.")
+        } else {
+            error_reply("Error Uninstalling Owner Commands", "Not an owner")
+        }
+    } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key)) {
+        // normal /init <key> use ends up in this branch
+        match jinxxy::get_own_user(api_key).await {
+            Ok(auth_user) => {
+                let has_required_scopes = auth_user.has_required_scopes();
+                let display_name = auth_user.into_display_name();
+                context
+                    .data()
+                    .db
+                    .set_jinxxy_api_key(guild_id, api_key.to_string())
                     .await?;
-                success_reply("Success", "Owner commands uninstalled.")
-            } else {
-                error_reply("Error Uninstalling Owner Commands", "Not an owner")
-            }
-        } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key.as_str())) {
-            // normal /init <key> use ends up in this branch
-            match jinxxy::get_own_user(&api_key).await {
-                Ok(auth_user) => {
-                    let has_required_scopes = auth_user.has_required_scopes();
-                    let display_name = auth_user.into_display_name();
-                    context
-                        .data()
-                        .db
-                        .set_jinxxy_api_key(guild_id, api_key.trim().to_string())
-                        .await?;
-                    set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
-                        .await?;
-                    let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
-                    if has_required_scopes {
-                        reply
-                    } else {
-                        let embed = CreateEmbed::default()
+                set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
+                    .await?;
+                let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
+                if has_required_scopes {
+                    reply
+                } else {
+                    let embed = CreateEmbed::default()
                             .title("Permission Warning")
                             .color(Colour::ORANGE)
                             .description("Provided API key is missing at least one of the mandatory scopes. Jinx commands may not work correctly. Please double-check your API key setup against the documentation [here](<https://github.com/zkxs/jinx#installation>).");
-                        reply.embed(embed)
-                    }
+                    reply.embed(embed)
                 }
-                Err(e) => error_reply(
-                    "Error Initializing Jinx",
-                    format!("Error verifying API key: {e}"),
-                ),
             }
-        } else {
-            // user has given us some mystery garbage value for their API key
-            debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
-            error_reply("Error Initializing Jinx","Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
+            Err(e) => error_reply(
+                "Error Initializing Jinx",
+                format!("Error verifying API key: {e}"),
+            ),
         }
-    } else if context
-        .data()
-        .db
-        .get_jinxxy_api_key(guild_id)
-        .await?
-        .is_some()
-    {
-        // re-initialize commands but only if API key is already set
-        set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
-
-        success_reply("Success", "Commands reinstalled.")
     } else {
-        error_reply("Error Initializing Jinx", "Please provide a Jinxxy API key. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
+        // user has given us some mystery garbage value for their API key
+        debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
+        error_reply("Error Initializing Jinx","Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
     };
 
     context.send(reply).await?;
