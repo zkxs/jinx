@@ -12,7 +12,9 @@ fn main() -> io::Result<()> {
     create_constants(constants_path.as_path())?;
     println!(
         "cargo:rustc-env=CONSTANTS_PATH={}",
-        constants_path.to_str().expect("invalid unicode in constants path")
+        constants_path
+            .to_str()
+            .expect("invalid unicode in constants path")
     );
     Ok(())
 }

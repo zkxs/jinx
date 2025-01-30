@@ -182,32 +182,72 @@ pub fn error_reply(title: impl Into<String>, message: impl Into<String>) -> Crea
     CreateReply::default().ephemeral(true).embed(embed)
 }
 
-/// Get a display name from a product name and a version name
+/// Get a display name from a product name and a version name.
+/// This is truncated to Discord's 100 character autocomplete limit.
 pub fn product_display_name(product_name: &str, product_version_name: Option<&str>) -> String {
     match product_version_name {
-        Some(product_version_name) => format!("{product_name} {product_version_name}"),
-        None => product_name.to_string(),
+        Some(product_version_name) => {
+            // we're going to delimit with a single space, so I use 1 char
+            // this leaves 99 chars to work with
+            const MAX_LENGTH: usize = 100 - 1;
+
+            // only used in some cases :/
+            const PRODUCT_VERSION_MAX_LENGTH: usize = 33;
+
+            let product_name_len = product_name.chars().count();
+            let product_version_len = product_version_name.chars().count();
+
+            if product_name_len + product_version_len > MAX_LENGTH {
+                // I have to trim either the product name or the product version name or both
+                // It's not trivial to know what will be prettiest, so time for some shitty rules
+                if product_name_len > MAX_LENGTH && product_version_len > MAX_LENGTH {
+                    // everything is really freaking long
+                    const LENGTH_A: usize = 50;
+                    const LENGTH_B: usize = MAX_LENGTH - LENGTH_A;
+                    let product_name: String = product_name.chars().take(LENGTH_A).collect();
+                    let product_version_name: String =
+                        product_name.chars().take(LENGTH_B).collect();
+                    format!("{product_name} {product_version_name}")
+                } else if product_version_len <= PRODUCT_VERSION_MAX_LENGTH {
+                    // product version seems short-ish, so I've arbitrarily decided it doesn't need trimming
+                    let lenght_a = MAX_LENGTH - product_version_len;
+                    let product_name: String = product_name.chars().take(lenght_a).collect();
+                    format!("{product_name} {product_version_name}")
+                } else {
+                    // product version will be truncated to PRODUCT_VERSION_MAX_LENGTH because why the hell not
+                    const LENGTH_A: usize = MAX_LENGTH - PRODUCT_VERSION_MAX_LENGTH;
+                    let product_name: String = product_name.chars().take(LENGTH_A).collect();
+                    let product_version_name: String = product_version_name
+                        .chars()
+                        .take(PRODUCT_VERSION_MAX_LENGTH)
+                        .collect();
+                    format!("{product_name} {product_version_name}")
+                }
+            } else {
+                format!("{product_name} {product_version_name}")
+            }
+        }
+        None => {
+            // I use 15 chars
+            const MAX_LENGTH: usize = 100 - 15;
+            if product_name.chars().count() > MAX_LENGTH {
+                let truncated_product_name = &product_name[0..MAX_LENGTH];
+                format!("{truncated_product_name} (null version)")
+            } else {
+                format!("{product_name} (null version)")
+            }
+        }
     }
 }
 
-/// truncate a string to meet discord's 100 character autocomplete limit
-pub fn truncate_string_for_discord_autocomplete(mut string: String) -> String {
-    if string.len() > 100 {
-        debug!("\"{}\".len() > 100; truncating…", string);
-
-        // byte len is > 100 so there must be at least one char, so we can disregard that edge case
-
-        // get the index after the 100th) char
-        let last_char_index = string
-            .char_indices()
-            .nth(100)
-            .map(|index| index.0) // start index of char 101 == index after char 100
-            .unwrap_or_else(|| string.len()); // index after end of last char
-
-        string.truncate(last_char_index);
+/// truncate a string to meet Discord's 100 character autocomplete limit
+pub fn truncate_string_for_discord_autocomplete(string: &str) -> String {
+    if string.chars().count() > 100 {
+        debug!("\"{}\".chars().count() > 100; truncating…", string);
+        string.chars().take(100).collect()
+    } else {
+        string.to_string()
     }
-
-    string
 }
 
 pub trait MessageExtensions {

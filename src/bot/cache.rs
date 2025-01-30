@@ -215,8 +215,7 @@ impl GuildCache {
                 .iter()
                 .map(|product| {
                     let id = product.id.clone();
-                    let product_name =
-                        truncate_string_for_discord_autocomplete(product.name.clone());
+                    let product_name = truncate_string_for_discord_autocomplete(&product.name);
                     NameInfo { id, product_name }
                 })
                 .collect();
@@ -225,7 +224,7 @@ impl GuildCache {
             let product_version_name_info: Vec<VersionNameInfo> = products
                 .into_iter()
                 .flat_map(|product| {
-                    let product_name = truncate_string_for_discord_autocomplete(product.name);
+                    let product_name = truncate_string_for_discord_autocomplete(&product.name);
 
                     let null_name_info = VersionNameInfo {
                         id: ProductVersionId::from_product_id(&product.id),
@@ -238,9 +237,8 @@ impl GuildCache {
                             product_id: product.id.clone(),
                             product_version_id: Some(version.id.clone()),
                         };
-                        let product_version_name = truncate_string_for_discord_autocomplete(
-                            product_display_name(&product_name, Some(version.name.as_str())),
-                        );
+                        let product_version_name =
+                            product_display_name(&product_name, Some(version.name.as_str()));
                         VersionNameInfo {
                             id,
                             product_version_name,

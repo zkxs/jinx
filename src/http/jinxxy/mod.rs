@@ -5,12 +5,12 @@
 
 mod dto;
 
-use std::fmt::{Display, Formatter};
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header;
+use std::fmt::{Display, Formatter};
 use tokio::time::Instant;
 use tracing::debug;
 
@@ -20,7 +20,8 @@ const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
 
 /// Get extra headers needed for Jinxxy API calls
 fn get_headers(api_key: &str) -> header::HeaderMap {
-    let mut api_key = header::HeaderValue::try_from(api_key).expect("Failed to construct Jinxxy x-api-key header");
+    let mut api_key = header::HeaderValue::try_from(api_key)
+        .expect("Failed to construct Jinxxy x-api-key header");
     api_key.set_sensitive(true);
     let mut header_map = header::HeaderMap::new();
     header_map.insert("x-api-key", api_key);
