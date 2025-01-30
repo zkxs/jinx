@@ -224,11 +224,9 @@ impl GuildCache {
             let product_version_name_info: Vec<VersionNameInfo> = products
                 .into_iter()
                 .flat_map(|product| {
-                    let product_name = truncate_string_for_discord_autocomplete(&product.name);
-
                     let null_name_info = VersionNameInfo {
                         id: ProductVersionId::from_product_id(&product.id),
-                        product_version_name: product_name.clone(),
+                        product_version_name: product_display_name(&product.name, None),
                     };
                     let null_iter = std::iter::once(null_name_info);
 
@@ -238,7 +236,7 @@ impl GuildCache {
                             product_version_id: Some(version.id.clone()),
                         };
                         let product_version_name =
-                            product_display_name(&product_name, Some(version.name.as_str()));
+                            product_display_name(&product.name, Some(version.name.as_str()));
                         VersionNameInfo {
                             id,
                             product_version_name,
