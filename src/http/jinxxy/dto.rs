@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2024 jinx contributors.
+// This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
