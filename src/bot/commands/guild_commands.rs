@@ -403,7 +403,7 @@ pub async fn license_info(
 
                 let message = if local_license_users.is_empty() {
                     format!(
-                        "`{}` / `{}` / `{}` is valid for {} {}\n\nNo registered users.",
+                        "`ID: {}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nNo registered users.",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
@@ -412,7 +412,7 @@ pub async fn license_info(
                     )
                 } else {
                     let mut message = format!(
-                        "`{}` / `{}` / `{}` is valid for {} {}\n\nRegistered users:",
+                        "`ID: {}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nRegistered users:",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
