@@ -32,6 +32,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let distinct_user_count = context.data().db.distinct_user_count().await.unwrap();
     let product_role_count = context.data().db.product_role_count().await.unwrap();
     let api_cache_products = context.data().api_cache.product_count();
+    let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
     let api_cache_capacity = context.data().api_cache.capacity();
     let log_channel_count = context.data().db.log_channel_count().await.unwrap();
@@ -62,9 +63,10 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         license activations={license_activation_count}\n\
         distinct activators={distinct_user_count}\n\
         product→role links={product_role_count}\n\
-        API cache products={api_cache_products}\n\
-        API cache len={api_cache_len}\n\
-        API cache capacity={api_cache_capacity}\n\
+        API cache total products={api_cache_products}\n\
+        API cache total product versions={api_cache_product_versions}\n\
+        API cache guilds={api_cache_len}\n\
+        API cache guild capacity={api_cache_capacity}\n\
         shards={shard_count}{shard_list}\n\
         tokio_num_workers={tokio_num_workers}\n\
         tokio_num_alive_tasks={tokio_num_alive_tasks}\n\

@@ -415,10 +415,16 @@ async fn event_handler_inner<'a>(
                                     if grant_roles {
                                         let roles = data
                                             .db
-                                            .get_roles(guild_id, license_info.product_id)
+                                            .get_role_grants(guild_id, license_info.new_product_version_id())
                                             .await?;
-                                        let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", license_info.product_name);
-                                        let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), license_info.product_name);
+
+                                        let product_display_name = if let Some(product_version_info) = license_info.product_version_info {
+                                            format!("{} (version {})", license_info.product_name, product_version_info.product_version_name)
+                                        } else {
+                                            license_info.product_name
+                                        };
+                                        let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", product_display_name);
+                                        let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), product_display_name);
                                         let mut errors: String = String::new();
                                         for role in roles {
                                             match member.add_role(context, role).await {

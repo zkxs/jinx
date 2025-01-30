@@ -87,6 +87,13 @@ impl ApiCache {
             .sum()
     }
 
+    pub fn product_version_count(&self) -> usize {
+        self.map
+            .iter()
+            .map(|entry| entry.value().product_version_count())
+            .sum()
+    }
+
     /// Remove expired cache entries
     pub fn clean(&self) {
         self.map
@@ -118,13 +125,41 @@ impl ApiCache {
         .await
     }
 
+    pub async fn product_version_names_with_prefix(
+        &self,
+        context: &Context<'_>,
+        prefix: &str,
+    ) -> Result<Vec<String>, Error> {
+        self.get(context, |cache_entry| {
+            cache_entry
+                .product_version_names_with_prefix(prefix)
+                .collect()
+        })
+        .await
+    }
+
     pub async fn product_name_to_id(
+        &self,
+        context: &Context<'_>,
+        product_name: &str,
+    ) -> Result<Option<String>, Error> {
+        self.get(context, |cache_entry| {
+            cache_entry
+                .product_name_to_id(product_name)
+                .map(|str| str.to_string())
+        })
+        .await
+    }
+
+    pub async fn product_version_name_to_version_id(
         &self,
         context: &Context<'_>,
         product_name: &str,
     ) -> Result<Option<ProductVersionId>, Error> {
         self.get(context, |cache_entry| {
-            cache_entry.product_name_to_id(product_name).cloned()
+            cache_entry
+                .product_version_name_to_version_id(product_name)
+                .cloned()
         })
         .await
     }
@@ -133,12 +168,35 @@ impl ApiCache {
 #[derive(Clone)]
 pub struct GuildCache {
     /// id to name
-    product_id_to_name_map: HashMap<ProductVersionId, String, ahash::RandomState>,
+    product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     /// name to id
-    product_name_to_id_map: HashMap<String, ProductVersionId, ahash::RandomState>,
+    product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
     /// completes lowercase name to name with correct case
     product_name_trie: Trie<u8, String>,
+    /// number of products
+    product_count: usize,
+    /// version_id to name
+    product_version_id_to_name_map: HashMap<ProductVersionId, String, ahash::RandomState>,
+    /// name to version_id
+    product_name_to_version_id_map: HashMap<String, ProductVersionId, ahash::RandomState>,
+    /// completes lowercase version name to version name with correct case
+    product_version_name_trie: Trie<u8, String>,
+    /// Number of product versions, including null versions
+    product_version_count: usize,
+    /// Time this cache was constructed
     create_time: Instant,
+}
+
+/// Internal struct for holding name info
+struct NameInfo {
+    id: String,
+    product_name: String,
+}
+
+/// Internal struct for holding version name info
+struct VersionNameInfo {
+    id: ProductVersionId,
+    product_version_name: String,
 }
 
 impl GuildCache {
@@ -152,59 +210,121 @@ impl GuildCache {
                 .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
                 .collect();
 
-            // convert into map tuples
-            let product_id_name_tuples: Vec<(ProductVersionId, String)> = products
+            // convert into map tuples for products without versions
+            let product_name_info: Vec<NameInfo> = products
+                .iter()
+                .map(|product| {
+                    let id = product.id.clone();
+                    let product_name =
+                        truncate_string_for_discord_autocomplete(product.name.clone());
+                    NameInfo { id, product_name }
+                })
+                .collect();
+
+            // convert into map tuples for product versions
+            let product_version_name_info: Vec<VersionNameInfo> = products
                 .into_iter()
                 .flat_map(|product| {
-                    let null_id = ProductVersionId {
-                        product_id: product.id.clone(),
-                        product_version_id: None,
-                    };
+                    let product_name = truncate_string_for_discord_autocomplete(product.name);
 
-                    let null_name = truncate_string_for_discord_autocomplete(product_display_name(
-                        &product.name,
-                        None,
-                    ));
-                    let null_iter = std::iter::once((null_id, null_name));
+                    let null_name_info = VersionNameInfo {
+                        id: ProductVersionId::from_product_id(&product.id),
+                        product_version_name: product_name.clone(),
+                    };
+                    let null_iter = std::iter::once(null_name_info);
+
                     let iter = product.versions.into_iter().map(move |version| {
                         let id = ProductVersionId {
                             product_id: product.id.clone(),
-                            product_version_id: Some(version.id),
+                            product_version_id: Some(version.id.clone()),
                         };
-                        let name = truncate_string_for_discord_autocomplete(id.display_name());
-                        (id, name)
+                        let product_version_name = truncate_string_for_discord_autocomplete(
+                            product_display_name(&product_name, Some(version.name.as_str())),
+                        );
+                        VersionNameInfo {
+                            id,
+                            product_version_name,
+                        }
                     });
                     null_iter.chain(iter)
                 })
                 .collect();
 
-            // check for duplicate product names
+            let product_count = product_name_info.len();
+            let product_version_count = product_version_name_info.len();
+
+            // check for duplicate product names without versions
             {
                 let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
-                product_id_name_tuples.iter().for_each(|(id, name)| {
-                    if !dupe_set.insert(name.as_str()) {
+                product_name_info.iter().for_each(|name_info| {
+                    if !dupe_set.insert(name_info.product_name.as_str()) {
                         warn!(
-                            "product {:?} \"{}\" has the same name as some other product",
-                            id, name
+                            "in {} product {} \"{}\" has the same name as some other product",
+                            guild_id.get(),
+                            name_info.id,
+                            name_info.product_name
                         )
                     }
                 });
             }
 
-            // build trie
-            let mut trie_builder = TrieBuilder::new();
-            for (_id, name) in product_id_name_tuples.iter() {
-                trie_builder.push(name.to_lowercase(), name.to_string());
+            // check for duplicate product names with versions
+            {
+                let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
+                product_version_name_info
+                    .iter()
+                    .for_each(|name_info| {
+                        if !dupe_set.insert(name_info.product_version_name.as_str()) {
+                            warn!(
+                                "in {} product {} \"{}\" has the same name as some other product+version",
+                                guild_id.get(), name_info.id, name_info.product_version_name
+                            )
+                        }
+                    });
             }
-            let product_name_trie = trie_builder.build();
 
-            // build forward map
-            let product_id_to_name_map = product_id_name_tuples.iter().cloned().collect();
+            // build trie without versions
+            let product_name_trie = {
+                let mut trie_builder = TrieBuilder::new();
+                for name_info in product_name_info.iter() {
+                    let name = &name_info.product_name;
+                    trie_builder.push(name.to_lowercase(), name.to_string());
+                }
+                trie_builder.build()
+            };
 
-            // build reverse map
-            let product_name_to_id_map = product_id_name_tuples
+            // build trie with versions
+            let product_version_name_trie = {
+                let mut trie_builder = TrieBuilder::new();
+                for name_info in product_version_name_info.iter() {
+                    let name = &name_info.product_version_name;
+                    trie_builder.push(name.to_lowercase(), name.to_string());
+                }
+                trie_builder.build()
+            };
+
+            // build forward map without versions
+            let product_id_to_name_map = product_name_info
+                .iter()
+                .map(|name_info| (name_info.id.clone(), name_info.product_name.clone()))
+                .collect();
+
+            // build forward map with versions
+            let product_version_id_to_name_map = product_version_name_info
+                .iter()
+                .map(|name_info| (name_info.id.clone(), name_info.product_version_name.clone()))
+                .collect();
+
+            // build reverse map without versions
+            let product_name_to_id_map = product_name_info
                 .into_iter()
-                .map(|(id, name)| (name, id))
+                .map(|name_info| (name_info.product_name, name_info.id))
+                .collect();
+
+            // build reverse map with versions
+            let product_name_to_version_id_map = product_version_name_info
+                .into_iter()
+                .map(|name_info| (name_info.product_version_name, name_info.id))
                 .collect();
 
             let create_time = Instant::now();
@@ -213,6 +333,11 @@ impl GuildCache {
                 product_id_to_name_map,
                 product_name_to_id_map,
                 product_name_trie,
+                product_count,
+                product_version_id_to_name_map,
+                product_name_to_version_id_map,
+                product_version_name_trie,
+                product_version_count,
                 create_time,
             })
         } else {
@@ -229,21 +354,46 @@ impl GuildCache {
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
+    fn product_version_names_with_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = String> + 'a {
+        self.product_version_name_trie
+            .predictive_search(prefix.to_lowercase())
+            .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
+    }
+
+    pub fn product_id_to_name(&self, product_id: &str) -> Option<&str> {
+        self.product_id_to_name_map
+            .get(product_id)
+            .map(|str| str.as_str())
+    }
+
     pub fn product_version_id_to_name(
         &self,
         product_version_id: &ProductVersionId,
     ) -> Option<&str> {
-        self.product_id_to_name_map
+        self.product_version_id_to_name_map
             .get(product_version_id)
             .map(|str| str.as_str())
     }
 
-    fn product_name_to_id(&self, product_name: &str) -> Option<&ProductVersionId> {
-        self.product_name_to_id_map.get(product_name)
+    fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
+        self.product_name_to_id_map
+            .get(product_name)
+            .map(|str| str.as_str())
+    }
+
+    fn product_version_name_to_version_id(&self, product_name: &str) -> Option<&ProductVersionId> {
+        self.product_name_to_version_id_map.get(product_name)
     }
 
     fn product_count(&self) -> usize {
-        self.product_name_to_id_map.len()
+        self.product_count
+    }
+
+    fn product_version_count(&self) -> usize {
+        self.product_version_count
     }
 
     fn is_expired(&self) -> bool {

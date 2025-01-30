@@ -2,8 +2,10 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::error::JinxError;
+use crate::http::jinxxy::ProductVersionId;
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
+use std::collections::HashMap;
 use std::path::Path;
 use tokio::time::Instant;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
@@ -65,11 +67,13 @@ impl JinxDb {
                              test                   INTEGER NOT NULL DEFAULT 0, \
                              owner                  INTEGER NOT NULL DEFAULT 0, \
                              gumroad_failure_count  INTEGER NOT NULL DEFAULT 0, \
-                             gumroad_nag_count      INTEGER NOT NULL DEFAULT 0 \
+                             gumroad_nag_count      INTEGER NOT NULL DEFAULT 0, \
+                             blanket_role_id        INTEGER\
                          ) STRICT",
                     (),
                 )?;
 
+                // this is the "blanket" roles for any version in a product
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product_role ( \
                              guild_id               INTEGER NOT NULL, \
@@ -79,9 +83,24 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
-
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)",
+                    (),
+                )?;
+
+                // this is product-version specific role grants
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS product_version_role ( \
+                             guild_id               INTEGER NOT NULL, \
+                             product_id             TEXT NOT NULL, \
+                             version_id             TEXT, \
+                             role_id                INTEGER NOT NULL, \
+                             PRIMARY KEY            (guild_id, product_id, version_id, role_id) \
+                         ) STRICT",
+                    (),
+                )?;
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)",
                     (),
                 )?;
 
@@ -158,8 +177,11 @@ impl JinxDb {
 
                 // handle schema v5 -> v6 migration
                 if schema_version < 6 {
-                    // add product-version related columns
-                    todo!()
+                    // "blanket_role_id" needs to be added to "guild"
+                    connection.execute(
+                        "ALTER TABLE guild ADD COLUMN blanket_role_id INTEGER",
+                        (),
+                    )?;
                 }
 
                 // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
@@ -367,7 +389,17 @@ impl JinxDb {
         }
     }
 
-    /// link a Jinxxy product and a role
+    /// Set or unset blanket role
+    pub async fn set_blanket_role_id(&self, guild: GuildId, role_id: Option<RoleId>) -> Result<()> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, blanket_role_id) VALUES (:guild, :role_id) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id")?;
+            statement.execute(named_params! {":guild": guild.get(), ":role_id": role_id.map(RoleId::get)})?;
+            Ok(())
+        }).await?;
+        Ok(())
+    }
+
+    /// blanket link a Jinxxy product and a role
     pub async fn link_product(
         &self,
         guild: GuildId,
@@ -381,7 +413,7 @@ impl JinxDb {
         }).await
     }
 
-    /// unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
+    /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
     pub async fn unlink_product(
         &self,
         guild: GuildId,
@@ -395,11 +427,70 @@ impl JinxDb {
         }).await
     }
 
-    /// Get roles for a product ID
-    pub async fn get_roles(&self, guild: GuildId, product_id: String) -> Result<Vec<RoleId>> {
+    /// link a Jinxxy product-version and a role
+    pub async fn link_product_version(
+        &self,
+        guild: GuildId,
+        product_version_id: ProductVersionId,
+        role: RoleId,
+    ) -> Result<()> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (:guild, :product, :version, :role)")?;
+            statement.execute(named_params! {":guild": guild.get(), ":product": product_version_id.product_id, ":version": product_version_id.product_version_id, ":role": role.get()})?;
+            Ok(())
+        }).await
+    }
+
+    /// unlink a Jinxxy product-version and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
+    pub async fn unlink_product_version(
+        &self,
+        guild: GuildId,
+        product_version_id: ProductVersionId,
+        role: RoleId,
+    ) -> Result<bool> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("DELETE FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version AND role_id = :role")?;
+            let delete_count = statement.execute(named_params! {":guild": guild.get(), ":product": product_version_id.product_id, ":version": product_version_id.product_version_id, ":role": role.get()})?;
+            Ok(delete_count != 0)
+        }).await
+    }
+
+    /// Get role grants for a product ID. This includes blanket grants.
+    pub async fn get_role_grants(
+        &self,
+        guild: GuildId,
+        product_id: ProductVersionId,
+    ) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product")?; // uses `role_lookup` index
+                // uses `role_lookup` and `version_role_lookup` indices
+                let mut statement = connection.prepare_cached("(SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL) UNION (SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product) UNION (SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version)")?;
+                let result = statement.query_map(
+                    named_params! {":guild": guild.get(), ":product": product_id.product_id, ":version": product_id.product_version_id},
+                    |row| {
+                        let role_id: u64 = row.get(0)?;
+                        Ok(RoleId::new(role_id))
+                    },
+                )?;
+                let mut vec = Vec::with_capacity(result.size_hint().0);
+                for row in result {
+                    vec.push(row?);
+                }
+                Ok(vec)
+            })
+            .await
+    }
+
+    /// Get roles for a product. This is ONLY product-level blanket grants.
+    pub async fn get_linked_roles_for_product(
+        &self,
+        guild: GuildId,
+        product_id: String,
+    ) -> Result<Vec<RoleId>> {
+        self.connection
+            .call(move |connection| {
+                // uses `role_lookup` index
+                let mut statement = connection.prepare_cached("SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product")?;
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":product": product_id},
                     |row| {
@@ -416,23 +507,86 @@ impl JinxDb {
             .await
     }
 
-    /// get all links
-    pub async fn get_links(&self, guild: GuildId) -> Result<Vec<(String, RoleId)>> {
+    /// Get roles for a product version. This does not include blanket grants.
+    pub async fn get_linked_roles_for_product_version(
+        &self,
+        guild: GuildId,
+        product_id: ProductVersionId,
+    ) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached(
-                    "SELECT product_id, role_id FROM product_role WHERE guild_id = ?",
-                )?; //TODO: could use an index
-                let result = statement.query_map([guild.get()], |row| {
-                    let product_id: String = row.get(0)?;
-                    let role_id: u64 = row.get(1)?;
-                    Ok((product_id, RoleId::new(role_id)))
-                })?;
+                // uses `version_role_lookup` index
+                let mut statement = connection.prepare_cached("SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id IS :version")?;
+                let result = statement.query_map(
+                    named_params! {":guild": guild.get(), ":product": product_id.product_id, ":version": product_id.product_version_id},
+                    |row| {
+                        let role_id: u64 = row.get(0)?;
+                        Ok(RoleId::new(role_id))
+                    },
+                )?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
                     vec.push(row?);
                 }
                 Ok(vec)
+            })
+            .await
+    }
+
+    /// get all links
+    pub async fn get_links(
+        &self,
+        guild: GuildId,
+    ) -> Result<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
+        self.connection
+            .call(move |connection| {
+                let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
+
+                // deal with global blanket
+                let mut blanket_statement = connection.prepare_cached(
+                    "SELECT blanket_role_id from guild where guild_id = ?",
+                )?;
+                let blanket_result: Option<RoleId> = blanket_statement.query_row([guild.get()], |row| {
+                    row.get(0)
+                }).optional()?
+                    .map(|role_id| RoleId::new(role_id));
+                if let Some(blanket_role) = blanket_result {
+                    map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
+                }
+
+                // deal with product blankets
+                let mut product_statement = connection.prepare_cached(
+                    "SELECT product_id, role_id FROM product_role WHERE guild_id = ?",
+                )?; //TODO: could use an index
+                let product_result = product_statement.query_map([guild.get()], |row| {
+                    let product_id: String = row.get(0)?;
+                    let role_id: u64 = row.get(1)?;
+                    Ok((RoleId::new(role_id), product_id))
+                })?;
+                for row in product_result {
+                    let (role, product_id) = row?;
+                    map.entry(role).or_default().push(LinkSource::ProductBlanket {product_id});
+                }
+
+                // deal with specific links
+                let mut product_version_statement = connection.prepare_cached(
+                    "SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?",
+                )?; //TODO: could use an index
+                let product_version_result = product_version_statement.query_map([guild.get()], |row| {
+                    let product_id: String = row.get(0)?;
+                    let product_version_id: Option<String> = row.get(1)?;
+                    let role_id: u64 = row.get(2)?;
+                    let product_version_id = ProductVersionId {
+                        product_id,
+                        product_version_id,
+                    };
+                    Ok((RoleId::new(role_id), product_version_id))
+                })?;
+                for row in product_version_result {
+                    let (role, product_version_id) = row?;
+                    map.entry(role).or_default().push(LinkSource::ProductVersion(product_version_id));
+                }
+                Ok(map)
             })
             .await
     }
@@ -773,4 +927,11 @@ pub struct GuildGumroadInfo {
     pub guild_id: GuildId,
     pub log_channel_id: ChannelId,
     pub gumroad_failure_count: u64,
+}
+
+/// Helper enum returned by [`JinxDb::get_links`]. This is any source for a product->role link.
+pub enum LinkSource {
+    GlobalBlanket,
+    ProductBlanket { product_id: String },
+    ProductVersion(ProductVersionId),
 }

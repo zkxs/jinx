@@ -5,6 +5,7 @@
 
 mod dto;
 
+use std::fmt::{Display, Formatter};
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
@@ -132,8 +133,8 @@ pub async fn check_license(
             if response.status().is_success() {
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
-                //TODO: inject product version name
-                Ok(Some(response.into()))
+                add_product_version_name_to_license_info(api_key, &mut response).await?;
+                Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license id \"{license_id}\"");
                 // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
@@ -193,7 +194,7 @@ pub async fn check_license(
                 }
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
-                //TODO: inject product version name
+                add_product_version_name_to_license_info(api_key, &mut response).await?;
                 Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license key \"{license_key}\"");
@@ -203,12 +204,24 @@ pub async fn check_license(
     }
 }
 
+/// This performs an API call to get_product
 async fn add_product_version_name_to_license_info(
     api_key: &str,
     license_info: &mut LicenseInfo,
 ) -> Result<(), Error> {
-    let product = get_product(api_key, &license_info.product_id).await?;
-    let _ = license_info.product_version_name.insert("foo".to_string()); //TODO
+    if let Some(product_version_info) = &mut license_info.product_version_info {
+        let product = get_product(api_key, &license_info.product_id).await?;
+        if let Some(product_version_name) = product
+            .versions
+            .into_iter()
+            .find(|found_product_version| {
+                found_product_version.id == product_version_info.product_version_id
+            })
+            .map(|found_product_version| found_product_version.name)
+        {
+            product_version_info.product_version_name = product_version_name;
+        }
+    }
     Ok(())
 }
 
@@ -317,9 +330,8 @@ pub async fn delete_license_activation(
     }
 }
 
-/// Look up a product
+/// Look up a product. This includes product version information.
 pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct, Error> {
-    //TODO: add disk cache for this
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{}products/{}", JINXXY_BASE_URL, product_id))
@@ -342,9 +354,8 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
     Ok(response)
 }
 
-/// Get all products on this account
+/// Get all products on this account. This does NOT include product version information.
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
-    //TODO: add disk cache for this (see above issue with list caching)
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{}products", JINXXY_BASE_URL))
@@ -410,9 +421,26 @@ pub struct LicenseInfo {
     pub username: Option<String>,
     pub product_id: String,
     pub product_name: String,
-    pub product_version_id: Option<String>,
-    pub product_version_name: Option<String>,
+    pub product_version_info: Option<ProductVersionInfo>,
     pub activations: u32,
+}
+
+pub struct ProductVersionInfo {
+    pub product_version_id: String,
+    pub product_version_name: String,
+}
+
+impl LicenseInfo {
+    /// create a new ProductVersionId by cloning fields
+    pub fn new_product_version_id(&self) -> ProductVersionId {
+        ProductVersionId {
+            product_id: self.product_id.clone(),
+            product_version_id: self
+                .product_version_info
+                .as_ref()
+                .map(|info| info.product_version_id.clone()),
+        }
+    }
 }
 
 /// Not part of the Jinxxy API: this is an internal DTO
@@ -423,14 +451,20 @@ pub struct ProductVersionId {
 }
 
 impl ProductVersionId {
-    pub fn display_name(&self) -> String {
-        crate::bot::util::product_display_name(&self.product_id, self.product_version_id.as_deref())
-    }
-
     pub fn from_product_id(product_id: impl Into<String>) -> ProductVersionId {
         Self {
             product_id: product_id.into(),
             product_version_id: None,
+        }
+    }
+}
+
+impl Display for ProductVersionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(product_version_id) = &self.product_version_id {
+            write!(f, "{}.{}", self.product_id, product_version_id)
+        } else {
+            write!(f, "{}.null", self.product_id)
         }
     }
 }

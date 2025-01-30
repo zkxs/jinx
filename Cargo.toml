@@ -35,3 +35,11 @@ trie-rs = "0.4"
 
 [dev-dependencies]
 tracing-test = "0.2" # Allow tracing to print during unit tests
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unused_async = "warn"
+unused_self = "warn"
+used_underscore_binding = "warn"
+used_underscore_items = "warn"

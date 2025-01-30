@@ -6,9 +6,10 @@ use crate::bot::util::{
     error_reply, license_to_id, success_reply,
 };
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
+use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _, ProductVersionId};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
@@ -16,7 +17,7 @@ use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
     RoleId,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tracing::warn;
 
 // discord component ids
@@ -243,8 +244,9 @@ pub async fn user_info(
                     let product_version_name = product_version_cache
                         .and_then(|cache| {
                             license_info
-                                .product_version_id
+                                .product_version_info
                                 .as_ref()
+                                .map(|info| info.product_version_id.as_str())
                                 .and_then(|version_id| cache.get(version_id))
                         })
                         .map(|version| format!("\"{}\"", version))
@@ -439,7 +441,7 @@ pub async fn lock_license(
                 ),
             )
         } else {
-            error_reply("Error Locking License",format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Locking License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
         error_reply("Error Locking License", MISSING_API_KEY_MESSAGE)
@@ -494,7 +496,7 @@ pub async fn unlock_license(
 
             success_reply("Success", message)
         } else {
-            error_reply("Error Unlocking License",format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply("Error Unlocking License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }
     } else {
         error_reply("Error Unlocking License", MISSING_API_KEY_MESSAGE)
@@ -522,7 +524,103 @@ async fn product_autocomplete(
     }
 }
 
-/// Link a product to a role. Activating a license for the product will grant all linked roles.
+/// Initializes autocomplete data, and then does the product version autocomplete
+async fn product_version_autocomplete(
+    context: Context<'_>,
+    product_prefix: &str,
+) -> impl Iterator<Item = String> {
+    match context
+        .data()
+        .api_cache
+        .product_version_names_with_prefix(&context, product_prefix)
+        .await
+    {
+        Ok(result) => result.into_iter(),
+        Err(e) => {
+            warn!("Failed to read API cache: {:?}", e);
+            Vec::new().into_iter()
+        }
+    }
+}
+
+/// Link all versions of a product to a role grant.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn set_wildcard_role(
+    context: Context<'_>,
+    #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let assignable_roles = assignable_roles(&context, guild_id).await?;
+
+    let mut unassignable_roles: Option<RoleId> = None;
+    context
+        .data()
+        .db
+        .set_blanket_role_id(guild_id, Some(role))
+        .await?;
+    if !assignable_roles.contains(&role) {
+        unassignable_roles = Some(role);
+    }
+
+    let embed = CreateEmbed::default()
+        .title("Wildcard Set Successful")
+        .description(format!("Any product will now grant <@&{}>", role.get()))
+        .color(Colour::DARK_GREEN);
+    let reply = CreateReply::default().embed(embed).ephemeral(true);
+    let reply = if let Some(embed) =
+        create_role_warning_from_unassignable(unassignable_roles.into_iter())
+    {
+        reply.embed(embed)
+    } else {
+        reply
+    };
+
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Unlink a product from a role grant.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unset_wildcard_role(context: Context<'_>) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    context
+        .data()
+        .db
+        .set_blanket_role_id(guild_id, None)
+        .await?;
+
+    let embed = CreateEmbed::default()
+        .title("Wildcard Unset Successful")
+        .description("A role will no longer be granted for any product: now roles are only granted on a per-product basis.")
+        .color(Colour::DARK_GREEN);
+    let reply = CreateReply::default().embed(embed).ephemeral(true);
+
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Link all versions of a product to a role grant.
 #[poise::command(
     slash_command,
     guild_only,
@@ -539,33 +637,32 @@ pub(in crate::bot) async fn link_product(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_version_id = context
+    let product_id = context
         .data()
         .api_cache
         .product_name_to_id(&context, &product)
         .await?;
 
-    let reply = if let Some(product_version_id) = product_version_id {
+    let reply = if let Some(product_id) = product_id {
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
         let assignable_roles = assignable_roles(&context, guild_id).await?;
 
-        let mut unassignable_roles: HashSet<RoleId, ahash::RandomState> =
-            HashSet::with_hasher(Default::default());
+        let mut unassignable_roles: Option<RoleId> = None;
         context
             .data()
             .db
-            .link_product(guild_id, product_version_id.product_id.clone(), role)
+            .link_product(guild_id, product_id.clone(), role)
             .await?;
-        if !assignable_roles.contains(&role) && !unassignable_roles.contains(&role) {
-            unassignable_roles.insert(role);
+        if !assignable_roles.contains(&role) {
+            unassignable_roles = Some(role);
         }
 
         let roles = context
             .data()
             .db
-            .get_roles(guild_id, product_version_id.product_id)
+            .get_linked_roles_for_product(guild_id, product_id)
             .await?;
         let mut message_lines = String::new();
         for role in roles {
@@ -593,7 +690,7 @@ pub(in crate::bot) async fn link_product(
     Ok(())
 }
 
-/// Unlink a product from a role.
+/// Unlink a product from a role grant.
 #[poise::command(
     slash_command,
     guild_only,
@@ -610,13 +707,13 @@ pub(in crate::bot) async fn unlink_product(
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
-    let product_version_id = context
+    let product_id = context
         .data()
         .api_cache
         .product_name_to_id(&context, &product)
         .await?;
 
-    let reply = if let Some(product_version_id) = product_version_id {
+    let reply = if let Some(product_id) = product_id {
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
@@ -625,13 +722,13 @@ pub(in crate::bot) async fn unlink_product(
         context
             .data()
             .db
-            .unlink_product(guild_id, product_version_id.product_id.clone(), role)
+            .unlink_product(guild_id, product_id.clone(), role)
             .await?;
 
         let roles = context
             .data()
             .db
-            .get_roles(guild_id, product_version_id.product_id)
+            .get_linked_roles_for_product(guild_id, product_id)
             .await?;
         let mut message_lines = String::new();
         for role in &roles {
@@ -639,7 +736,7 @@ pub(in crate::bot) async fn unlink_product(
         }
 
         let embed = CreateEmbed::default()
-            .title("Product Link Successful")
+            .title("Product Unlink Successful")
             .description(format!(
                 "{} will now grant the following roles:{}",
                 product, message_lines
@@ -653,6 +750,148 @@ pub(in crate::bot) async fn unlink_product(
         }
     } else {
         error_reply("Error Unlinking Product", "Product not found.")
+    };
+
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Link a specific product version to a role grant.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn link_product_version(
+    context: Context<'_>,
+    #[description = "Product to modify role links for"]
+    #[autocomplete = "product_version_autocomplete"]
+    product_version: String,
+    #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let product_version_id = context
+        .data()
+        .api_cache
+        .product_version_name_to_version_id(&context, &product_version)
+        .await?;
+
+    let reply = if let Some(product_version_id) = product_version_id {
+        let guild_id = context
+            .guild_id()
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
+
+        let mut unassignable_roles: Option<RoleId> = None;
+        context
+            .data()
+            .db
+            .link_product_version(guild_id, product_version_id.clone(), role)
+            .await?;
+        if !assignable_roles.contains(&role) {
+            unassignable_roles = Some(role);
+        }
+
+        let roles = context
+            .data()
+            .db
+            .get_linked_roles_for_product_version(guild_id, product_version_id)
+            .await?;
+        let mut message_lines = String::new();
+        for role in roles {
+            message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
+        }
+
+        let embed = CreateEmbed::default()
+            .title("Product Version Link Successful")
+            .description(format!(
+                "{} will now grant the following roles:{}",
+                product_version, message_lines
+            ))
+            .color(Colour::DARK_GREEN);
+        let reply = CreateReply::default().embed(embed).ephemeral(true);
+        if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
+            reply.embed(embed)
+        } else {
+            reply
+        }
+    } else {
+        error_reply(
+            "Error Linking Product Version",
+            "Product version not found.",
+        )
+    };
+
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Unlink a specific product version from a role grant.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unlink_product_version(
+    context: Context<'_>,
+    #[description = "Product to modify role links for"]
+    #[autocomplete = "product_version_autocomplete"]
+    product_version: String,
+    #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let product_version_id = context
+        .data()
+        .api_cache
+        .product_version_name_to_version_id(&context, &product_version)
+        .await?;
+
+    let reply = if let Some(product_version_id) = product_version_id {
+        let guild_id = context
+            .guild_id()
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let assignable_roles = assignable_roles(&context, guild_id).await?;
+
+        context
+            .data()
+            .db
+            .unlink_product_version(guild_id, product_version_id.clone(), role)
+            .await?;
+
+        let roles = context
+            .data()
+            .db
+            .get_linked_roles_for_product_version(guild_id, product_version_id)
+            .await?;
+        let mut message_lines = String::new();
+        for role in &roles {
+            message_lines.push_str(format!("\n- <@&{}>", role.get()).as_str());
+        }
+
+        let embed = CreateEmbed::default()
+            .title("Product Version Unlink Successful")
+            .description(format!(
+                "{} will now grant the following roles:{}",
+                product_version, message_lines
+            ))
+            .color(Colour::DARK_GREEN);
+        let reply = CreateReply::default().embed(embed).ephemeral(true);
+        if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
+            reply.embed(embed)
+        } else {
+            reply
+        }
+    } else {
+        error_reply(
+            "Error Unlinking Product Version",
+            "Product version not found.",
+        )
     };
 
     context.send(reply).await?;
@@ -675,47 +914,56 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let assignable_roles = assignable_roles(&context, guild_id).await?;
-    let mut links = context.data().db.get_links(guild_id).await?;
+    let links = context.data().db.get_links(guild_id).await?;
     let message = if links.is_empty() {
         "No product→role links configured".to_string()
     } else {
-        links.sort_unstable_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))); // sort by role, then product
+        let mut linked_roles: Vec<RoleId> = links.keys().copied().collect();
+        linked_roles.sort_unstable(); // make sure the roles are listed in a consistent order and not subject to HashMap randomization
         context
             .data()
             .api_cache
             .get(&context, |cache| {
+                let mut first_line = true;
                 let mut message = String::new();
-                let mut current_role = None;
-
-                for (product_id, role) in &links {
-                    let product_name = cache
-                        .product_version_id_to_name(&ProductVersionId::from_product_id(product_id)) //TODO: this involves some nasty cloning and can perhaps be optimized
-                        .map(|name| format!("\"{}\"", name))
-                        .unwrap_or_else(|| product_id.clone());
-                    if current_role != Some(role) {
-                        current_role = Some(role);
-                        if message.is_empty() {
-                            message.push_str(
-                                format!("- <@&{}> granted by {}", role.get(), product_name)
-                                    .as_str(),
-                            );
-                        } else {
-                            message.push_str(
-                                format!("\n- <@&{}> granted by {}", role.get(), product_name)
-                                    .as_str(),
-                            );
-                        }
+                for role in linked_roles {
+                    let mut first_name_in_line = true;
+                    if first_line {
+                        first_line = false;
                     } else {
-                        message.push_str(format!(", {}", product_name).as_str());
+                        message.push('\n');
+                    }
+                    message.push_str(format!("- <@&{}> granted by ", role.get()).as_str());
+                    let link_sources = links.get(&role).expect("we just queried a map with its own key list, how the hell is it missing an entry now?");
+                    for link_source in link_sources {
+                        let name = match link_source {
+                            LinkSource::GlobalBlanket => "`*`".to_string(),
+                            LinkSource::ProductBlanket { product_id } => {
+                                cache.product_id_to_name(product_id).unwrap_or(product_id.as_str()).to_string()
+                            }
+                            LinkSource::ProductVersion(product_version_id) => {
+                                // obnoxiously this one format requires this whole block to return String vs &str
+                                cache.product_version_id_to_name(product_version_id)
+                                    .map(|str| str.to_string())
+                                    .unwrap_or_else(|| format!("{product_version_id}"))
+                            }
+                        };
+                        if first_name_in_line {
+                            first_name_in_line = false;
+                            message.push_str(name.as_str());
+                        } else {
+                            message.push_str(", ");
+                            message.push_str(name.as_str());
+                        }
                     }
                 }
                 message
-            })
-            .await?
+            }).await?
     };
+
     let unassignable_embed = create_role_warning_from_roles(
         &assignable_roles,
-        links.iter().map(|(_product_id, role_id)| *role_id),
+        links.keys().copied(),
     );
     let embed = CreateEmbed::default()
         .title("All product→role links")

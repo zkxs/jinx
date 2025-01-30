@@ -3,11 +3,11 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{GetProfileImageUrl, GetUsername};
+use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::warn;
 
 const DISCORD_PREFIX: &str = "discord_";
 
@@ -34,6 +34,14 @@ pub struct License {
 
 impl From<License> for super::LicenseInfo {
     fn from(license: License) -> Self {
+        let product_version_info =
+            license
+                .inventory_item
+                .target_version_id
+                .map(|version_id| ProductVersionInfo {
+                    product_version_id: version_id,
+                    product_version_name: String::new(), // this gets injected later after some async stuff happens, don't worry about it for now
+                });
         Self {
             license_id: license.id,
             short_key: license.short_key,
@@ -41,8 +49,7 @@ impl From<License> for super::LicenseInfo {
             username: license.user.username,
             product_id: license.inventory_item.target_id,
             product_name: license.inventory_item.item.name,
-            product_version_id: license.inventory_item.target_version_id,
-            product_version_name: None, // this gets injected later after some async stuff happens, don't worry about it for now
+            product_version_info,
             activations: license.activations.total_count,
         }
     }
@@ -61,7 +68,7 @@ pub struct LicenseInventoryItem {
     // this also has an item `id` field which may be able to be cross-referenced with the order API
     /// Product ID
     target_id: String,
-    /// Product version ID
+    /// Product version ID. None if the item did not have an associated version.
     target_version_id: Option<String>,
     /// More product metadata
     item: LicenseInventoryItemItem,
