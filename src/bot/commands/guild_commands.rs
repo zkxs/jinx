@@ -18,6 +18,7 @@ use serenity::{
     RoleId,
 };
 use std::collections::HashMap;
+use tokio::join;
 use tracing::warn;
 
 // discord component ids
@@ -377,26 +378,79 @@ pub async fn license_info(
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
-            // look up license usage info from local DB: this avoids doing some expensive Jinxxy API requests
-            let license_users = context
-                .data()
-                .db
-                .get_license_users(guild_id, license_id)
-                .await?;
-            let message = if license_users.is_empty() {
-                format!("`{}` is valid, but has no registered users.", license)
-            } else {
-                let mut message = format!("Users for `{}`:", license);
-                for user_id in license_users {
-                    if user_id == 0 {
-                        message.push_str("\n- **LOCKED** (prevents further use)");
-                    } else {
-                        message.push_str(format!("\n- <@{}>", user_id).as_str());
-                    }
+            // look up license usage info from local DB and from Jinxxy concurrently
+            let (local_license_users, license_info) = join!(
+                context
+                    .data()
+                    .db
+                    .get_license_users(guild_id, license_id.clone()),
+                async move {
+                    let license_id = license_id;
+                    jinxxy::check_license_id(&api_key, &license_id).await
                 }
-                message
-            };
-            success_reply("License Info", message)
+            );
+            // these braces aren't needed but my IDE shits itself without them, so oh well.
+            let local_license_users = { local_license_users? };
+            if let Some(license_info) = license_info? {
+                // license is valid
+
+                let product_name = license_info.product_name.as_str();
+                let version_name = license_info
+                    .product_version_info
+                    .as_ref()
+                    .map(|info| info.product_version_name.as_str())
+                    .unwrap_or("`null`");
+
+                let message = if local_license_users.is_empty() {
+                    format!(
+                        "`{}` / `{}` / `{}` is valid for {} {}\n\nNo registered users.",
+                        license_info.license_id,
+                        license_info.short_key,
+                        license_info.key,
+                        product_name,
+                        version_name
+                    )
+                } else {
+                    let mut message = format!(
+                        "`{}` / `{}` / `{}` is valid for {} {}\n\nRegistered users:",
+                        license_info.license_id,
+                        license_info.short_key,
+                        license_info.key,
+                        product_name,
+                        version_name
+                    );
+                    for user_id in local_license_users {
+                        if user_id == 0 {
+                            message.push_str("\n- **LOCKED** (prevents further use)");
+                        } else {
+                            message.push_str(format!("\n- <@{}>", user_id).as_str());
+                        }
+                    }
+                    message
+                };
+                success_reply("License Info", message)
+            } else {
+                // license is invalid... but we somehow found it in the license list search by key?
+                // that or an ID was provided directly
+                let message = if local_license_users.is_empty() {
+                    format!("License `{} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`", license)
+                } else {
+                    let mut message =
+                        format!("License `{}` not found, but somehow has users:", license);
+                    for user_id in local_license_users {
+                        if user_id == 0 {
+                            message.push_str("\n- **LOCKED** (prevents further use)");
+                        } else {
+                            message.push_str(format!("\n- <@{}>", user_id).as_str());
+                        }
+                    }
+                    message.push_str(
+                        "\nThis may indicate that the license has been revoked on the Jinxxy side.",
+                    );
+                    message
+                };
+                error_reply("License Info Validation Error", message)
+            }
         } else {
             error_reply("Error Getting License Info", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
         }

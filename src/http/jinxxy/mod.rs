@@ -423,7 +423,10 @@ impl GetProfileImageUrl for DisplayUser {
 /// Not part of the Jinxxy API: this is an internal DTO
 pub struct LicenseInfo {
     pub license_id: String,
+    /// short key
     pub short_key: String,
+    /// long key
+    pub key: String,
     pub user_id: String,
     /// Account's username; used in profile URL
     pub username: Option<String>,
