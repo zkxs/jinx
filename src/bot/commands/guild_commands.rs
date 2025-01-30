@@ -769,7 +769,7 @@ pub(in crate::bot) async fn unlink_product(
 )]
 pub(in crate::bot) async fn link_product_version(
     context: Context<'_>,
-    #[description = "Product to modify role links for"]
+    #[description = "Product & version to modify role links for"]
     #[autocomplete = "product_version_autocomplete"]
     product_version: String,
     #[description = "Role to link"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286
@@ -842,7 +842,7 @@ pub(in crate::bot) async fn link_product_version(
 )]
 pub(in crate::bot) async fn unlink_product_version(
     context: Context<'_>,
-    #[description = "Product to modify role links for"]
+    #[description = "Product & version to modify role links for"]
     #[autocomplete = "product_version_autocomplete"]
     product_version: String,
     #[description = "Role to unlink"] role: RoleId, // note that Discord does not presently support variadic arguments: https://github.com/discord/discord-api-docs/discussions/3286

@@ -15,6 +15,8 @@ Features include:
   - Ability to lock a license, preventing it from being used to grant roles in the future.
 - Flexible role configuration
   - Products can grant more than one role at a time. For example, you might have a shared role that all buyers get and then additional per-product roles.
+  - For extremely simple setup, you can set a wildcard role granted for all of your products.
+  - For fine-grained setup, you can configure different role grants for different versions of the same products.
   - No limit on number of linked products or roles. (Some similar bots support a maximum of 25 products due to a certain Discord limitation).
 
 If you have suggestions, feedback, or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
@@ -78,22 +80,26 @@ is moderately technical.
 
 Jinx comes with several slash commands for server administrators and moderators.
 
-| Command                                | Required Permission | Description                                                                                 |
-| -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
-| `/init [api_key]`                      | Manage Server       | Set up Jinx for this Discord server.                                                        |
-| `/set_log_channel [channel]`           | Manage Server       | Set (or unset) channel for bot to log to.                                                   |
-| `/link_product <product> <role>`       | Manage Roles        | Link a product to a role. Activating a license for the product will grant all linked roles. |
-| `/unlink_product <product> <role>`     | Manage Roles        | Unlink product from roles.                                                                  |
-| `/list_links`                          | Manage Roles        | List all product→role links.                                                                |
-| `/create_post`                         | Manage Roles        | Create post with buttons to register product keys.                                          |
-| `/user_info <user>`                    | Manage Server       | Query license information for a Discord user.                                               |
-| `/license_info <license>`              | Manage Roles        | Query activation information for a license.                                                 |
-| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                               |
-| `/unlock_license <license>`            | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                    |
-| `/deactivate_license <user> <license>` | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                        |
-| `/stats`                               | Manage Server       | Display aggregate statistics on license activations                                         |
-| `/version`                             | None                | Shows version information about Jinx.                                                       |
-| `/help`                                | None                | Shows help information about Jinx.                                                          |
+| Command                                           | Required Permission | Description                                                                                                                  |
+| ------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/init [api_key]`                                 | Manage Server       | Set up Jinx for this Discord server.                                                                                         |
+| `/set_log_channel [channel]`                      | Manage Server       | Set (or unset) channel for bot to log to.                                                                                    |
+| `/link_product <product> <role>`                  | Manage Roles        | Link a product to a role. Activating a license for any version of the product will grant the linked roles.                   |
+| `/unlink_product <product> <role>`                | Manage Roles        | Unlink product from roles.                                                                                                   |
+| `link_product_version <product_version> <role>`   | Manage Roles        | Link a product version to a role. Activating a license for that specific version of the product will grant the linked roles. |
+| `unlink_product_version <product_version> <role>` | Manage Roles        | Unlink a product version from a role.                                                                                        |
+| `set_wildcard_role <role>`                        | Manage Roles        | Set a wildcard role which will be granted for all products in your store.                                                    |
+| `unset_wildcard_role`                             | Manage Roles        | Unset the wildcard role.                                                                                                     |
+| `/list_links`                                     | Manage Roles        | List all product→role links.                                                                                                 |
+| `/create_post`                                    | Manage Roles        | Create post with buttons to register product keys.                                                                           |
+| `/user_info <user>`                               | Manage Server       | List all licenses linked to a Discord user.                                                                                  |
+| `/license_info <license>`                         | Manage Roles        | List activation information for a license.                                                                                   |
+| `/lock_license <license>`                         | Manage Roles        | Lock a license, preventing it from being used to grant roles.                                                                |
+| `/unlock_license <license>`                       | Manage Roles        | Unlock a license, allowing it to be used to grant roles.                                                                     |
+| `/deactivate_license <user> <license>`            | Manage Roles        | Remove a user's activation of a license. This does not remove roles!                                                         |
+| `/stats`                                          | Manage Server       | Display aggregate statistics on license activations                                                                          |
+| `/version`                                        | None                | Shows version information about Jinx.                                                                                        |
+| `/help`                                           | None                | Shows help information about Jinx.                                                                                           |
 
 > [!TIP]
 > - The required permission/role for a command can be customized in the server's Integration settings.
