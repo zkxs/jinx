@@ -930,13 +930,12 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
                 let mut first_line = true;
                 let mut message = String::new();
                 for role in linked_roles {
-                    let mut first_name_in_line = true;
                     if first_line {
                         first_line = false;
                     } else {
                         message.push('\n');
                     }
-                    message.push_str(format!("- <@&{}> granted by ", role.get()).as_str());
+                    message.push_str(format!("- <@&{}> granted by:", role.get()).as_str());
                     let link_sources = links.get(&role).expect("we just queried a map with its own key list, how the hell is it missing an entry now?");
                     for link_source in link_sources {
                         let name = match link_source {
@@ -951,13 +950,8 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
                                     .unwrap_or_else(|| format!("{product_version_id}"))
                             }
                         };
-                        if first_name_in_line {
-                            first_name_in_line = false;
-                            message.push_str(name.as_str());
-                        } else {
-                            message.push_str(", ");
-                            message.push_str(name.as_str());
-                        }
+                        message.push_str("\n  - ");
+                        message.push_str(name.as_str());
                     }
                 }
                 message
