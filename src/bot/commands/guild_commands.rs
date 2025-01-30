@@ -9,21 +9,33 @@ use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _, DISCORD_PREFIX};
 use crate::license::LOCKING_USER_ID;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
+use regex::Regex;
 use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
     RoleId,
 };
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tokio::join;
-use tracing::warn;
+use tracing::{error, warn};
 
 // discord component ids
 pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
 pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
+
+static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(format!(r"^{}([\d+])$", DISCORD_PREFIX).as_str())
+        .expect("Failed to compile GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX")
+});
+
+thread_local! {
+    // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
+    static JINXXY_ACTIVATION_DESCRIPTION_REGEX: Regex = GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX.clone();
+}
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -379,18 +391,53 @@ pub async fn license_info(
         let license_id = license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
-            let (local_license_users, license_info) = join!(
+            let (local_license_users, license_info, remote_license_users) = join!(
                 context
                     .data()
                     .db
                     .get_license_users(guild_id, license_id.clone()),
-                async move {
-                    let license_id = license_id;
+                async {
+                    let api_key = api_key.clone();
+                    let license_id = license_id.clone();
                     jinxxy::check_license_id(&api_key, &license_id).await
+                },
+                async {
+                    let api_key = api_key.clone();
+                    let license_id = license_id.clone();
+                    jinxxy::get_license_activations(&api_key, &license_id).await
                 }
             );
             // these braces aren't needed but my IDE shits itself without them, so oh well.
-            let local_license_users = { local_license_users? };
+            let mut local_license_users: Vec<u64> = { local_license_users? };
+            local_license_users.sort_unstable();
+            let mut remote_license_users: Vec<u64> = remote_license_users?
+                .into_iter()
+                .map(|activation| activation.description)
+                .flat_map(|description| {
+                    JINXXY_ACTIVATION_DESCRIPTION_REGEX
+                        .with(|regex| regex.captures(&description))
+                        .and_then(|captures| {
+                            let capture = captures.get(1);
+                            if capture.is_none() {
+                                error!("JINXXY_ACTIVATION_DESCRIPTION_REGEX capture group 1 not found!");
+                            }
+                            capture
+                        })
+                        .and_then(|capture| {
+                            match capture.as_str().parse::<u64>() {
+                                Ok(id) => {
+                                    Some(id)
+                                }
+                                Err(e) => {
+                                    error!("error parsing activation description \"{}\": {:?}", description, e);
+                                    None
+                                }
+                            }
+                        })
+                })
+                .collect();
+            remote_license_users.sort_unstable();
+
             if let Some(license_info) = license_info? {
                 // license is valid
 
@@ -419,8 +466,8 @@ pub async fn license_info(
                         product_name,
                         version_name
                     );
-                    for user_id in local_license_users {
-                        if user_id == 0 {
+                    for user_id in &local_license_users {
+                        if *user_id == 0 {
                             message.push_str("\n- **LOCKED** (prevents further use)");
                         } else {
                             message.push_str(format!("\n- <@{}>", user_id).as_str());
@@ -428,7 +475,16 @@ pub async fn license_info(
                     }
                     message
                 };
-                success_reply("License Info", message)
+                let reply = success_reply("License Info", message);
+                if local_license_users == remote_license_users {
+                    reply
+                } else {
+                    let embed = CreateEmbed::default()
+                        .title("Activator mismatch")
+                        .description("The local and remote activator lists do not match. This is really weird and you should tell the bot dev about it, because chances are you are the first person seeing this message ever.")
+                        .color(Colour::RED);
+                    reply.embed(embed)
+                }
             } else {
                 // license is invalid... but we somehow found it in the license list search by key?
                 // that or an ID was provided directly

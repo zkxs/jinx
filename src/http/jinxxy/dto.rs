@@ -3,13 +3,11 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo};
+use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo, DISCORD_PREFIX};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-
-const DISCORD_PREFIX: &str = "discord_";
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseList {
