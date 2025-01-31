@@ -24,7 +24,7 @@ use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-const CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
+const CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60 * 2);
 
 #[derive(Default)]
 pub struct ApiCache {
