@@ -428,13 +428,15 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
     for guild_id in context.cache().guilds() {
         let is_administrator = util::is_administrator(&context, guild_id).await;
         if *is_administrator.as_ref().unwrap_or(&true) {
+            any_misconfigurations = true;
             let admin_code = match is_administrator {
                 Ok(true) => "A",
                 Err(_) => "E",
                 _ => "?",
             };
-            any_misconfigurations = true;
-            lines.push_str(format!("{:20} {}\n", guild_id.get(), admin_code).as_str())
+            let name = guild_id.name(context);
+            let name_str = name.as_deref().unwrap_or("");
+            lines.push_str(format!("{:20} {admin_code} {name_str}\n", guild_id.get()).as_str())
         }
     }
 
