@@ -2,7 +2,8 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
-use crate::bot::util::{set_guild_commands, MessageExtensions};
+use crate::bot::util;
+use crate::bot::util::MessageExtensions;
 use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -64,7 +65,7 @@ async fn event_handler_inner<'a>(
             //TODO: when the bot starts we might receive a flurry of GuildCreate events leading to ratelimit issues when we attempt to reinstall the commands with no delay.
             // I might be able to figure out some sort of work queue for if that ever becomes a problem. All we need is a serenity::Http and a GuildId so we should be good to handle this from a background task.
             let guild_command_reinstall_result =
-                set_guild_commands(&context.http, &data.db, guild.id, None, None).await;
+                util::set_guild_commands(&context.http, &data.db, guild.id, None, None).await;
             if let Err(e) = guild_command_reinstall_result {
                 error!(
                     "Error setting guild commands for guild {}: {:?}",
@@ -288,7 +289,7 @@ async fn event_handler_inner<'a>(
                         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id).await? {
                             let license = license_type.create_untrusted_jinxxy_license(license_key);
                             let license_response = if let Some(license) = license {
-                                jinxxy::check_license(&api_key, license).await?
+                                jinxxy::check_license(&api_key, license, true).await?
                             } else {
                                 // if the user has given us something that is very clearly not a Jinxxy license then don't even try hitting the API
                                 None

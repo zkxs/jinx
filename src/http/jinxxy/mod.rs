@@ -110,8 +110,14 @@ pub async fn get_license_id(
 pub async fn check_license_id(
     api_key: &str,
     license_id: &str,
+    inject_product_version_name: bool,
 ) -> Result<Option<LicenseInfo>, Error> {
-    check_license(api_key, LicenseKey::Id(license_id)).await
+    check_license(
+        api_key,
+        LicenseKey::Id(license_id),
+        inject_product_version_name,
+    )
+    .await
 }
 
 /// Get the license info corresponding to a license key, or `None` if the license key is invalid.
@@ -120,6 +126,7 @@ pub async fn check_license_id(
 pub async fn check_license(
     api_key: &str,
     license: LicenseKey<'_>,
+    inject_product_version_name: bool,
 ) -> Result<Option<LicenseInfo>, Error> {
     match license {
         LicenseKey::Id(license_id) => {
@@ -137,7 +144,9 @@ pub async fn check_license(
             if response.status().is_success() {
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
-                add_product_version_name_to_license_info(api_key, &mut response).await?;
+                if inject_product_version_name {
+                    add_product_version_name_to_license_info(api_key, &mut response).await?;
+                }
                 Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license id \"{license_id}\"");
@@ -198,7 +207,9 @@ pub async fn check_license(
                 }
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
-                add_product_version_name_to_license_info(api_key, &mut response).await?;
+                if inject_product_version_name {
+                    add_product_version_name_to_license_info(api_key, &mut response).await?;
+                }
                 Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license key \"{license_key}\"");

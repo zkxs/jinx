@@ -10,7 +10,7 @@
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 //! I can clear the cache with some kind of background task that checks timestamps ever 60s or so.
 
-use crate::bot::util::{product_display_name, truncate_string_for_discord_autocomplete};
+use crate::bot::util;
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -215,7 +215,8 @@ impl GuildCache {
                 .iter()
                 .map(|product| {
                     let id = product.id.clone();
-                    let product_name = truncate_string_for_discord_autocomplete(&product.name);
+                    let product_name =
+                        util::truncate_string_for_discord_autocomplete(&product.name);
                     NameInfo { id, product_name }
                 })
                 .collect();
@@ -226,7 +227,7 @@ impl GuildCache {
                 .flat_map(|product| {
                     let null_name_info = VersionNameInfo {
                         id: ProductVersionId::from_product_id(&product.id),
-                        product_version_name: product_display_name(&product.name, None),
+                        product_version_name: util::product_display_name(&product.name, None),
                     };
                     let null_iter = std::iter::once(null_name_info);
 
@@ -236,7 +237,7 @@ impl GuildCache {
                             product_version_id: Some(version.id.clone()),
                         };
                         let product_version_name =
-                            product_display_name(&product.name, Some(version.name.as_str()));
+                            util::product_display_name(&product.name, Some(version.name.as_str()));
                         VersionNameInfo {
                             id,
                             product_version_name,

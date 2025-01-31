@@ -1,7 +1,8 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util::{check_owner, error_reply, set_guild_commands, success_reply};
+use crate::bot::util;
+use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::bot::Context;
 use crate::constants;
 use crate::error::JinxError;
@@ -110,7 +111,8 @@ pub(in crate::bot) async fn init(
             // I suspect this is a discord/serenity/poise bug.
             // For some <id>, <nonce>, this looks like:
             // Http(UnsuccessfulRequest(ErrorResponse { status_code: 404, url: "https://discord.com/api/v10/interactions/<id>/<nonce>/callback", method: POST, error: DiscordJsonError { code: 10062, message: "Unknown interaction", errors: [] } }))
-            set_guild_commands(&context, &context.data().db, guild_id, Some(true), None).await?;
+            util::set_guild_commands(&context, &context.data().db, guild_id, Some(true), None)
+                .await?;
 
             success_reply("Success", "Owner commands installed.")
         } else {
@@ -119,7 +121,8 @@ pub(in crate::bot) async fn init(
     } else if api_key == "uninstall_owner_commands" {
         if check_owner(context).await? {
             context.data().db.set_owner_guild(guild_id, false).await?;
-            set_guild_commands(&context, &context.data().db, guild_id, Some(false), None).await?;
+            util::set_guild_commands(&context, &context.data().db, guild_id, Some(false), None)
+                .await?;
             success_reply("Success", "Owner commands uninstalled.")
         } else {
             error_reply("Error Uninstalling Owner Commands", "Not an owner")
@@ -135,7 +138,7 @@ pub(in crate::bot) async fn init(
                     .db
                     .set_jinxxy_api_key(guild_id, api_key.to_string())
                     .await?;
-                set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
+                util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
                     .await?;
                 let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
                 if has_required_scopes {

@@ -1,16 +1,15 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util::{
-    assignable_roles, create_role_warning_from_roles, create_role_warning_from_unassignable,
-    error_reply, license_to_id, success_reply,
-};
+use crate::bot::util;
+use crate::bot::util::{error_reply, success_reply};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _, DISCORD_PREFIX};
 use crate::license::LOCKING_USER_ID;
+use ahash::HashSet;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use regex::Regex;
@@ -21,6 +20,7 @@ use serenity::{
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use tokio::join;
+use tokio::task::JoinSet;
 use tracing::{error, warn};
 
 // discord component ids
@@ -215,6 +215,7 @@ pub async fn user_info(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
+        // look up licenses from the local DB, which is the only way we can do this without scraping every license activation from Jinxxy
         let license_ids = context
             .data()
             .db
@@ -223,84 +224,112 @@ pub async fn user_info(
         let message = if license_ids.is_empty() {
             format!("<@{}> has no license activations.", user.id.get())
         } else {
-            let mut message = format!("Licenses for <@{}>:", user.id.get());
+            let license_id_count = license_ids.len();
 
-            // build a cache of product versions that we need names for
-            // Map structure: product_id -> {product_version_id -> product_version_name}
-            let mut product_cache: HashMap<
+            // start looking up each license in jinxxy to get the associated product info
+            // TODO: this is static data, so backfill it into the local DB to save some API calls here
+            let mut license_check_join_set = JoinSet::new();
+            for license_id in license_ids {
+                let api_key = api_key.clone();
+                let license_id = license_id.clone();
+                license_check_join_set.spawn(async move {
+                    jinxxy::check_license_id(&api_key, &license_id, false)
+                        .await
+                        .map(|option| option.ok_or(license_id))
+                });
+            }
+
+            // figure out which product versions we need version names for and start those requests in the background
+            let mut product_lookup_join_set = JoinSet::new();
+            let mut products_requiring_lookup = HashSet::with_hasher(ahash::RandomState::default());
+            let mut license_infos: Vec<_> = Vec::with_capacity(license_id_count);
+            while let Some(result) = license_check_join_set.join_next().await {
+                let license_info = result??;
+                if let Ok(license_info) = &license_info {
+                    if license_info.product_version_info.is_some() {
+                        let newly_inserted =
+                            products_requiring_lookup.insert(license_info.product_id.clone());
+                        if newly_inserted {
+                            let api_key = api_key.clone();
+                            let product_id = license_info.product_id.clone();
+                            product_lookup_join_set.spawn(async move {
+                                jinxxy::get_product(&api_key, &product_id).await
+                            });
+                        }
+                    }
+                }
+                license_infos.push(license_info);
+            }
+
+            // for each product that we needed version info for extract version name into a map
+            // map structure: {product_id -> version_id -> version_name}
+            let mut product_version_name_cache: HashMap<
                 String,
-                Option<HashMap<String, String, ahash::RandomState>>,
+                HashMap<String, String, ahash::RandomState>,
                 ahash::RandomState,
             > = Default::default();
+            while let Some(result) = product_lookup_join_set.join_next().await {
+                let product = result??;
+                for version in product.versions {
+                    product_version_name_cache
+                        .entry(product.id.clone())
+                        .or_default()
+                        .insert(version.id, version.name);
+                }
+            }
 
-            for license_id in license_ids {
-                let license_info = jinxxy::check_license_id(&api_key, &license_id).await?;
-                if let Some(license_info) = license_info {
-                    let product_version_cache = if let Some(product) =
-                        product_cache.get(&license_info.product_id)
-                    {
-                        product.as_ref()
-                    } else {
-                        let result = jinxxy::get_product(&api_key, &license_info.product_id).await;
-                        if let Err(e) = &result {
-                            warn!("Error looking up product info for {}, which is in license {}: {:?}", license_info.product_id, license_id, e);
-                        }
-                        let result = result.ok().map(|product| {
-                            product
-                                .versions
-                                .into_iter()
-                                .map(|version| (version.id, version.name))
-                                .collect()
-                        });
-                        product_cache
-                            .entry(license_info.product_id.clone())
-                            .or_insert(result)
-                            .as_ref() // kind of a weird use of this API because there's an extra empty check but oh well. We can't use or_insert_with because async reasons.
-                    };
-                    let product_version_name = product_version_cache
-                        .and_then(|cache| {
-                            license_info
-                                .product_version_info
-                                .as_ref()
-                                .map(|info| info.product_version_id.as_str())
-                                .and_then(|version_id| cache.get(version_id))
-                        })
-                        .map(|version| format!("\"{}\"", version))
-                        .unwrap_or("`null`".to_string());
+            let mut message = format!("Licenses for <@{}>:", user.id.get());
+            for license_info in license_infos {
+                match license_info {
+                    Ok(license_info) => {
+                        let product_version_name = license_info
+                            .product_version_info
+                            .as_ref()
+                            .map(|version| {
+                                product_version_name_cache
+                                    .get(license_info.product_id.as_str())
+                                    .and_then(|inner| inner.get(&version.product_version_id))
+                                    .map(|string| string.as_str())
+                                    .unwrap_or("`ERROR`")
+                            })
+                            .unwrap_or("`null`");
 
-                    let locked = context
-                        .data()
-                        .db
-                        .is_license_locked(guild_id, license_id.clone())
-                        .await?;
+                        let locked = context
+                            .data()
+                            .db
+                            .is_license_locked(guild_id, license_info.license_id.clone())
+                            .await?;
 
-                    let username = if let Some(username) = &license_info.username {
-                        format!(
-                            "[{}](<{}>)",
-                            username,
-                            license_info.profile_url().ok_or_else(|| JinxError::new(
-                                "expected profile_url to exist when username is set"
-                            ))?
-                        )
-                    } else {
-                        format!("`{}`", license_info.user_id)
-                    };
+                        let username = if let Some(username) = &license_info.username {
+                            format!(
+                                "[{}](<{}>)",
+                                username,
+                                license_info.profile_url().ok_or_else(|| JinxError::new(
+                                    "expected profile_url to exist when username is set"
+                                ))?
+                            )
+                        } else {
+                            format!("`{}`", license_info.user_id)
+                        };
 
-                    message.push_str(
-                        format!(
-                            "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
-                            license_info.short_key,
-                            license_info.activations, // this field came from Jinxxy and is up to date
-                            locked, // this field came from the local DB and may be out of sync
-                            username,
-                            license_info.product_name,
-                            product_version_name
-                        )
-                        .as_str(),
-                    );
-                } else {
-                    // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
-                    message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
+                        message.push_str(
+                            format!(
+                                "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
+                                license_info.short_key,
+                                license_info.activations, // this field came from Jinxxy and is up to date
+                                locked, // this field came from the local DB and may be out of sync
+                                username,
+                                license_info.product_name,
+                                product_version_name
+                            )
+                                .as_str(),
+                        );
+                    }
+                    Err(license_id) => {
+                        // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
+                        message
+                            .push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
+                    }
                 }
             }
             message
@@ -334,7 +363,7 @@ pub async fn deactivate_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = license_to_id(&api_key, &license).await?;
+        let license_id = util::license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = context
                 .data()
@@ -388,7 +417,7 @@ pub async fn license_info(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = license_to_id(&api_key, &license).await?;
+        let license_id = util::license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
             let (local_license_users, license_info, remote_license_users) = join!(
@@ -399,7 +428,7 @@ pub async fn license_info(
                 async {
                     let api_key = api_key.clone();
                     let license_id = license_id.clone();
-                    jinxxy::check_license_id(&api_key, &license_id).await
+                    jinxxy::check_license_id(&api_key, &license_id, true).await
                 },
                 async {
                     let api_key = api_key.clone();
@@ -407,8 +436,7 @@ pub async fn license_info(
                     jinxxy::get_license_activations(&api_key, &license_id).await
                 }
             );
-            // these braces aren't needed but my IDE shits itself without them, so oh well.
-            let mut local_license_users: Vec<u64> = { local_license_users? };
+            let mut local_license_users: Vec<u64> = local_license_users?;
             local_license_users.sort_unstable();
             let mut remote_license_users: Vec<u64> = remote_license_users?
                 .into_iter()
@@ -537,7 +565,7 @@ pub async fn lock_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = license_to_id(&api_key, &license).await?;
+        let license_id = util::license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activation_id =
                 jinxxy::create_license_activation(&api_key, &license_id, LOCKING_USER_ID).await?;
@@ -583,7 +611,7 @@ pub async fn unlock_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = license_to_id(&api_key, &license).await?;
+        let license_id = util::license_to_id(&api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(&api_key, &license_id).await?;
             let lock_activation_id = activations
@@ -673,7 +701,7 @@ pub(in crate::bot) async fn set_wildcard_role(
     let guild_id = context
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let assignable_roles = assignable_roles(&context, guild_id).await?;
+    let assignable_roles = util::assignable_roles(&context, guild_id).await?;
 
     let mut unassignable_roles: Option<RoleId> = None;
     context
@@ -691,7 +719,7 @@ pub(in crate::bot) async fn set_wildcard_role(
         .color(Colour::DARK_GREEN);
     let reply = CreateReply::default().embed(embed).ephemeral(true);
     let reply = if let Some(embed) =
-        create_role_warning_from_unassignable(unassignable_roles.into_iter())
+        util::create_role_warning_from_unassignable(unassignable_roles.into_iter())
     {
         reply.embed(embed)
     } else {
@@ -760,7 +788,7 @@ pub(in crate::bot) async fn link_product(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let assignable_roles = util::assignable_roles(&context, guild_id).await?;
 
         let mut unassignable_roles: Option<RoleId> = None;
         context
@@ -790,7 +818,9 @@ pub(in crate::bot) async fn link_product(
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
-        if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
+        if let Some(embed) =
+            util::create_role_warning_from_unassignable(unassignable_roles.into_iter())
+        {
             reply.embed(embed)
         } else {
             reply
@@ -830,7 +860,7 @@ pub(in crate::bot) async fn unlink_product(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let assignable_roles = util::assignable_roles(&context, guild_id).await?;
 
         context
             .data()
@@ -856,7 +886,9 @@ pub(in crate::bot) async fn unlink_product(
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
-        if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
+        if let Some(embed) =
+            util::create_role_warning_from_roles(&assignable_roles, roles.into_iter())
+        {
             reply.embed(embed)
         } else {
             reply
@@ -896,7 +928,7 @@ pub(in crate::bot) async fn link_product_version(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let assignable_roles = util::assignable_roles(&context, guild_id).await?;
 
         let mut unassignable_roles: Option<RoleId> = None;
         context
@@ -926,7 +958,9 @@ pub(in crate::bot) async fn link_product_version(
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
-        if let Some(embed) = create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
+        if let Some(embed) =
+            util::create_role_warning_from_unassignable(unassignable_roles.into_iter())
+        {
             reply.embed(embed)
         } else {
             reply
@@ -969,7 +1003,7 @@ pub(in crate::bot) async fn unlink_product_version(
         let guild_id = context
             .guild_id()
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-        let assignable_roles = assignable_roles(&context, guild_id).await?;
+        let assignable_roles = util::assignable_roles(&context, guild_id).await?;
 
         context
             .data()
@@ -995,7 +1029,9 @@ pub(in crate::bot) async fn unlink_product_version(
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
-        if let Some(embed) = create_role_warning_from_roles(&assignable_roles, roles.into_iter()) {
+        if let Some(embed) =
+            util::create_role_warning_from_roles(&assignable_roles, roles.into_iter())
+        {
             reply.embed(embed)
         } else {
             reply
@@ -1026,7 +1062,7 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let assignable_roles = assignable_roles(&context, guild_id).await?;
+    let assignable_roles = util::assignable_roles(&context, guild_id).await?;
     let links = context.data().db.get_links(guild_id).await?;
     let message = if links.is_empty() {
         "No product→role links configured".to_string()
@@ -1069,7 +1105,7 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
     };
 
     let unassignable_embed =
-        create_role_warning_from_roles(&assignable_roles, links.keys().copied());
+        util::create_role_warning_from_roles(&assignable_roles, links.keys().copied());
     let embed = CreateEmbed::default()
         .title("All product→role links")
         .description(message);

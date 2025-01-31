@@ -1,7 +1,8 @@
 // This file is part of jinx. Copyright © 2024 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util::{error_reply, generate_nonce};
+use crate::bot::util;
+use crate::bot::util::error_reply;
 use crate::bot::{Context, Data, Error};
 use poise::{serenity_prelude as serenity, FrameworkError};
 use std::fmt::Debug;
@@ -131,7 +132,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
                 }
             }
             SomeContext::Framework(context) => {
-                let nonce: u64 = generate_nonce();
+                let nonce: u64 = util::generate_nonce();
                 let nonce = format!("{:016X}", nonce);
                 let user = context.author();
 

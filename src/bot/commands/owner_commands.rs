@@ -1,8 +1,8 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util::{check_owner, success_reply};
-use crate::bot::Context;
+use crate::bot::util::{check_owner, error_reply, success_reply};
+use crate::bot::{util, Context};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
@@ -339,6 +339,7 @@ pub(in crate::bot) async fn verify_guild(
                         let log_channel =
                             context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
+                        let is_administrator = util::is_administrator(&context, guild_id).await?;
                         let license_activation_count = context
                             .data()
                             .db
@@ -365,6 +366,7 @@ pub(in crate::bot) async fn verify_guild(
                                 Description={guild_description}\n\
                                 Log channel={log_channel}\n\
                                 Test={is_test}\n\
+                                Admin={is_administrator}\n\
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
                                 gumroad nags={gumroad_nag_count}\n\
@@ -401,6 +403,37 @@ pub(in crate::bot) async fn verify_guild(
         }
     };
 
+    context.send(reply.ephemeral(true)).await?;
+    Ok(())
+}
+
+/// Scan for misconfigured guilds
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let mut lines = "```\n".to_string();
+    let mut any_misconfigurations = false;
+    for guild_id in context.cache().guilds() {
+        let is_administrator = util::is_administrator(&context, guild_id).await?;
+        if !is_administrator {
+            any_misconfigurations = true;
+            lines.push_str(format!("{:20} A\n", guild_id.get()).as_str())
+        }
+    }
+
+    let reply = if any_misconfigurations {
+        lines.push_str("```");
+        error_reply("Misconfigured Guild Report", lines)
+    } else {
+        success_reply("Misconfigured Guild Report", "No misconfigured guilds!")
+    };
     context.send(reply.ephemeral(true)).await?;
     Ok(())
 }

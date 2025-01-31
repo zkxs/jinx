@@ -127,6 +127,19 @@ pub(super) async fn assignable_roles(
     Ok(assignable_roles)
 }
 
+pub(super) async fn is_administrator(
+    context: &Context<'_>,
+    guild_id: GuildId,
+) -> Result<bool, Error> {
+    let bot_id = context.framework().bot_id;
+    let bot_member = guild_id.member(context, bot_id).await?;
+
+    // same deprecation warning as above in `assignable_roles`
+    #[allow(deprecated)]
+    let permissions = bot_member.permissions(context)?;
+    Ok(permissions.administrator())
+}
+
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
 pub fn create_role_warning_from_roles<T: Iterator<Item = RoleId>>(
     assignable_roles: &HashSet<RoleId, ahash::RandomState>,
