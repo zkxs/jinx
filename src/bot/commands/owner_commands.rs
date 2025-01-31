@@ -339,7 +339,12 @@ pub(in crate::bot) async fn verify_guild(
                         let log_channel =
                             context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
-                        let is_administrator = util::is_administrator(&context, guild_id).await?;
+                        let is_administrator =
+                            match util::is_administrator(&context, guild_id).await {
+                                Ok(true) => "true",
+                                Ok(false) => "false",
+                                Err(_) => "error",
+                            };
                         let license_activation_count = context
                             .data()
                             .db
@@ -421,10 +426,15 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
     let mut lines = "```\n".to_string();
     let mut any_misconfigurations = false;
     for guild_id in context.cache().guilds() {
-        let is_administrator = util::is_administrator(&context, guild_id).await?;
-        if !is_administrator {
+        let is_administrator = util::is_administrator(&context, guild_id).await;
+        if *is_administrator.as_ref().unwrap_or(&true) {
+            let admin_code = match is_administrator {
+                Ok(true) => "A",
+                Err(_) => "E",
+                _ => "?",
+            };
             any_misconfigurations = true;
-            lines.push_str(format!("{:20} A\n", guild_id.get()).as_str())
+            lines.push_str(format!("{:20} {}\n", guild_id.get(), admin_code).as_str())
         }
     }
 
