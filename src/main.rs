@@ -97,9 +97,10 @@ async fn main() -> ExitCode {
                 .init();
 
             info!(
-                "starting {} {}",
+                "starting {} {} {}",
                 env!("CARGO_PKG_NAME"),
-                env!("CARGO_PKG_VERSION")
+                env!("CARGO_PKG_VERSION"),
+                constants::GIT_COMMIT_HASH
             );
 
             let result = Toplevel::new(|subsystem| async move {
