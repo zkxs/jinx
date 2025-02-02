@@ -211,6 +211,11 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
             let product_version_len = product_version_name.chars().count();
 
             if product_name_len + product_version_len > MAX_LENGTH {
+                debug!(
+                    "\"{}\" + \"{}\" .chars().count() > 100; truncating…",
+                    product_name, product_version_name
+                );
+
                 // I have to trim either the product name or the product version name or both
                 // It's not trivial to know what will be prettiest, so time for some shitty rules
                 if product_name_len > MAX_LENGTH && product_version_len > MAX_LENGTH {

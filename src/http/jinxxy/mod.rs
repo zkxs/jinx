@@ -97,7 +97,7 @@ pub async fn get_license_id(
             if let Some(result) = response.results.first() {
                 Ok(Some(result.id.to_string()))
             } else {
-                debug!("could not look up user-provided license key \"{license_key}\"");
+                debug!("could not look up user-provided license key");
                 Ok(None)
             }
         }
@@ -149,7 +149,7 @@ pub async fn check_license(
                 }
                 Ok(Some(response))
             } else {
-                debug!("could not look up user-provided license id \"{license_id}\"");
+                debug!("could not look up user-provided license id");
                 // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
                 let status_code = response.status();
                 let response: dto::JinxxyError = response.json().await?;
@@ -212,7 +212,7 @@ pub async fn check_license(
                 }
                 Ok(Some(response))
             } else {
-                debug!("could not look up user-provided license key \"{license_key}\"");
+                debug!("could not look up user-provided license key");
                 Ok(None)
             }
         }
