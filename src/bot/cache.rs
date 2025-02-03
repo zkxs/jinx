@@ -17,9 +17,9 @@ use crate::http::jinxxy;
 use crate::http::jinxxy::{FullProduct, PartialProduct, ProductVersionId};
 use dashmap::{DashMap, Entry};
 use poise::serenity_prelude::GuildId;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, warn};
+use tracing::debug;
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -138,28 +138,26 @@ impl ApiCache {
         .await
     }
 
-    pub async fn product_name_to_id(
+    pub async fn product_name_to_ids(
         &self,
         context: &Context<'_>,
         product_name: &str,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Vec<String>, Error> {
         self.get(context, |cache_entry| {
-            cache_entry
-                .product_name_to_id(product_name)
-                .map(|str| str.to_string())
+            cache_entry.product_name_to_ids(product_name).to_vec()
         })
         .await
     }
 
-    pub async fn product_version_name_to_version_id(
+    pub async fn product_version_name_to_version_ids(
         &self,
         context: &Context<'_>,
         product_name: &str,
-    ) -> Result<Option<ProductVersionId>, Error> {
+    ) -> Result<Vec<ProductVersionId>, Error> {
         self.get(context, |cache_entry| {
             cache_entry
-                .product_version_name_to_version_id(product_name)
-                .cloned()
+                .product_version_name_to_version_ids(product_name)
+                .to_vec()
         })
         .await
     }
@@ -170,7 +168,7 @@ pub struct GuildCache {
     /// id to name
     product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     /// name to id
-    product_name_to_id_map: HashMap<String, String, ahash::RandomState>,
+    product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState>,
     /// completes lowercase name to name with correct case
     product_name_trie: Trie<u8, String>,
     /// number of products
@@ -178,7 +176,7 @@ pub struct GuildCache {
     /// version_id to name
     product_version_id_to_name_map: HashMap<ProductVersionId, String, ahash::RandomState>,
     /// name to version_id
-    product_name_to_version_id_map: HashMap<String, ProductVersionId, ahash::RandomState>,
+    product_name_to_version_id_map: HashMap<String, Vec<ProductVersionId>, ahash::RandomState>,
     /// completes lowercase version name to version name with correct case
     product_version_name_trie: Trie<u8, String>,
     /// Number of product versions, including null versions
@@ -250,36 +248,6 @@ impl GuildCache {
             let product_count = product_name_info.len();
             let product_version_count = product_version_name_info.len();
 
-            // check for duplicate product names without versions
-            {
-                let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
-                product_name_info.iter().for_each(|name_info| {
-                    if !dupe_set.insert(name_info.product_name.as_str()) {
-                        warn!(
-                            "in {} product {} \"{}\" has the same name as some other product",
-                            guild_id.get(),
-                            name_info.id,
-                            name_info.product_name
-                        )
-                    }
-                });
-            }
-
-            // check for duplicate product names with versions
-            {
-                let mut dupe_set: HashSet<&str, ahash::RandomState> = Default::default();
-                product_version_name_info
-                    .iter()
-                    .for_each(|name_info| {
-                        if !dupe_set.insert(name_info.product_version_name.as_str()) {
-                            warn!(
-                                "in {} product {} \"{}\" has the same name as some other product+version",
-                                guild_id.get(), name_info.id, name_info.product_version_name
-                            )
-                        }
-                    });
-            }
-
             // build trie without versions
             let product_name_trie = {
                 let mut trie_builder = TrieBuilder::new();
@@ -313,16 +281,27 @@ impl GuildCache {
                 .collect();
 
             // build reverse map without versions
-            let product_name_to_id_map = product_name_info
-                .into_iter()
-                .map(|name_info| (name_info.product_name, name_info.id))
-                .collect();
+            let mut product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState> =
+                Default::default();
+            for name_info in product_name_info {
+                product_name_to_id_map
+                    .entry(name_info.product_name)
+                    .or_default()
+                    .push(name_info.id);
+            }
 
             // build reverse map with versions
-            let product_name_to_version_id_map = product_version_name_info
-                .into_iter()
-                .map(|name_info| (name_info.product_version_name, name_info.id))
-                .collect();
+            let mut product_name_to_version_id_map: HashMap<
+                String,
+                Vec<ProductVersionId>,
+                ahash::RandomState,
+            > = Default::default();
+            for name_info in product_version_name_info {
+                product_name_to_version_id_map
+                    .entry(name_info.product_version_name)
+                    .or_default()
+                    .push(name_info.id);
+            }
 
             let create_time = Instant::now();
 
@@ -375,14 +354,18 @@ impl GuildCache {
             .map(|str| str.as_str())
     }
 
-    fn product_name_to_id(&self, product_name: &str) -> Option<&str> {
+    fn product_name_to_ids(&self, product_name: &str) -> &[String] {
         self.product_name_to_id_map
             .get(product_name)
-            .map(|str| str.as_str())
+            .map(|vec| vec.as_slice())
+            .unwrap_or_default()
     }
 
-    fn product_version_name_to_version_id(&self, product_name: &str) -> Option<&ProductVersionId> {
-        self.product_name_to_version_id_map.get(product_name)
+    fn product_version_name_to_version_ids(&self, product_name: &str) -> &[ProductVersionId] {
+        self.product_name_to_version_id_map
+            .get(product_name)
+            .map(|vec| vec.as_slice())
+            .unwrap_or_default()
     }
 
     fn product_count(&self) -> usize {
