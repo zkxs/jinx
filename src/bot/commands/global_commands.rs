@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2024 jinx contributors.
+// This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::util;
@@ -139,6 +139,11 @@ pub(in crate::bot) async fn init(
                     .set_jinxxy_api_key(guild_id, api_key.to_string())
                     .await?;
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
+                    .await?;
+                context
+                    .data()
+                    .api_cache
+                    .register_guild_in_cache(guild_id)
                     .await?;
                 let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
                 if has_required_scopes {

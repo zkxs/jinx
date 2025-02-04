@@ -77,7 +77,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
 /// User data, which is stored and accessible in all command invocations
 struct Data {
     db: Arc<JinxDb>,
-    api_cache: Arc<ApiCache>,
+    api_cache: ApiCache,
 }
 
 pub async fn run_bot() -> Result<(), Error> {
@@ -176,7 +176,7 @@ pub async fn run_bot() -> Result<(), Error> {
                     });
                 }
 
-                let api_cache = Arc::new(ApiCache::default());
+                let api_cache = ApiCache::new(db.clone());
 
                 debug!("framework setup complete");
 

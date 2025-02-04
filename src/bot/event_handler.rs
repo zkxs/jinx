@@ -73,11 +73,48 @@ async fn event_handler_inner<'a>(
                     e
                 );
             }
+
+            match data.db.get_jinxxy_api_key(guild.id).await {
+                Ok(Some(_)) => {
+                    // the guild has an API key
+                    let register_guild_result =
+                        data.api_cache.register_guild_in_cache(guild.id).await;
+                    if let Err(e) = register_guild_result {
+                        error!(
+                            "Error registering guild {} for background cache refresh: {:?}",
+                            guild.id.get(),
+                            e
+                        );
+                    }
+                }
+                Ok(None) => {
+                    // guild had no API key set; do nothing
+                }
+                Err(e) => {
+                    error!(
+                        "Error checking API key before registering guild {} for background cache refresh: {:?}",
+                        guild.id.get(),
+                        e
+                    );
+                }
+            }
         }
         // bot was removed from a guild (kick, ban, or guild deleted)
         FullEvent::GuildDelete { incomplete, full } => {
             // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
             if incomplete.unavailable || full.is_some() {
+                let deregister_guild_result = data
+                    .api_cache
+                    .deregister_guild_in_cache(incomplete.id)
+                    .await;
+                if let Err(e) = deregister_guild_result {
+                    error!(
+                        "Error registering guild {} for background cache refresh: {:?}",
+                        incomplete.id.get(),
+                        e
+                    );
+                }
+
                 info!("GuildDelete guild={:?} full={:?}", incomplete, full)
             }
         }
