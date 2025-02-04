@@ -333,3 +333,21 @@ impl JinxxyError {
             || (self.error == "Bad Request" && self.message == "Resource not found.")
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_description_parse() {
+        let expected = 177811898790707200u64;
+
+        let activation = LicenseActivation {
+            id: "3557172628961625518".to_string(),
+            description: "discord_177811898790707200".to_string(),
+        };
+
+        let actual = activation.try_into_user_id().expect("expected description parse to succeed");
+        assert_eq!(expected, actual);
+    }
+}
