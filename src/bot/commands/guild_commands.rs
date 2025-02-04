@@ -7,35 +7,23 @@ use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _, DISCORD_PREFIX};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
-use regex::Regex;
 use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
     RoleId,
 };
 use std::collections::HashMap;
-use std::sync::LazyLock;
 use tokio::join;
 use tokio::task::JoinSet;
-use tracing::{error, warn};
+use tracing::warn;
 
 // discord component ids
 pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
 pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
-
-static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(format!(r"^{}([\d+])$", DISCORD_PREFIX).as_str())
-        .expect("Failed to compile GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX")
-});
-
-thread_local! {
-    // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
-    static JINXXY_ACTIVATION_DESCRIPTION_REGEX: Regex = GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX.clone();
-}
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -440,29 +428,7 @@ pub async fn license_info(
             local_license_users.sort_unstable();
             let mut remote_license_users: Vec<u64> = remote_license_users?
                 .into_iter()
-                .map(|activation| activation.description)
-                .flat_map(|description| {
-                    JINXXY_ACTIVATION_DESCRIPTION_REGEX
-                        .with(|regex| regex.captures(&description))
-                        .and_then(|captures| {
-                            let capture = captures.get(1);
-                            if capture.is_none() {
-                                error!("JINXXY_ACTIVATION_DESCRIPTION_REGEX capture group 1 not found!");
-                            }
-                            capture
-                        })
-                        .and_then(|capture| {
-                            match capture.as_str().parse::<u64>() {
-                                Ok(id) => {
-                                    Some(id)
-                                }
-                                Err(e) => {
-                                    error!("error parsing activation description \"{}\": {:?}", description, e);
-                                    None
-                                }
-                            }
-                        })
-                })
+                .flat_map(|activation| activation.try_into_user_id())
                 .collect();
             remote_license_users.sort_unstable();
 

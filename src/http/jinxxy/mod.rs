@@ -18,7 +18,7 @@ use tracing::debug;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// prefix used in activation descriptions
-pub const DISCORD_PREFIX: &str = "discord_";
+const DISCORD_PREFIX: &str = "discord_";
 const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
 
 /// Get extra headers needed for Jinxxy API calls

@@ -6,8 +6,20 @@
 use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo, DISCORD_PREFIX};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use std::sync::LazyLock;
+use tracing::{error, warn};
+
+static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(format!(r"^{}(\d+)$", DISCORD_PREFIX).as_str())
+        .expect("Failed to compile GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX")
+});
+
+thread_local! {
+    // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
+    static JINXXY_ACTIVATION_DESCRIPTION_REGEX: Regex = GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX.clone();
+}
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseList {
@@ -266,16 +278,28 @@ pub struct LicenseActivation {
 impl LicenseActivation {
     /// Try to extract a Discord user ID from this license activation
     pub fn try_into_user_id(&self) -> Option<u64> {
-        if self.description.starts_with(DISCORD_PREFIX) {
-            let remaining = &self.description[DISCORD_PREFIX.len()..];
-            let id_result = remaining.parse();
-            if let Err(e) = &id_result {
-                warn!("Error extracting discord ID from Jinxxy license activation description \"{}\": {:?}", self.description, e);
+        JINXXY_ACTIVATION_DESCRIPTION_REGEX.with(|regex| regex.captures(&self.description))
+            .or_else(|| {
+                warn!("JINXXY_ACTIVATION_DESCRIPTION_REGEX did not match Jinxxy license activation description \"{}\"", self.description);
+                None
+            })
+            .and_then(|captures| {
+                let capture = captures.get(1);
+                if capture.is_none() {
+                    error!("JINXXY_ACTIVATION_DESCRIPTION_REGEX capture group 1 not found!");
+                }
+                capture
+            }).and_then(|capture| {
+            match capture.as_str().parse::<u64>() {
+                Ok(id) => {
+                    Some(id)
+                }
+                Err(e) => {
+                    error!("error parsing activation description \"{}\": {:?}", self.description, e);
+                    None
+                }
             }
-            id_result.ok()
-        } else {
-            None
-        }
+        })
     }
 
     /// Check if this activation is a lock
@@ -337,8 +361,10 @@ impl JinxxyError {
 #[cfg(test)]
 mod test {
     use super::*;
+    use tracing_test::traced_test;
 
     #[test]
+    #[traced_test]
     fn test_description_parse() {
         let expected = 177811898790707200u64;
 
@@ -347,7 +373,45 @@ mod test {
             description: "discord_177811898790707200".to_string(),
         };
 
-        let actual = activation.try_into_user_id().expect("expected description parse to succeed");
+        let actual = activation
+            .try_into_user_id()
+            .expect("expected description parse to succeed");
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_description_parse_fail_too_long() {
+        let activation = LicenseActivation {
+            id: "3557172628961625518".to_string(),
+            description: "discord_17781189879070720575757890257892304570".to_string(),
+        };
+
+        let fail = activation.try_into_user_id().is_none();
+        assert!(fail);
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_description_parse_fail_nan() {
+        let activation = LicenseActivation {
+            id: "3557172628961625518".to_string(),
+            description: "discord_17781foo".to_string(),
+        };
+
+        let fail = activation.try_into_user_id().is_none();
+        assert!(fail);
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_description_parse_fail_no_match() {
+        let activation = LicenseActivation {
+            id: "3557172628961625518".to_string(),
+            description: "foo".to_string(),
+        };
+
+        let fail = activation.try_into_user_id().is_none();
+        assert!(fail);
     }
 }
