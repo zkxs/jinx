@@ -143,6 +143,11 @@ pub(in crate::bot) async fn init(
                 context
                     .data()
                     .api_cache
+                    .refresh_guild_in_cache(guild_id)
+                    .await?;
+                context
+                    .data()
+                    .api_cache
                     .register_guild_in_cache(guild_id)
                     .await?;
                 let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));

@@ -212,6 +212,12 @@ impl ApiCache {
         }
     }
 
+    /// Trigger a one-time high-priority refresh of this guild in the cache.
+    pub async fn refresh_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
+        self.high_priority_tx.send(guild_id).await?;
+        Ok(())
+    }
+
     /// Register a guild in the cache. The guild will have its cache entry periodically warmed automatically.
     pub async fn register_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
         self.refresh_register_tx.send(guild_id).await?;
