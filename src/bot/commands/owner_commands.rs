@@ -82,6 +82,54 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     Ok(())
 }
 
+/// Clear the in-memory API cache
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn clean_cache(context: Context<'_>) -> Result<(), Error> {
+    let start = Instant::now();
+
+    let before_api_cache_products = context.data().api_cache.product_count();
+    let before_api_cache_product_versions = context.data().api_cache.product_version_count();
+    let before_api_cache_len = context.data().api_cache.len();
+    let before_api_cache_capacity = context.data().api_cache.capacity();
+
+    context.data().api_cache.clean();
+
+    let after_api_cache_products = context.data().api_cache.product_count();
+    let after_api_cache_product_versions = context.data().api_cache.product_version_count();
+    let after_api_cache_len = context.data().api_cache.len();
+    let after_api_cache_capacity = context.data().api_cache.capacity();
+
+    let elapsed_micros = start.elapsed().as_micros();
+
+    let message = format!(
+        "**Before:**\n\
+        API cache total products={before_api_cache_products}\n\
+        API cache total product versions={before_api_cache_product_versions}\n\
+        API cache guilds={before_api_cache_len}\n\
+        API cache guild capacity={before_api_cache_capacity}\n\n\
+        **After:**\n\
+        API cache total products={after_api_cache_products}\n\
+        API cache total product versions={after_api_cache_product_versions}\n\
+        API cache guilds={after_api_cache_len}\n\
+        API cache guild capacity={after_api_cache_capacity}\n\n\
+        **Elapsed:** {elapsed_micros}μs"
+    );
+
+    let embed = CreateEmbed::default()
+        .title("API Cache Cleared")
+        .description(message);
+    context
+        .send(CreateReply::default().embed(embed).ephemeral(true))
+        .await?;
+    Ok(())
+}
+
 /// Remotely shuts down the bot. If you do not have access to restart the bot this is PERMANENT.
 #[poise::command(
     slash_command,

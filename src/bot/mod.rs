@@ -64,6 +64,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     vec![
         announce(),
         announce_test(),
+        clean_cache(),
         exit(),
         misconfigured_guilds(),
         owner_stats(),
@@ -100,6 +101,7 @@ pub async fn run_bot() -> Result<(), Error> {
             commands: vec![
                 announce(),
                 announce_test(),
+                clean_cache(),
                 create_post(),
                 deactivate_license(),
                 exit(),
@@ -175,24 +177,6 @@ pub async fn run_bot() -> Result<(), Error> {
                 }
 
                 let api_cache = Arc::new(ApiCache::default());
-
-                // set up the task to periodically clean the API cache
-                {
-                    let api_cache = api_cache.clone();
-                    tokio::task::spawn(async move {
-                        loop {
-                            // five minutes per cache clean
-                            tokio::time::sleep(Duration::from_secs(5 * SECONDS_PER_MINUTE)).await;
-                            let start = Instant::now();
-                            api_cache.clean();
-                            let elapsed = start.elapsed();
-                            const EXPECTED_DURATION: Duration = Duration::from_millis(5);
-                            if elapsed > EXPECTED_DURATION {
-                                info!("cleaned cache in {}ms", elapsed.as_millis());
-                            }
-                        }
-                    });
-                }
 
                 debug!("framework setup complete");
 
