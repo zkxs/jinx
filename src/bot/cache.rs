@@ -153,13 +153,10 @@ impl ApiCache {
                                                         warn!("Error initializing API cache during low-priority refresh for {}: {:?}", guild_id.get(), e);
 
                                                         match jinxxy::get_own_user(&api_key).await {
-                                                            Ok(auth_user) => {
-                                                                if auth_user.has_required_scopes() {
-                                                                    // okay must have been a weird fluke, we'll leave this guild registered
-                                                                    true
-                                                                } else {
-                                                                    false
-                                                                }
+                                                            Ok(_auth_user) => {
+                                                                // we were able to do an API request with this key...
+                                                                // okay must have been a weird fluke, we'll leave this guild registered
+                                                                true
                                                             }
                                                             Err(e) => {
                                                                 info!("error checking /me for guild {}, will deregister now: {:?}", guild_id.get(), e);

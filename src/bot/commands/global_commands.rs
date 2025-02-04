@@ -140,18 +140,18 @@ pub(in crate::bot) async fn init(
                     .await?;
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
                     .await?;
-                context
-                    .data()
-                    .api_cache
-                    .refresh_guild_in_cache(guild_id)
-                    .await?;
+                let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
                 context
                     .data()
                     .api_cache
                     .register_guild_in_cache(guild_id)
                     .await?;
-                let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
                 if has_required_scopes {
+                    context
+                        .data()
+                        .api_cache
+                        .refresh_guild_in_cache(guild_id)
+                        .await?;
                     reply
                 } else {
                     let embed = CreateEmbed::default()
