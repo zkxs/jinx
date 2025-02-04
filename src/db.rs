@@ -73,6 +73,31 @@ impl JinxDb {
                     (),
                 )?;
 
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS product ( \
+                             guild_id               INTEGER NOT NULL, \
+                             product_id             TEXT NOT NULL, \
+                             product_name           TEXT NOT NULL \
+                             PRIMARY KEY            (guild_id, product_id) \
+                         ) STRICT",
+                    (),
+                )?;
+
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS product_version ( \
+                             guild_id               INTEGER NOT NULL, \
+                             product_id             TEXT NOT NULL, \
+                             version_id             TEXT NOT NULL, \
+                             product_version_name   TEXT NOT NULL \
+                             PRIMARY KEY            (guild_id, product_id, version_id) \
+                         ) STRICT",
+                    (),
+                )?;
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS version_lookup ON product_version (guild_id, product_id)",
+                    (),
+                )?;
+
                 // this is the "blanket" roles for any version in a product
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product_role ( \
