@@ -1,3 +1,6 @@
+// This file is part of jinx. Copyright © 2025 jinx contributors.
+// jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
+
 use std::time::{Duration, SystemTime};
 
 /// This just represents time as unsigned 64-bit ms since unix epoch. Ain't no way I'm importing a whole dang time library for this.
