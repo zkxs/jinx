@@ -36,8 +36,8 @@ type MapType = Arc<DashMap<GuildId, GuildCache, ahash::RandomState>>;
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
 /// How long before the low priority worker considers a cache entry expired. Currently 24 hours.
 const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
-/// Time the low priority worker sleeps before doing any more work. Intended as a Jinxxy API rate limit. Currently 10 seconds.
-const LOW_PRIORITY_WORKER_SLEEP_TIME: Duration = Duration::from_secs(10);
+/// Time the low priority worker sleeps before doing any more work. Intended as a Jinxxy API rate limit. Currently 4.1 seconds.
+const LOW_PRIORITY_WORKER_SLEEP_TIME: Duration = Duration::from_millis(4_100);
 
 #[derive(Clone)]
 pub struct ApiCache {
@@ -177,10 +177,14 @@ impl ApiCache {
                                                     match db_result {
                                                         Ok(Some(guild_cache)) => {
                                                             // DB read worked: just return it
+                                                            if guild_cache.is_expired_low_priority()
+                                                            {
+                                                                debug!("DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.", guild_id.get());
+                                                            }
                                                             Ok(guild_cache)
                                                         }
                                                         Ok(None) => {
-                                                            // DB read didn't seem to work, fall back to an API load
+                                                            // DB had no data
                                                             debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", guild_id.get());
                                                             GuildCache::from_jinxxy_api(
                                                                 &db, &api_key, guild_id,
@@ -494,14 +498,13 @@ impl GuildCache {
         Self::from_products(product_name_info, product_version_name_info, create_time)
     }
 
-    /// Attempt to create a cache entry from the DB. This is quite cheap, but the DB doesn't store
-    /// a null entry presently so it is ambiguous if a guild has no products or if we're seeing a
-    /// disk cache miss.
+    /// Attempt to create a cache entry from the DB. This is quite cheap compared to hitting Jinxxy.
     async fn from_db(db: &JinxDb, guild_id: GuildId) -> Result<Option<GuildCache>, Error> {
         let db_cache_entry = db.get_guild_cache(guild_id).await?;
 
         if db_cache_entry.product_name_info.is_empty()
             && db_cache_entry.product_version_name_info.is_empty()
+            && db_cache_entry.cache_time.as_epoch_millis() == 0
         {
             // don't even try building this mildly expensive struct if we have no data
             Ok(None)
