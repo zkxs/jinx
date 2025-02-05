@@ -2,7 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::error::JinxError;
-use crate::http::jinxxy::ProductVersionId;
+use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::collections::HashMap;
@@ -82,6 +82,10 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS product_lookup ON product (guild_id)",
+                    (),
+                )?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product_version ( \
@@ -108,8 +112,9 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)",
+                    "CREATE INDEX IF NOT EXISTS role_lookup_by_guild ON product_role (guild_id)",
                     (),
                 )?;
 
@@ -124,8 +129,9 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)",
+                    "CREATE INDEX IF NOT EXISTS version_role_lookup_by_guild ON product_version_role (guild_id)",
                     (),
                 )?;
 
@@ -370,7 +376,8 @@ impl JinxDb {
     pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> Result<bool> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0)")?; //TODO: could use an index
+                //TODO: could use an index
+                let mut statement = connection.prepare_cached("SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0)")?;
                 let lock_exists = statement.query_row(
                     named_params! {":guild": guild.get(), ":license": license_id},
                     |row| {
@@ -589,9 +596,10 @@ impl JinxDb {
                 }
 
                 // deal with product blankets
+                //TODO: could use an index
                 let mut product_statement = connection.prepare_cached(
                     "SELECT product_id, role_id FROM product_role WHERE guild_id = ?",
-                )?; //TODO: could use an index
+                )?;
                 let product_result = product_statement.query_map([guild.get()], |row| {
                     let product_id: String = row.get(0)?;
                     let role_id: u64 = row.get(1)?;
@@ -599,13 +607,14 @@ impl JinxDb {
                 })?;
                 for row in product_result {
                     let (role, product_id) = row?;
-                    map.entry(role).or_default().push(LinkSource::ProductBlanket {product_id});
+                    map.entry(role).or_default().push(LinkSource::ProductBlanket { product_id });
                 }
 
                 // deal with specific links
+                //TODO: could use an index
                 let mut product_version_statement = connection.prepare_cached(
                     "SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?",
-                )?; //TODO: could use an index
+                )?;
                 let product_version_result = product_version_statement.query_map([guild.get()], |row| {
                     let product_id: String = row.get(0)?;
                     let product_version_id: String = row.get(1)?;
@@ -626,7 +635,7 @@ impl JinxDb {
     pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> Result<Vec<String>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user")?; //TODO: could use an index
+                let mut statement = connection.prepare_cached("SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user")?;
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":user": user_id},
                     |row| {
@@ -694,7 +703,8 @@ impl JinxDb {
     pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> Result<Vec<u64>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license")?; //TODO: could use an index
+                //TODO: could use an index
+                let mut statement = connection.prepare_cached("SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license")?;
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":license": license_id},
                     |row| {
@@ -818,7 +828,7 @@ impl JinxDb {
                 // all servers, including production servers
                 connection.prepare_cached("SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL")
             }?;
-            let mapped_rows = statement.query_and_then((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
+            let mapped_rows = statement.query_map((), |row| row.get(0).map(|id| ChannelId::new(id)))?;
             let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
             for row in mapped_rows {
                 vec.push(row?);
@@ -969,6 +979,64 @@ impl JinxDb {
                     connection.prepare_cached("UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = :guild")?;
                 statement.execute(named_params! {":guild": guild.get()})?;
                 Ok(())
+            })
+            .await
+    }
+
+    /// Get name info for products in a guild
+    pub async fn product_names_in_guild(&self, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT product_id, product_name FROM product WHERE guild_id = :guild",
+                )?;
+                let mapped_rows =
+                    statement.query_map(named_params! {":guild": guild.get()}, |row| {
+                        let product_id: String = row.get(0)?;
+                        let product_name: String = row.get(1)?;
+                        let info = ProductNameInfo {
+                            id: product_id,
+                            product_name,
+                        };
+                        Ok(info)
+                    })?;
+                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+                for row in mapped_rows {
+                    vec.push(row?);
+                }
+                Ok(vec)
+            })
+            .await
+    }
+
+    /// Get name info for products versions in a guild
+    pub async fn product_version_names_in_guild(
+        &self,
+        guild: GuildId,
+    ) -> Result<Vec<ProductVersionNameInfo>> {
+        self.connection
+            .call(move |connection| {
+                let mut statement =
+                    connection.prepare_cached("SELECT product_id, version_id, product_version_name FROM product WHERE guild_id = :guild")?;
+                let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
+                    let product_id: String = row.get(0)?;
+                    let version_id: String = row.get(1)?;
+                    let product_version_name: String = row.get(2)?;
+
+                    let info = ProductVersionNameInfo {
+                        id: ProductVersionId {
+                            product_id,
+                            product_version_id: Some(version_id),
+                        },
+                        product_version_name,
+                    };
+                    Ok(info)
+                })?;
+                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+                for row in mapped_rows {
+                    vec.push(row?);
+                }
+                Ok(vec)
             })
             .await
     }

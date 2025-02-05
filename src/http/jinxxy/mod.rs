@@ -493,6 +493,18 @@ impl Display for ProductVersionId {
     }
 }
 
+/// Internal struct for holding name info
+pub struct ProductNameInfo {
+    pub id: String,
+    pub product_name: String,
+}
+
+/// Internal struct for holding version name info
+pub struct ProductVersionNameInfo {
+    pub id: ProductVersionId,
+    pub product_version_name: String,
+}
+
 trait GetUsername {
     fn username(&self) -> Option<&str>;
 }

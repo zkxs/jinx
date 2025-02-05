@@ -15,7 +15,9 @@ use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{FullProduct, PartialProduct, ProductVersionId};
+use crate::http::jinxxy::{
+    FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo,
+};
 use dashmap::DashMap;
 use poise::serenity_prelude::GuildId;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -379,18 +381,6 @@ pub struct GuildCache {
     create_time: Instant,
 }
 
-/// Internal struct for holding name info
-struct NameInfo {
-    id: String,
-    product_name: String,
-}
-
-/// Internal struct for holding version name info
-struct VersionNameInfo {
-    id: ProductVersionId,
-    product_version_name: String,
-}
-
 impl GuildCache {
     async fn new(api_key: &str) -> Result<GuildCache, Error> {
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
@@ -402,20 +392,20 @@ impl GuildCache {
             .collect();
 
         // convert into map tuples for products without versions
-        let product_name_info: Vec<NameInfo> = products
+        let product_name_info: Vec<ProductNameInfo> = products
             .iter()
             .map(|product| {
                 let id = product.id.clone();
                 let product_name = util::truncate_string_for_discord_autocomplete(&product.name);
-                NameInfo { id, product_name }
+                ProductNameInfo { id, product_name }
             })
             .collect();
 
         // convert into map tuples for product versions
-        let product_version_name_info: Vec<VersionNameInfo> = products
+        let product_version_name_info: Vec<ProductVersionNameInfo> = products
             .into_iter()
             .flat_map(|product| {
-                let null_name_info = VersionNameInfo {
+                let null_name_info = ProductVersionNameInfo {
                     id: ProductVersionId::from_product_id(&product.id),
                     product_version_name: util::product_display_name(&product.name, None),
                 };
@@ -428,7 +418,7 @@ impl GuildCache {
                     };
                     let product_version_name =
                         util::product_display_name(&product.name, Some(version.name.as_str()));
-                    VersionNameInfo {
+                    ProductVersionNameInfo {
                         id,
                         product_version_name,
                     }
