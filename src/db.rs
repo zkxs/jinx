@@ -3,17 +3,17 @@
 
 use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
-use ahash::HashSet;
+use crate::time::SimpleTime;
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tokio::time::Instant;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 6;
+const SCHEMA_VERSION_VALUE: i32 = 7;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -69,11 +69,13 @@ impl JinxDb {
                              owner                  INTEGER NOT NULL DEFAULT 0, \
                              gumroad_failure_count  INTEGER NOT NULL DEFAULT 0, \
                              gumroad_nag_count      INTEGER NOT NULL DEFAULT 0, \
+                             cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0, \
                              blanket_role_id        INTEGER\
                          ) STRICT",
                     (),
                 )?;
 
+                // disk cache for product names
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product ( \
                              guild_id               INTEGER NOT NULL, \
@@ -83,11 +85,13 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS product_lookup ON product (guild_id)",
+                    "CREATE INDEX IF NOT EXISTS product_lookup_by_guild ON product (guild_id)",
                     (),
                 )?;
 
+                // disk cache for product version names
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS product_version ( \
                              guild_id               INTEGER NOT NULL, \
@@ -98,8 +102,9 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
+                // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS version_lookup ON product_version (guild_id, product_id)",
+                    "CREATE INDEX IF NOT EXISTS version_lookup_by_guild ON product_version (guild_id)",
                     (),
                 )?;
 
@@ -113,9 +118,8 @@ impl JinxDb {
                          ) STRICT",
                     (),
                 )?;
-                // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS role_lookup_by_guild ON product_role (guild_id)",
+                    "CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)",
                     (),
                 )?;
 
@@ -132,7 +136,7 @@ impl JinxDb {
                 )?;
                 // index used for initial cache load
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS version_role_lookup_by_guild ON product_version_role (guild_id)",
+                    "CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)",
                     (),
                 )?;
 
@@ -220,6 +224,15 @@ impl JinxDb {
                     )?;
                 }
 
+                // handle schema v6 -> v7 migration
+                if schema_version < 7 {
+                    // "cache_time_unix_ms" needs to be added to "guild"
+                    connection.execute(
+                        "ALTER TABLE guild ADD COLUMN cache_time_unix_ms INTEGER NOT NULL DEFAULT 0",
+                        (),
+                    )?;
+                }
+
                 // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
                 // All applications should run "PRAGMA optimize;" after a schema change.
                 connection.execute("PRAGMA optimize = 0x10002", ())?;
@@ -251,8 +264,7 @@ impl JinxDb {
                 connection.execute("PRAGMA optimize", ())?;
                 Ok(())
             })
-            .await?;
-        Ok(())
+            .await
     }
 
     pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
@@ -263,8 +275,7 @@ impl JinxDb {
                 statement.execute(named_params! {":owner": owner_id})?;
                 Ok(())
             })
-            .await?;
-        Ok(())
+            .await
     }
 
     pub async fn delete_owner(&self, owner_id: u64) -> Result<()> {
@@ -275,8 +286,7 @@ impl JinxDb {
                 statement.execute(named_params! {":owner": owner_id})?;
                 Ok(())
             })
-            .await?;
-        Ok(())
+            .await
     }
 
     pub async fn set_discord_token(&self, discord_token: String) -> Result<()> {
@@ -289,8 +299,7 @@ impl JinxDb {
                     .execute(named_params! {":key": DISCORD_TOKEN_KEY, ":value": discord_token})?;
                 Ok(())
             })
-            .await?;
-        Ok(())
+            .await
     }
 
     pub async fn get_owners(&self) -> Result<Vec<u64>> {
@@ -432,8 +441,7 @@ impl JinxDb {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, blanket_role_id) VALUES (:guild, :role_id) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id")?;
             statement.execute(named_params! {":guild": guild.get(), ":role_id": role_id.map(RoleId::get)})?;
             Ok(())
-        }).await?;
-        Ok(())
+        }).await
     }
 
     /// blanket link a Jinxxy product and a role
@@ -851,8 +859,7 @@ impl JinxDb {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id")?;
             statement.execute(named_params! {":guild": guild.get(), ":channel": channel.map(ChannelId::get)})?;
             Ok(())
-        }).await?;
-        Ok(())
+        }).await
     }
 
     /// Set or unset this guild as a test guild
@@ -861,8 +868,7 @@ impl JinxDb {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, test) VALUES (:guild, :test) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test")?;
             statement.execute(named_params! {":guild": guild.get(), ":test": test})?;
             Ok(())
-        }).await?;
-        Ok(())
+        }).await
     }
 
     /// Check if a guild is a test guild
@@ -888,8 +894,7 @@ impl JinxDb {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, owner) VALUES (:guild, :owner) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner")?;
             statement.execute(named_params! {":guild": guild.get(), ":owner": owner})?;
             Ok(())
-        }).await?;
-        Ok(())
+        }).await
     }
 
     /// Check if a guild is an owner guild (gets extra slash commands)
@@ -991,64 +996,110 @@ impl JinxDb {
             .await
     }
 
-    /// Get name info for products in a guild
-    pub async fn product_names_in_guild(&self, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+    pub async fn get_guild_cache(&self, guild: GuildId) -> Result<GuildCache> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached(
-                    "SELECT product_id, product_name FROM product WHERE guild_id = :guild",
-                )?;
-                let mapped_rows =
-                    statement.query_map(named_params! {":guild": guild.get()}, |row| {
-                        let product_id: String = row.get(0)?;
-                        let product_name: String = row.get(1)?;
-                        let info = ProductNameInfo {
-                            id: product_id,
-                            product_name,
-                        };
-                        Ok(info)
-                    })?;
-                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-                for row in mapped_rows {
-                    vec.push(row?);
-                }
-                Ok(vec)
+                let cache_time = JinxDb::get_cache_time(connection, guild)?;
+                let product_name_info = JinxDb::product_names_in_guild(connection, guild)?;
+                let product_version_name_info =
+                    JinxDb::product_version_names_in_guild(connection, guild)?;
+                Ok(GuildCache {
+                    product_name_info,
+                    product_version_name_info,
+                    cache_time,
+                })
             })
             .await
+    }
+
+    pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> Result<()> {
+        self.connection
+            .call(move |connection| {
+                JinxDb::persist_product_names(connection, guild, cache_entry.product_name_info)?;
+                JinxDb::persist_product_version_names(
+                    connection,
+                    guild,
+                    cache_entry.product_version_name_info,
+                )?;
+                JinxDb::set_cache_time(connection, guild, cache_entry.cache_time)?;
+                Ok(())
+            })
+            .await
+    }
+
+    fn get_cache_time(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
+        let mut statement = connection
+            .prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;
+        let cache_time_unix_ms =
+            statement.query_row(named_params! {":guild": guild.get()}, |row| {
+                let cache_time_unix_ms: u64 = row.get(0)?;
+                Ok(cache_time_unix_ms)
+            })?;
+        Ok(SimpleTime::from_unix_millis(cache_time_unix_ms))
+    }
+
+    fn set_cache_time(
+        connection: &mut rusqlite::Connection,
+        guild: GuildId,
+        time: SimpleTime,
+    ) -> Result<()> {
+        let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (:guild, :time) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms")?;
+        statement
+            .execute(named_params! {":guild": guild.get(), ":time": time.as_epoch_millis()})?;
+        Ok(())
+    }
+
+    /// Get name info for products in a guild
+    fn product_names_in_guild(
+        connection: &mut rusqlite::Connection,
+        guild: GuildId,
+    ) -> Result<Vec<ProductNameInfo>> {
+        let mut statement = connection.prepare_cached(
+            "SELECT product_id, product_name FROM product WHERE guild_id = :guild",
+        )?;
+        let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
+            let product_id: String = row.get(0)?;
+            let product_name: String = row.get(1)?;
+            let info = ProductNameInfo {
+                id: product_id,
+                product_name,
+            };
+            Ok(info)
+        })?;
+        let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+        for row in mapped_rows {
+            vec.push(row?);
+        }
+        Ok(vec)
     }
 
     /// Get name info for products versions in a guild
-    pub async fn product_version_names_in_guild(
-        &self,
+    fn product_version_names_in_guild(
+        connection: &mut rusqlite::Connection,
         guild: GuildId,
     ) -> Result<Vec<ProductVersionNameInfo>> {
-        self.connection
-            .call(move |connection| {
-                let mut statement =
+        let mut statement =
                     connection.prepare_cached("SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild")?;
-                let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
-                    let product_id: String = row.get(0)?;
-                    let version_id: String = row.get(1)?;
-                    let product_version_name: String = row.get(2)?;
-
-                    let id = ProductVersionId::from_db_values(product_id, version_id);
-                    let info = ProductVersionNameInfo {
-                        id,
-                        product_version_name,
-                    };
-                    Ok(info)
-                })?;
-                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-                for row in mapped_rows {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
+            let product_id: String = row.get(0)?;
+            let version_id: String = row.get(1)?;
+            let product_version_name: String = row.get(2)?;
+            let id = ProductVersionId::from_db_values(product_id, version_id);
+            let info = ProductVersionNameInfo {
+                id,
+                product_version_name,
+            };
+            Ok(info)
+        })?;
+        let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+        for row in mapped_rows {
+            vec.push(row?);
+        }
+        Ok(vec)
     }
 
-    pub async fn persist_product_names(
-        &self,
+    fn persist_product_names(
+        connection: &mut rusqlite::Connection,
         guild: GuildId,
         product_name_info: Vec<ProductNameInfo>,
     ) -> Result<()> {
@@ -1057,38 +1108,39 @@ impl JinxDb {
             ahash::RandomState::default(),
         );
         let mut unexpected_keys = Vec::new();
-        self.connection.call(move |connection| {
-            // step 1: insert all entries and keep track of their keys in a set for later
-            let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name) VALUES (:guild, :product_id, :product_name) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name")?;
-            for info in product_name_info {
-                let product_id = info.id;
-                let product_name = info.product_name;
-                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":product_name": product_name})?;
-                new_key_set.insert(product_id);
-            }
 
-            // step 2: query all existing keys, and record any keys that we did NOT just insert
-            let mut statement = connection.prepare_cached("SELECT product_id FROM product WHERE guild_id = :guild")?;
-            let mut rows = statement.query(named_params! {":guild": guild.get()})?;
-            while let Some(row) = rows.next()? {
-                let product_id: String = row.get(0)?;
-                if !new_key_set.contains(&product_id) {
-                    unexpected_keys.push(product_id);
-                }
-            }
+        // step 1: insert all entries and keep track of their keys in a set for later
+        let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name) VALUES (:guild, :product_id, :product_name) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name")?;
+        for info in product_name_info {
+            let product_id = info.id;
+            let product_name = info.product_name;
+            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":product_name": product_name})?;
+            new_key_set.insert(product_id);
+        }
 
-            // step 3: delete any rows with keys that we did NOT just insert
-            let mut statement = connection.prepare_cached("DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id")?;
-            for product_id in unexpected_keys {
-                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id})?;
+        // step 2: query all existing keys, and record any keys that we did NOT just insert
+        let mut statement =
+            connection.prepare_cached("SELECT product_id FROM product WHERE guild_id = :guild")?;
+        let mut rows = statement.query(named_params! {":guild": guild.get()})?;
+        while let Some(row) = rows.next()? {
+            let product_id: String = row.get(0)?;
+            if !new_key_set.contains(&product_id) {
+                unexpected_keys.push(product_id);
             }
-            Ok(())
-        }).await?;
+        }
+
+        // step 3: delete any rows with keys that we did NOT just insert
+        let mut statement = connection.prepare_cached(
+            "DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id",
+        )?;
+        for product_id in unexpected_keys {
+            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id})?;
+        }
         Ok(())
     }
 
-    pub async fn persist_product_version_names(
-        &self,
+    fn persist_product_version_names(
+        connection: &mut rusqlite::Connection,
         guild: GuildId,
         product_version_name_info: Vec<ProductVersionNameInfo>,
     ) -> Result<()> {
@@ -1097,35 +1149,34 @@ impl JinxDb {
             ahash::RandomState::default(),
         );
         let mut unexpected_keys = Vec::new();
-        self.connection.call(move |connection| {
-            // step 1: insert all entries and keep track of their keys in a set for later
-            let mut statement = connection.prepare_cached("INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (:guild, :product_id, :version_id, :product_version_name) ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name")?;
-            for info in product_version_name_info {
-                let (product_id, version_id) = info.id.into_db_values();
-                let product_version_name = info.product_version_name;
-                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id, ":product_version_name": product_version_name})?;
-                new_key_set.insert((product_id, version_id));
-            }
+        // step 1: insert all entries and keep track of their keys in a set for later
+        let mut statement = connection.prepare_cached("INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (:guild, :product_id, :version_id, :product_version_name) ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name")?;
+        for info in product_version_name_info {
+            let (product_id, version_id) = info.id.into_db_values();
+            let product_version_name = info.product_version_name;
+            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id, ":product_version_name": product_version_name})?;
+            new_key_set.insert((product_id, version_id));
+        }
 
-            // step 2: query all existing keys, and record any keys that we did NOT just insert
-            let mut statement = connection.prepare_cached("SELECT product_id, version_id FROM product_version WHERE guild_id = :guild")?;
-            let mut rows = statement.query(named_params! {":guild": guild.get()})?;
-            while let Some(row) = rows.next()? {
-                let product_id: String = row.get(0)?;
-                let version_id: String = row.get(1)?;
-                let key = (product_id, version_id);
-                if !new_key_set.contains(&key) {
-                    unexpected_keys.push(key);
-                }
+        // step 2: query all existing keys, and record any keys that we did NOT just insert
+        let mut statement = connection.prepare_cached(
+            "SELECT product_id, version_id FROM product_version WHERE guild_id = :guild",
+        )?;
+        let mut rows = statement.query(named_params! {":guild": guild.get()})?;
+        while let Some(row) = rows.next()? {
+            let product_id: String = row.get(0)?;
+            let version_id: String = row.get(1)?;
+            let key = (product_id, version_id);
+            if !new_key_set.contains(&key) {
+                unexpected_keys.push(key);
             }
+        }
 
-            // step 3: delete any rows with keys that we did NOT just insert
-            let mut statement = connection.prepare_cached("DELETE FROM product_version WHERE guild_id = :guild AND product_id = :product_id AND version_id = :version_id")?;
-            for (product_id, version_id) in unexpected_keys {
-                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id})?;
-            }
-            Ok(())
-        }).await?;
+        // step 3: delete any rows with keys that we did NOT just insert
+        let mut statement = connection.prepare_cached("DELETE FROM product_version WHERE guild_id = :guild AND product_id = :product_id AND version_id = :version_id")?;
+        for (product_id, version_id) in unexpected_keys {
+            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id})?;
+        }
         Ok(())
     }
 }
@@ -1142,6 +1193,13 @@ pub enum LinkSource {
     GlobalBlanket,
     ProductBlanket { product_id: String },
     ProductVersion(ProductVersionId),
+}
+
+/// Helper struct returned by TODO
+pub struct GuildCache {
+    pub product_name_info: Vec<ProductNameInfo>,
+    pub product_version_name_info: Vec<ProductVersionNameInfo>,
+    pub cache_time: SimpleTime,
 }
 
 /// Extra functions specifically for using this with the DB

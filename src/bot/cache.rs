@@ -11,19 +11,21 @@
 
 use crate::bot::{util, SECONDS_PER_DAY};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
+use crate::db;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{
     FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo,
 };
+use crate::time::SimpleTime;
 use dashmap::DashMap;
 use poise::serenity_prelude::GuildId;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
@@ -439,8 +441,8 @@ pub struct GuildCache {
     product_version_name_trie: Trie<u8, String>,
     /// Number of product versions, including null versions
     product_version_count: usize,
-    /// Time this cache was constructed, if known. `None` indicates that the entry should _always_ be treated as expired.
-    create_time: Option<Instant>,
+    /// Time this cache was constructed
+    create_time: SimpleTime,
 }
 
 impl GuildCache {
@@ -494,35 +496,35 @@ impl GuildCache {
             })
             .collect();
 
+        let create_time = SimpleTime::now();
+
         Self::persist(
             db,
             guild_id,
             product_name_info.clone(),
             product_version_name_info.clone(),
+            create_time,
         )
         .await?;
-        Self::from_products(
-            product_name_info,
-            product_version_name_info,
-            Some(Instant::now()),
-        )
+        Self::from_products(product_name_info, product_version_name_info, create_time)
     }
 
     /// Attempt to create a cache entry from the DB. This is quite cheap, but the DB doesn't store
     /// a null entry presently so it is ambiguous if a guild has no products or if we're seeing a
     /// disk cache miss.
     async fn from_db(db: &JinxDb, guild_id: GuildId) -> Result<Option<GuildCache>, Error> {
-        let product_name_info = db.product_names_in_guild(guild_id).await?;
-        let product_version_name_info = db.product_version_names_in_guild(guild_id).await?;
+        let db_cache_entry = db.get_guild_cache(guild_id).await?;
 
-        if product_name_info.is_empty() && product_version_name_info.is_empty() {
+        if db_cache_entry.product_name_info.is_empty()
+            && db_cache_entry.product_version_name_info.is_empty()
+        {
             // don't even try building this mildly expensive struct if we have no data
             Ok(None)
         } else {
             Ok(Some(Self::from_products(
-                product_name_info,
-                product_version_name_info,
-                None,
+                db_cache_entry.product_name_info,
+                db_cache_entry.product_version_name_info,
+                db_cache_entry.cache_time,
             )?))
         }
     }
@@ -533,11 +535,14 @@ impl GuildCache {
         guild_id: GuildId,
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
+        cache_time: SimpleTime,
     ) -> Result<(), Error> {
-        db.persist_product_names(guild_id, product_name_info)
-            .await?;
-        db.persist_product_version_names(guild_id, product_version_name_info)
-            .await?;
+        let db_cache_entry = db::GuildCache {
+            product_name_info,
+            product_version_name_info,
+            cache_time,
+        };
+        db.persist_guild_cache(guild_id, db_cache_entry).await?;
         Ok(())
     }
 
@@ -545,7 +550,7 @@ impl GuildCache {
     fn from_products(
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
-        create_time: Option<Instant>,
+        create_time: SimpleTime,
     ) -> Result<GuildCache, Error> {
         let product_count = product_name_info.len();
         let product_version_count = product_version_name_info.len();
@@ -675,16 +680,12 @@ impl GuildCache {
 
     /// check if the entry is a wee bit expired
     fn is_expired_high_priority(&self) -> bool {
-        self.create_time
-            .map(|time| time.elapsed() > HIGH_PRIORITY_CACHE_EXPIRY_TIME)
-            .unwrap_or(true)
+        self.create_time.elapsed().unwrap_or_default() > HIGH_PRIORITY_CACHE_EXPIRY_TIME
     }
 
     /// check if the entry is _very_ expired
     fn is_expired_low_priority(&self) -> bool {
-        self.create_time
-            .map(|time| time.elapsed() > LOW_PRIORITY_CACHE_EXPIRY_TIME)
-            .unwrap_or(true)
+        self.create_time.elapsed().unwrap_or_default() > LOW_PRIORITY_CACHE_EXPIRY_TIME
     }
 }
 

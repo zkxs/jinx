@@ -22,6 +22,7 @@ poise = { git = "https://github.com/zkxs/poise.git", branch = "current", feature
 reqwest = { version = "0.11", default-features = false, features = ["gzip", "json", "rustls-tls"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise
 serde = "1" # Serialization
 tokio-rusqlite = { version = "0.6", features = ["bundled"] } # Persistence
+rusqlite = { version = "0.32", features = ["bundled"] } # Persistence, needed because of missing re-exports in tokio-rusqlite, intentionally held back so that versions match.
 tracing = "0.1" # Logging API
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
 regex = "1" # Pattern matching
