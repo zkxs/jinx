@@ -78,7 +78,7 @@ impl JinxDb {
                     "CREATE TABLE IF NOT EXISTS product ( \
                              guild_id               INTEGER NOT NULL, \
                              product_id             TEXT NOT NULL, \
-                             product_name           TEXT NOT NULL \
+                             product_name           TEXT NOT NULL, \
                              PRIMARY KEY            (guild_id, product_id) \
                          ) STRICT",
                     (),
@@ -93,7 +93,7 @@ impl JinxDb {
                              guild_id               INTEGER NOT NULL, \
                              product_id             TEXT NOT NULL, \
                              version_id             TEXT NOT NULL, \
-                             product_version_name   TEXT NOT NULL \
+                             product_version_name   TEXT NOT NULL, \
                              PRIMARY KEY            (guild_id, product_id, version_id) \
                          ) STRICT",
                     (),
