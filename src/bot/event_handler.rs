@@ -103,11 +103,11 @@ async fn event_handler_inner<'a>(
         FullEvent::GuildDelete { incomplete, full } => {
             // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
             if incomplete.unavailable || full.is_some() {
-                let deregister_guild_result = data
+                let unregister_guild_result = data
                     .api_cache
-                    .deregister_guild_in_cache(incomplete.id)
+                    .unregister_guild_in_cache(incomplete.id)
                     .await;
-                if let Err(e) = deregister_guild_result {
+                if let Err(e) = unregister_guild_result {
                     error!(
                         "Error registering guild {} for background cache refresh: {:?}",
                         incomplete.id.get(),

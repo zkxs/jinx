@@ -8,7 +8,6 @@
 //! API fetch for each autocomplete would be extremely spammy.
 //!
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
-//! I can clear the cache with some kind of background task that checks timestamps ever 60s or so.
 
 use crate::bot::{util, SECONDS_PER_DAY};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
@@ -31,15 +30,19 @@ use trie_rs::map::{Trie, TrieBuilder};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type MapType = Arc<DashMap<GuildId, GuildCache, ahash::RandomState>>;
 
-const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60); // 1 minute
-const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY); // 24 hours
+/// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
+const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
+/// How long before the low priority worker considers a cache entry expired. Currently 24 hours.
+const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
+/// Time the low priority worker sleeps before doing any more work. Intended as a Jinxxy API rate limit. Currently 10 seconds.
+const LOW_PRIORITY_WORKER_SLEEP_TIME: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct ApiCache {
     map: MapType,
     high_priority_tx: mpsc::Sender<GuildId>,
     refresh_register_tx: mpsc::Sender<GuildId>,
-    refresh_deregister_tx: mpsc::Sender<GuildId>,
+    refresh_unregister_tx: mpsc::Sender<GuildId>,
 }
 
 impl ApiCache {
@@ -49,7 +52,7 @@ impl ApiCache {
         const QUEUE_SIZE: usize = 1024;
         let (high_priority_tx, mut high_priority_rx) = mpsc::channel(QUEUE_SIZE);
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel(QUEUE_SIZE);
-        let (refresh_deregister_tx, mut refresh_deregister_rx) = mpsc::channel(QUEUE_SIZE);
+        let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel(QUEUE_SIZE);
 
         // high priority refresh task. This always hits the Jinxxy API directly.
         {
@@ -108,9 +111,9 @@ impl ApiCache {
                             }
                         }
                         Err(TryRecvError::Empty) => {
-                            // the second thing we do is check for deregistered guilds
+                            // the second thing we do is check for unregistered guilds
                             'inner: loop {
-                                match refresh_deregister_rx.try_recv() {
+                                match refresh_unregister_rx.try_recv() {
                                     Ok(guild_id) => {
                                         if guild_set.remove(&guild_id) {
                                             queue.retain(|queue_guild_id| {
@@ -208,13 +211,17 @@ impl ApiCache {
                                                         warn!("Error initializing API cache during low-priority refresh for {}: {:?}", guild_id.get(), e);
 
                                                         match jinxxy::get_own_user(&api_key).await {
-                                                            Ok(_auth_user) => {
+                                                            Ok(auth_user) => {
                                                                 // we were able to do an API request with this key...
                                                                 // okay must have been a weird fluke, we'll leave this guild registered
+                                                                if !auth_user.has_required_scopes()
+                                                                {
+                                                                    warn!("Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.", guild_id.get());
+                                                                }
                                                                 true
                                                             }
                                                             Err(e) => {
-                                                                info!("error checking /me for guild {}, will deregister now: {:?}", guild_id.get(), e);
+                                                                info!("error checking /me for guild {}, will unregister now: {:?}", guild_id.get(), e);
                                                                 false
                                                             }
                                                         }
@@ -222,13 +229,13 @@ impl ApiCache {
                                                 }
                                             }
                                             None => {
-                                                info!("low-priority refresh was triggered for guild {}, which has no api key set! Deregistering now.", guild_id.get());
+                                                info!("low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.", guild_id.get());
                                                 false
                                             }
                                         }
                                     }
                                     Err(e) => {
-                                        warn!("Error retrieving API key during low-priority refresh for {}. Deregistering now: {:?}", guild_id.get(), e);
+                                        warn!("Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}", guild_id.get(), e);
                                         false
                                     }
                                 };
@@ -243,7 +250,7 @@ impl ApiCache {
                             }
 
                             // wait a few seconds before doing another low-priority event
-                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            tokio::time::sleep(LOW_PRIORITY_WORKER_SLEEP_TIME).await;
                         }
                         Err(TryRecvError::Disconnected) => {
                             // channel is broken, so stop this task
@@ -260,7 +267,7 @@ impl ApiCache {
             map,
             high_priority_tx,
             refresh_register_tx,
-            refresh_deregister_tx,
+            refresh_unregister_tx,
         }
     }
 
@@ -276,9 +283,9 @@ impl ApiCache {
         Ok(())
     }
 
-    /// Deregister a guild in the cache. The guild will no longer have its cache entry periodically warmed automatically.
-    pub async fn deregister_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
-        self.refresh_deregister_tx.send(guild_id).await?;
+    /// Unregister a guild in the cache. The guild will no longer have its cache entry periodically warmed automatically.
+    pub async fn unregister_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
+        self.refresh_unregister_tx.send(guild_id).await?;
         Ok(())
     }
 
