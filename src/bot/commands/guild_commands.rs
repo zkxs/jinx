@@ -11,6 +11,7 @@ use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::GuildId;
 use poise::CreateReply;
 use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
@@ -1045,11 +1046,17 @@ pub(in crate::bot) async fn unlink_product_version(
 )]
 pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error> {
     context.defer_ephemeral().await?;
-
     let guild_id = context
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    list_links_impl(context, guild_id).await
+}
 
+/// internal list links implementation. You MUST `context.defer_ephemeral()` on your own before calling this.
+pub(in crate::bot) async fn list_links_impl(
+    context: Context<'_>,
+    guild_id: GuildId,
+) -> Result<(), Error> {
     let assignable_roles = util::assignable_roles(&context, guild_id).await?;
     let links = context.data().db.get_links(guild_id).await?;
     let message = if links.is_empty() {

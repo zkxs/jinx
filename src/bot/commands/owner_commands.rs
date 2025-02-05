@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::commands::guild_commands;
 use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::bot::{util, Context};
 use crate::error::JinxError;
@@ -523,5 +524,50 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
         success_reply("Misconfigured Guild Report", "No misconfigured guilds!")
     };
     context.send(reply.ephemeral(true)).await?;
+    Ok(())
+}
+
+/// Run list_links in a different guild. This is an evil hack.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn sudo_list_links(
+    context: Context<'_>,
+    #[description = "ID of guild"] guild_id: String,
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    match guild_id.parse::<u64>() {
+        Ok(guild_id) => {
+            if guild_id == 0 {
+                // guild was invalid (0)
+                let embed = CreateEmbed::default()
+                    .title("sudo_list_links Error")
+                    .color(Colour::RED)
+                    .description("Guild was invalid (id of 0)");
+                let reply = CreateReply::default().embed(embed);
+                context.send(reply.ephemeral(true)).await?;
+            } else {
+                let guild_id = GuildId::new(guild_id);
+
+                // horrible evil hack to reuse all the logic with minimal work
+                guild_commands::list_links_impl(context, guild_id).await?;
+            }
+        }
+        Err(e) => {
+            // guild was invalid (not a number)
+            let embed = CreateEmbed::default()
+                .title("sudo_list_links Error")
+                .color(Colour::RED)
+                .description(format!("Guild was invalid (parse error: {})", e));
+            let reply = CreateReply::default().embed(embed);
+            context.send(reply.ephemeral(true)).await?;
+        }
+    }
+
     Ok(())
 }
