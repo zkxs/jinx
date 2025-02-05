@@ -774,6 +774,14 @@ impl JinxDb {
             .await
     }
 
+    /// Get count of guilds with blanket role set
+    pub async fn blanket_role_count(&self) -> Result<u64> {
+        self.connection.call(move |connection| {
+            let result: u64 = connection.query_row("SELECT count(*) FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL", [], |row| row.get(0))?;
+            Ok(result)
+        }).await
+    }
+
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
@@ -782,19 +790,18 @@ impl JinxDb {
         }).await
     }
 
-    /// Get count of license activations in a guild
-    pub async fn guild_license_activation_count(&self, guild: GuildId) -> Result<u64> {
+    /// Get count of product+version->role mappings
+    pub async fn product_version_role_count(&self) -> Result<u64> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
-            let result: u64 = statement.query_row(named_params! {":guild": guild.get()}, |row| row.get(0))?;
+            let result: u64 = connection.query_row("SELECT count(*) FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
         }).await
     }
 
-    /// Get count of product->role mappings in a guild
-    pub async fn guild_product_role_count(&self, guild: GuildId) -> Result<u64> {
+    /// Get count of license activations in a guild
+    pub async fn guild_license_activation_count(&self, guild: GuildId) -> Result<u64> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
+            let mut statement = connection.prepare_cached("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
             let result: u64 = statement.query_row(named_params! {":guild": guild.get()}, |row| row.get(0))?;
             Ok(result)
         }).await
@@ -1018,7 +1025,7 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 let mut statement =
-                    connection.prepare_cached("SELECT product_id, version_id, product_version_name FROM product WHERE guild_id = :guild")?;
+                    connection.prepare_cached("SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild")?;
                 let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
                     let product_id: String = row.get(0)?;
                     let version_id: String = row.get(1)?;

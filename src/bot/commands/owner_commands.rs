@@ -30,7 +30,9 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     let configured_guild_count = context.data().db.guild_count().await?;
     let license_activation_count = context.data().db.license_activation_count().await?;
     let distinct_user_count = context.data().db.distinct_user_count().await?;
+    let blanket_role_count = context.data().db.blanket_role_count().await?;
     let product_role_count = context.data().db.product_role_count().await?;
+    let product_version_role_count = context.data().db.product_version_role_count().await?;
     let api_cache_products = context.data().api_cache.product_count();
     let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
@@ -62,7 +64,9 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
         distinct activators={distinct_user_count}\n\
+        wildcard role links={blanket_role_count}\n\
         product→role links={product_role_count}\n\
+        product+version→role links={product_version_role_count}\n\
         API cache total products={api_cache_products}\n\
         API cache total product versions={api_cache_product_versions}\n\
         API cache guilds={api_cache_len}\n\
@@ -410,8 +414,10 @@ pub(in crate::bot) async fn verify_guild(
                             .get_gumroad_nag_count(guild_id)
                             .await?
                             .unwrap_or(0);
-                        let product_role_count =
-                            context.data().db.guild_product_role_count(guild_id).await?;
+                        let blanket_role_count = context.data().db.blanket_role_count().await?;
+                        let product_role_count = context.data().db.product_role_count().await?;
+                        let product_version_role_count =
+                            context.data().db.product_version_role_count().await?;
                         let guild_embed = CreateEmbed::default()
                             .title("Guild Information")
                             .description(format!(
@@ -423,7 +429,9 @@ pub(in crate::bot) async fn verify_guild(
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
                                 gumroad nags={gumroad_nag_count}\n\
-                                product→role links={product_role_count}"
+                                wildcard role links={blanket_role_count}\n\
+                                product→role links={product_role_count}\n\
+                                product+version→role links={product_version_role_count}"
                             ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)
