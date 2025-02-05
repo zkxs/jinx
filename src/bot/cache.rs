@@ -25,7 +25,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -51,7 +51,7 @@ impl ApiCache {
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel(QUEUE_SIZE);
         let (refresh_deregister_tx, mut refresh_deregister_rx) = mpsc::channel(QUEUE_SIZE);
 
-        // high priority refresh task
+        // high priority refresh task. This always hits the Jinxxy API directly.
         {
             let db = db.clone();
             let map = map.clone();
@@ -66,14 +66,18 @@ impl ApiCache {
                     if needs_refresh {
                         match db.get_jinxxy_api_key(guild_id).await {
                             Ok(api_key) => match api_key {
-                                Some(api_key) => match GuildCache::new(&api_key).await {
-                                    Ok(guild_cache) => {
-                                        map.insert(guild_id, guild_cache);
+                                Some(api_key) => {
+                                    // the high-priority API hit
+                                    match GuildCache::from_jinxxy_api(&db, &api_key, guild_id).await
+                                    {
+                                        Ok(guild_cache) => {
+                                            map.insert(guild_id, guild_cache);
+                                        }
+                                        Err(e) => {
+                                            warn!("Error initializing API cache during high-priority refresh for {}: {:?}", guild_id.get(), e);
+                                        }
                                     }
-                                    Err(e) => {
-                                        warn!("Error initializing API cache during high-priority refresh for {}: {:?}", guild_id.get(), e);
-                                    }
-                                },
+                                }
                                 None => {
                                     warn!("High-priority refresh was somehow triggered for guild {}, which has no api key set!", guild_id);
                                 }
@@ -87,7 +91,7 @@ impl ApiCache {
             });
         }
 
-        // low priority refresh task. Used for initial cache warm and refresh
+        // low priority refresh task. Used for initial cache warm and refresh. Initial cache warm. Hits DB values if they exist.
         {
             let db = db;
             let map = map.clone();
@@ -129,11 +133,25 @@ impl ApiCache {
                             // process a single guild
 
                             // find the first guild that needs a refresh
-                            if let Some((index, guild_id)) =
-                                queue.iter().enumerate().find(|(_index, guild_id)| {
-                                    map.get(guild_id)
-                                        .map(|entry| entry.is_expired_low_priority())
-                                        .unwrap_or(true)
+                            if let Some((index, guild_id, try_db_load)) =
+                                queue.iter().enumerate().find_map(|(index, guild_id)| {
+                                    // we're looking for an entry that is expired OR vacant
+                                    match map.get(guild_id) {
+                                        Some(entry) => {
+                                            if entry.is_expired_low_priority() {
+                                                // entry exists and was expired
+                                                // no need to do a DB load because we obviously already have data in memory
+                                                Some((index, guild_id, false))
+                                            } else {
+                                                // entry exists and was not expired
+                                                None
+                                            }
+                                        }
+                                        None => {
+                                            // entry did NOT exist in memory, so it's worth trying a db load
+                                            Some((index, guild_id, true))
+                                        }
+                                    }
                                 })
                             {
                                 let guild_id = *guild_id;
@@ -146,7 +164,42 @@ impl ApiCache {
                                                     "starting low priority refresh of cache for {}",
                                                     guild_id.get()
                                                 );
-                                                match GuildCache::new(&api_key).await {
+
+                                                let guild_cache = if try_db_load {
+                                                    // try a DB load instead of an API load
+                                                    let db_result =
+                                                        GuildCache::from_db(&db, guild_id).await;
+                                                    match db_result {
+                                                        Ok(Some(guild_cache)) => {
+                                                            // DB read worked: just return it
+                                                            Ok(guild_cache)
+                                                        }
+                                                        Ok(None) => {
+                                                            // DB read didn't seem to work, fall back to an API load
+                                                            debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", guild_id.get());
+                                                            GuildCache::from_jinxxy_api(
+                                                                &db, &api_key, guild_id,
+                                                            )
+                                                            .await
+                                                        }
+                                                        Err(e) => {
+                                                            // uh this is probably bad because DB read shouldn't fail
+                                                            // fall back to an API load anyways
+                                                            error!("DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}", guild_id.get(), e);
+                                                            GuildCache::from_jinxxy_api(
+                                                                &db, &api_key, guild_id,
+                                                            )
+                                                            .await
+                                                        }
+                                                    }
+                                                } else {
+                                                    GuildCache::from_jinxxy_api(
+                                                        &db, &api_key, guild_id,
+                                                    )
+                                                    .await
+                                                };
+
+                                                match guild_cache {
                                                     Ok(guild_cache) => {
                                                         map.insert(guild_id, guild_cache);
                                                         true
@@ -252,7 +305,7 @@ impl ApiCache {
             // got an entry; return it immediately, even if it's expired
             Ok(f(cache_entry.value()))
         } else {
-            // expired or vacant entry
+            // vacant entry
             debug!("initializing product cache in {}", guild_id.get());
             let api_key = &context
                 .data()
@@ -260,7 +313,9 @@ impl ApiCache {
                 .get_jinxxy_api_key(guild_id)
                 .await?
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
-            let guild_cache = GuildCache::new(api_key).await?;
+            // we had a cache miss, implying that there's no reason to load from db
+            let guild_cache =
+                GuildCache::from_jinxxy_api(&context.data().db, api_key, guild_id).await?;
 
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
@@ -377,14 +432,19 @@ pub struct GuildCache {
     product_version_name_trie: Trie<u8, String>,
     /// Number of product versions, including null versions
     product_version_count: usize,
-    /// Time this cache was constructed
-    create_time: Instant,
+    /// Time this cache was constructed, if known. `None` indicates that the entry should _always_ be treated as expired.
+    create_time: Option<Instant>,
 }
 
 impl GuildCache {
-    async fn new(api_key: &str) -> Result<GuildCache, Error> {
+    /// Create a cache entry by hitting the Jinxxy API. This is very costly and involves a lot of API hits.
+    /// Upon success, it will automatically persist the retrieved data to the DB.
+    async fn from_jinxxy_api(
+        db: &JinxDb,
+        api_key: &str,
+        guild_id: GuildId,
+    ) -> Result<GuildCache, Error> {
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
-
         let products: Vec<FullProduct> = jinxxy::get_full_products(api_key, partial_products)
             .await?
             .into_iter()
@@ -427,6 +487,59 @@ impl GuildCache {
             })
             .collect();
 
+        Self::persist(
+            db,
+            guild_id,
+            product_name_info.clone(),
+            product_version_name_info.clone(),
+        )
+        .await?;
+        Self::from_products(
+            product_name_info,
+            product_version_name_info,
+            Some(Instant::now()),
+        )
+    }
+
+    /// Attempt to create a cache entry from the DB. This is quite cheap, but the DB doesn't store
+    /// a null entry presently so it is ambiguous if a guild has no products or if we're seeing a
+    /// disk cache miss.
+    async fn from_db(db: &JinxDb, guild_id: GuildId) -> Result<Option<GuildCache>, Error> {
+        let product_name_info = db.product_names_in_guild(guild_id).await?;
+        let product_version_name_info = db.product_version_names_in_guild(guild_id).await?;
+
+        if product_name_info.is_empty() && product_version_name_info.is_empty() {
+            // don't even try building this mildly expensive struct if we have no data
+            Ok(None)
+        } else {
+            Ok(Some(Self::from_products(
+                product_name_info,
+                product_version_name_info,
+                None,
+            )?))
+        }
+    }
+
+    /// Persist cache state to DB. This needs owned values, because they're being moved into a different thread.
+    async fn persist(
+        db: &JinxDb,
+        guild_id: GuildId,
+        product_name_info: Vec<ProductNameInfo>,
+        product_version_name_info: Vec<ProductVersionNameInfo>,
+    ) -> Result<(), Error> {
+        db.persist_product_names(guild_id, product_name_info)
+            .await?;
+        db.persist_product_version_names(guild_id, product_version_name_info)
+            .await?;
+        Ok(())
+    }
+
+    /// Create a cache entry from values.
+    fn from_products(
+        product_name_info: Vec<ProductNameInfo>,
+        product_version_name_info: Vec<ProductVersionNameInfo>,
+        create_time: Option<Instant>,
+    ) -> Result<GuildCache, Error> {
         let product_count = product_name_info.len();
         let product_version_count = product_version_name_info.len();
 
@@ -484,8 +597,6 @@ impl GuildCache {
                 .or_default()
                 .push(name_info.id);
         }
-
-        let create_time = Instant::now();
 
         Ok(GuildCache {
             product_id_to_name_map,
@@ -557,12 +668,16 @@ impl GuildCache {
 
     /// check if the entry is a wee bit expired
     fn is_expired_high_priority(&self) -> bool {
-        self.create_time.elapsed() > HIGH_PRIORITY_CACHE_EXPIRY_TIME
+        self.create_time
+            .map(|time| time.elapsed() > HIGH_PRIORITY_CACHE_EXPIRY_TIME)
+            .unwrap_or(true)
     }
 
     /// check if the entry is _very_ expired
     fn is_expired_low_priority(&self) -> bool {
-        self.create_time.elapsed() > LOW_PRIORITY_CACHE_EXPIRY_TIME
+        self.create_time
+            .map(|time| time.elapsed() > LOW_PRIORITY_CACHE_EXPIRY_TIME)
+            .unwrap_or(true)
     }
 }
 

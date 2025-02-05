@@ -3,6 +3,7 @@
 
 use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
+use ahash::HashSet;
 use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::collections::HashMap;
@@ -1023,11 +1024,9 @@ impl JinxDb {
                     let version_id: String = row.get(1)?;
                     let product_version_name: String = row.get(2)?;
 
+                    let id = ProductVersionId::from_db_values(product_id, version_id);
                     let info = ProductVersionNameInfo {
-                        id: ProductVersionId {
-                            product_id,
-                            product_version_id: Some(version_id),
-                        },
+                        id,
                         product_version_name,
                     };
                     Ok(info)
@@ -1039,6 +1038,88 @@ impl JinxDb {
                 Ok(vec)
             })
             .await
+    }
+
+    pub async fn persist_product_names(
+        &self,
+        guild: GuildId,
+        product_name_info: Vec<ProductNameInfo>,
+    ) -> Result<()> {
+        let mut new_key_set = HashSet::with_capacity_and_hasher(
+            product_name_info.len(),
+            ahash::RandomState::default(),
+        );
+        let mut unexpected_keys = Vec::new();
+        self.connection.call(move |connection| {
+            // step 1: insert all entries and keep track of their keys in a set for later
+            let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name) VALUES (:guild, :product_id, :product_name) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name")?;
+            for info in product_name_info {
+                let product_id = info.id;
+                let product_name = info.product_name;
+                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":product_name": product_name})?;
+                new_key_set.insert(product_id);
+            }
+
+            // step 2: query all existing keys, and record any keys that we did NOT just insert
+            let mut statement = connection.prepare_cached("SELECT product_id FROM product WHERE guild_id = :guild")?;
+            let mut rows = statement.query(named_params! {":guild": guild.get()})?;
+            while let Some(row) = rows.next()? {
+                let product_id: String = row.get(0)?;
+                if !new_key_set.contains(&product_id) {
+                    unexpected_keys.push(product_id);
+                }
+            }
+
+            // step 3: delete any rows with keys that we did NOT just insert
+            let mut statement = connection.prepare_cached("DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id")?;
+            for product_id in unexpected_keys {
+                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id})?;
+            }
+            Ok(())
+        }).await?;
+        Ok(())
+    }
+
+    pub async fn persist_product_version_names(
+        &self,
+        guild: GuildId,
+        product_version_name_info: Vec<ProductVersionNameInfo>,
+    ) -> Result<()> {
+        let mut new_key_set = HashSet::with_capacity_and_hasher(
+            product_version_name_info.len(),
+            ahash::RandomState::default(),
+        );
+        let mut unexpected_keys = Vec::new();
+        self.connection.call(move |connection| {
+            // step 1: insert all entries and keep track of their keys in a set for later
+            let mut statement = connection.prepare_cached("INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (:guild, :product_id, :version_id, :product_version_name) ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name")?;
+            for info in product_version_name_info {
+                let (product_id, version_id) = info.id.into_db_values();
+                let product_version_name = info.product_version_name;
+                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id, ":product_version_name": product_version_name})?;
+                new_key_set.insert((product_id, version_id));
+            }
+
+            // step 2: query all existing keys, and record any keys that we did NOT just insert
+            let mut statement = connection.prepare_cached("SELECT product_id, version_id FROM product_version WHERE guild_id = :guild")?;
+            let mut rows = statement.query(named_params! {":guild": guild.get()})?;
+            while let Some(row) = rows.next()? {
+                let product_id: String = row.get(0)?;
+                let version_id: String = row.get(1)?;
+                let key = (product_id, version_id);
+                if !new_key_set.contains(&key) {
+                    unexpected_keys.push(key);
+                }
+            }
+
+            // step 3: delete any rows with keys that we did NOT just insert
+            let mut statement = connection.prepare_cached("DELETE FROM product_version WHERE guild_id = :guild AND product_id = :product_id AND version_id = :version_id")?;
+            for (product_id, version_id) in unexpected_keys {
+                statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id})?;
+            }
+            Ok(())
+        }).await?;
+        Ok(())
     }
 }
 
@@ -1056,6 +1137,7 @@ pub enum LinkSource {
     ProductVersion(ProductVersionId),
 }
 
+/// Extra functions specifically for using this with the DB
 impl ProductVersionId {
     fn into_db_values(self) -> (String, String) {
         (self.product_id, self.product_version_id.unwrap_or_default())

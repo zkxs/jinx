@@ -390,7 +390,8 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     Ok(response.into())
 }
 
-/// Upgrade products from partial data to full data. This is expensive, as it has to call an API in a loop.
+/// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.
+/// This is done concurrently which speeds things up slightly, but it is still very costly.
 /// Resulting vec is not guaranteed to be in the same order as the input vec.
 pub async fn get_full_products(
     api_key: &str,
@@ -494,12 +495,14 @@ impl Display for ProductVersionId {
 }
 
 /// Internal struct for holding name info
+#[derive(Clone)]
 pub struct ProductNameInfo {
     pub id: String,
     pub product_name: String,
 }
 
 /// Internal struct for holding version name info
+#[derive(Clone)]
 pub struct ProductVersionNameInfo {
     pub id: ProductVersionId,
     pub product_version_name: String,
