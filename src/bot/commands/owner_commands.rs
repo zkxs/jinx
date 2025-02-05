@@ -86,7 +86,7 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     Ok(())
 }
 
-/// Clear the in-memory API cache
+/// Delete the API cache from memory and disk. It will be expensive to rebuild.
 #[poise::command(
     slash_command,
     default_member_permissions = "MANAGE_GUILD",
@@ -94,22 +94,38 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn clean_cache(context: Context<'_>) -> Result<(), Error> {
+pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
 
     let before_api_cache_products = context.data().api_cache.product_count();
     let before_api_cache_product_versions = context.data().api_cache.product_version_count();
     let before_api_cache_len = context.data().api_cache.len();
     let before_api_cache_capacity = context.data().api_cache.capacity();
+    let time_after_metrics_1 = Instant::now();
 
-    context.data().api_cache.clean();
+    context.data().db.clear_cache().await?;
+    let time_after_db_clear = Instant::now();
+
+    context.data().api_cache.clear();
+    let time_after_cache_clear = Instant::now();
 
     let after_api_cache_products = context.data().api_cache.product_count();
     let after_api_cache_product_versions = context.data().api_cache.product_version_count();
     let after_api_cache_len = context.data().api_cache.len();
     let after_api_cache_capacity = context.data().api_cache.capacity();
+    let time_after_metrics_2 = Instant::now();
 
-    let elapsed_micros = start.elapsed().as_micros();
+    // calculate how long each step took
+    let metrics_1_elapsed = time_after_metrics_1.duration_since(start).as_micros();
+    let db_clear_elapsed = time_after_db_clear
+        .duration_since(time_after_metrics_1)
+        .as_millis();
+    let cache_clear_elapsed = time_after_cache_clear
+        .duration_since(time_after_db_clear)
+        .as_micros();
+    let metrics_2_elapsed = time_after_metrics_2
+        .duration_since(time_after_cache_clear)
+        .as_micros();
 
     let message = format!(
         "**Before:**\n\
@@ -122,7 +138,11 @@ pub(in crate::bot) async fn clean_cache(context: Context<'_>) -> Result<(), Erro
         API cache total product versions={after_api_cache_product_versions}\n\
         API cache guilds={after_api_cache_len}\n\
         API cache guild capacity={after_api_cache_capacity}\n\n\
-        **Elapsed:** {elapsed_micros}μs"
+        **Elapsed:**\n\
+        m1={metrics_1_elapsed}μs\n\
+        db={db_clear_elapsed}ms\n\
+        mem={cache_clear_elapsed}μs\n\
+        m2={metrics_2_elapsed}μs"
     );
 
     let embed = CreateEmbed::default()

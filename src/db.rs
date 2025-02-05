@@ -1027,6 +1027,17 @@ impl JinxDb {
             .await
     }
 
+    /// Delete all cache entries for all guilds
+    pub async fn clear_cache(&self) -> Result<()> {
+        self.connection
+            .call(move |connection| {
+                connection.execute("DELETE FROM product", ())?;
+                connection.execute("DELETE FROM product_version", ())?;
+                Ok(())
+            })
+            .await
+    }
+
     fn get_cache_time(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
         let mut statement = connection
             .prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;

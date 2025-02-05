@@ -64,7 +64,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     vec![
         announce(),
         announce_test(),
-        clean_cache(),
+        clear_cache(),
         exit(),
         misconfigured_guilds(),
         owner_stats(),
@@ -101,7 +101,7 @@ pub async fn run_bot() -> Result<(), Error> {
             commands: vec![
                 announce(),
                 announce_test(),
-                clean_cache(),
+                clear_cache(),
                 create_post(),
                 deactivate_license(),
                 exit(),
