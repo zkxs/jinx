@@ -20,7 +20,7 @@ use serenity::{
 use std::collections::HashMap;
 use tokio::join;
 use tokio::task::JoinSet;
-use tracing::warn;
+use tracing::{error, warn};
 
 // discord component ids
 pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
@@ -616,15 +616,23 @@ async fn product_autocomplete(
     context: Context<'_>,
     product_prefix: &str,
 ) -> impl Iterator<Item = String> {
-    match context
-        .data()
-        .api_cache
-        .product_names_with_prefix(&context, product_prefix)
-        .await
-    {
-        Ok(result) => result.into_iter(),
-        Err(e) => {
-            warn!("Failed to read API cache: {:?}", e);
+    match context.guild_id() {
+        Some(guild_id) => {
+            match context
+                .data()
+                .api_cache
+                .product_names_with_prefix(&context.data().db, guild_id, product_prefix)
+                .await
+            {
+                Ok(result) => result.into_iter(),
+                Err(e) => {
+                    warn!("Failed to read API cache: {:?}", e);
+                    Vec::new().into_iter()
+                }
+            }
+        }
+        None => {
+            error!("someone is somehow doing product autocomplete without being in a guild");
             Vec::new().into_iter()
         }
     }
@@ -635,15 +643,25 @@ async fn product_version_autocomplete(
     context: Context<'_>,
     product_prefix: &str,
 ) -> impl Iterator<Item = String> {
-    match context
-        .data()
-        .api_cache
-        .product_version_names_with_prefix(&context, product_prefix)
-        .await
-    {
-        Ok(result) => result.into_iter(),
-        Err(e) => {
-            warn!("Failed to read API cache: {:?}", e);
+    match context.guild_id() {
+        Some(guild_id) => {
+            match context
+                .data()
+                .api_cache
+                .product_version_names_with_prefix(&context.data().db, guild_id, product_prefix)
+                .await
+            {
+                Ok(result) => result.into_iter(),
+                Err(e) => {
+                    warn!("Failed to read API cache: {:?}", e);
+                    Vec::new().into_iter()
+                }
+            }
+        }
+        None => {
+            error!(
+                "someone is somehow doing product version autocomplete without being in a guild"
+            );
             Vec::new().into_iter()
         }
     }
@@ -750,7 +768,7 @@ pub(in crate::bot) async fn link_product(
     let product_ids = context
         .data()
         .api_cache
-        .product_name_to_ids(&context, &product)
+        .product_name_to_ids(&context.data().db, guild_id, &product)
         .await?;
 
     let reply = if product_ids.is_empty() {
@@ -828,7 +846,7 @@ pub(in crate::bot) async fn unlink_product(
     let product_ids = context
         .data()
         .api_cache
-        .product_name_to_ids(&context, &product)
+        .product_name_to_ids(&context.data().db, guild_id, &product)
         .await?;
 
     let reply = if product_ids.is_empty() {
@@ -902,7 +920,7 @@ pub(in crate::bot) async fn link_product_version(
     let product_version_ids = context
         .data()
         .api_cache
-        .product_version_name_to_version_ids(&context, &product_version)
+        .product_version_name_to_version_ids(&context.data().db, guild_id, &product_version)
         .await?;
 
     let reply = if product_version_ids.is_empty() {
@@ -983,7 +1001,7 @@ pub(in crate::bot) async fn unlink_product_version(
     let product_version_ids = context
         .data()
         .api_cache
-        .product_version_name_to_version_ids(&context, &product_version)
+        .product_version_name_to_version_ids(&context.data().db, guild_id, &product_version)
         .await?;
 
     let reply = if product_version_ids.is_empty() {
@@ -1067,7 +1085,7 @@ pub(in crate::bot) async fn list_links_impl(
         context
             .data()
             .api_cache
-            .get(&context, |cache| {
+            .get(&context.data().db, guild_id, |cache| {
                 let mut first_line = true;
                 let mut message = String::new();
                 for role in linked_roles {

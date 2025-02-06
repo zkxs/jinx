@@ -9,8 +9,8 @@
 //!
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 
+use crate::bot::MISSING_API_KEY_MESSAGE;
 use crate::bot::{util, SECONDS_PER_DAY};
-use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db;
 use crate::db::JinxDb;
 use crate::error::JinxError;
@@ -298,14 +298,10 @@ impl ApiCache {
     /// Get a cache line and run some process on it, returning the result.
     ///
     /// If the cache is empty or expired, the underlying API will be hit.
-    pub async fn get<F, T>(&self, context: &Context<'_>, f: F) -> Result<T, Error>
+    pub async fn get<F, T>(&self, db: &JinxDb, guild_id: GuildId, f: F) -> Result<T, Error>
     where
         F: FnOnce(&GuildCache) -> T,
     {
-        let guild_id = context
-            .guild_id()
-            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-
         if let Some(cache_entry) = self.map.get(&guild_id) {
             if cache_entry.is_expired_high_priority() {
                 debug!(
@@ -320,15 +316,12 @@ impl ApiCache {
         } else {
             // vacant entry
             debug!("initializing product cache in {}", guild_id.get());
-            let api_key = &context
-                .data()
-                .db
+            let api_key = db
                 .get_jinxxy_api_key(guild_id)
                 .await?
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
             // we had a cache miss, implying that there's no reason to load from db
-            let guild_cache =
-                GuildCache::from_jinxxy_api(&context.data().db, api_key, guild_id).await?;
+            let guild_cache = GuildCache::from_jinxxy_api(db, api_key.as_str(), guild_id).await?;
 
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
@@ -366,10 +359,11 @@ impl ApiCache {
 
     pub async fn product_names_with_prefix(
         &self,
-        context: &Context<'_>,
+        db: &JinxDb,
+        guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(context, |cache_entry| {
+        self.get(db, guild_id, |cache_entry| {
             cache_entry.product_names_with_prefix(prefix).collect()
         })
         .await
@@ -377,10 +371,11 @@ impl ApiCache {
 
     pub async fn product_version_names_with_prefix(
         &self,
-        context: &Context<'_>,
+        db: &JinxDb,
+        guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(context, |cache_entry| {
+        self.get(db, guild_id, |cache_entry| {
             cache_entry
                 .product_version_names_with_prefix(prefix)
                 .collect()
@@ -390,10 +385,11 @@ impl ApiCache {
 
     pub async fn product_name_to_ids(
         &self,
-        context: &Context<'_>,
+        db: &JinxDb,
+        guild_id: GuildId,
         product_name: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(context, |cache_entry| {
+        self.get(db, guild_id, |cache_entry| {
             cache_entry.product_name_to_ids(product_name).to_vec()
         })
         .await
@@ -401,10 +397,11 @@ impl ApiCache {
 
     pub async fn product_version_name_to_version_ids(
         &self,
-        context: &Context<'_>,
+        db: &JinxDb,
+        guild_id: GuildId,
         product_name: &str,
     ) -> Result<Vec<ProductVersionId>, Error> {
-        self.get(context, |cache_entry| {
+        self.get(db, guild_id, |cache_entry| {
             cache_entry
                 .product_version_name_to_version_ids(product_name)
                 .to_vec()
