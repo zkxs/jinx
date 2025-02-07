@@ -412,7 +412,7 @@ impl ApiCache {
             Ok(f(cache_entry.value()))
         } else {
             // vacant entry
-            debug!("initializing product cache in {}", guild_id.get());
+            info!("cache missed! Falling back to direct API request for {}", guild_id.get());
             let api_key = db
                 .get_jinxxy_api_key(guild_id)
                 .await?
