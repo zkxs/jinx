@@ -42,6 +42,7 @@ const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER
 const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration =
     Duration::from_secs(SECONDS_PER_DAY + 60);
 
+/// Cloning returns a reference to this same ApiCache instance
 #[derive(Clone)]
 pub struct ApiCache {
     map: MapType,

@@ -87,6 +87,30 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
     Ok(())
 }
 
+/// Ensure all guilds are registered in the API cache, even if they previously had Jinxxy API failures.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Error> {
+    for guild_id in context.cache().guilds() {
+        context
+            .data()
+            .api_cache
+            .register_guild_in_cache(guild_id)
+            .await?;
+    }
+    let reply = success_reply(
+        "Success",
+        "All guilds re-registered in cache refresh worker",
+    );
+    context.send(reply).await?;
+    Ok(())
+}
+
 /// Delete the API cache from memory and disk. It will be expensive to rebuild.
 #[poise::command(
     slash_command,
