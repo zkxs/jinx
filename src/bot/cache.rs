@@ -382,7 +382,7 @@ impl ApiCache {
     }
 
     /// Trigger a one-time high-priority refresh of this guild in the cache.
-    pub async fn refresh_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
+    async fn refresh_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
         self.high_priority_tx.send(guild_id).await?;
         Ok(())
     }
@@ -412,8 +412,11 @@ impl ApiCache {
                     "queuing priority product cache refresh for {} due to expiry",
                     guild_id.get()
                 );
-                self.high_priority_tx.send(guild_id).await?;
+                self.refresh_guild_in_cache(guild_id).await?;
             }
+
+            // ensure this guild is registered in the cache
+            self.register_guild_in_cache(guild_id).await?;
 
             // got an entry; return it immediately, even if it's expired
             Ok(f(cache_entry.value()))
@@ -433,6 +436,10 @@ impl ApiCache {
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
             let guild_cache = self.map.entry(guild_id).insert(guild_cache);
+
+            // ensure this guild is registered in the cache
+            self.register_guild_in_cache(guild_id).await?;
+
             Ok(f(&guild_cache))
         }
     }

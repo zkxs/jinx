@@ -141,16 +141,11 @@ pub(in crate::bot) async fn init(
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
                     .await?;
                 let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
-                context
-                    .data()
-                    .api_cache
-                    .register_guild_in_cache(guild_id)
-                    .await?;
                 if has_required_scopes {
                     context
                         .data()
                         .api_cache
-                        .refresh_guild_in_cache(guild_id)
+                        .register_guild_in_cache(guild_id)
                         .await?;
                     reply
                 } else {
