@@ -33,7 +33,10 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
 
 /// Generic handler for any requests with non-successful status codes. Not suitable for requests
 /// where some status codes are expected.
-async fn handle_error(endpoint: &'static str, response: Response) -> Result<Response, JinxError> {
+async fn handle_unexpected_status(
+    endpoint: &'static str,
+    response: Response,
+) -> Result<Response, JinxError> {
     if response.status().is_success() {
         Ok(response)
     } else {
@@ -61,7 +64,7 @@ pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
         .send()
         .await?;
     debug!("GET /me took {}ms", start_time.elapsed().as_millis());
-    let response = handle_error("GET /me", response).await?;
+    let response = handle_unexpected_status("GET /me", response).await?;
     let response: AuthUser = response.json().await?;
     Ok(response)
 }
@@ -101,7 +104,7 @@ pub async fn get_license_id(
                 .send()
                 .await?;
             debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            let response = handle_error("GET /licenses", response).await?;
+            let response = handle_unexpected_status("GET /licenses", response).await?;
             let response: dto::LicenseList = response.json().await?;
             if let Some(result) = response.results.first() {
                 Ok(Some(result.id.to_string()))
@@ -166,8 +169,9 @@ pub async fn check_license(
                     Ok(None)
                 } else {
                     Err(JinxError::boxed(format!(
-                        "GET /licenses/<id> returned status code {}",
-                        status_code.as_u16()
+                        "GET /licenses/<id> returned status code {}: {:?}",
+                        status_code.as_u16(),
+                        response
                     )))
                 }
             }
@@ -187,7 +191,7 @@ pub async fn check_license(
                 .send()
                 .await?;
             debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            let response = handle_error("GET /licenses", response).await?;
+            let response = handle_unexpected_status("GET /licenses", response).await?;
             let response: dto::LicenseList = response.json().await?;
             if let Some(result) = response.results.first() {
                 // now look up the license directly by ID
@@ -201,7 +205,7 @@ pub async fn check_license(
                     "GET /licenses/<id> took {}ms",
                     start_time.elapsed().as_millis()
                 );
-                let response = handle_error("GET /licenses/<id>", response).await?;
+                let response = handle_unexpected_status("GET /licenses/<id>", response).await?;
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
                 if inject_product_version_name {
@@ -259,7 +263,7 @@ pub async fn get_license_activations(
         "GET /licenses/<id>/activations took {}ms",
         start_time.elapsed().as_millis()
     );
-    let response = handle_error("GET /licenses/<id>/activations", response).await?;
+    let response = handle_unexpected_status("GET /licenses/<id>/activations", response).await?;
 
     let response: dto::LicenseActivationList = response.json().await?;
     Ok(response.results)
@@ -287,7 +291,7 @@ pub async fn create_license_activation(
         "POST /licenses/<id>/activations took {}ms",
         start_time.elapsed().as_millis()
     );
-    let response = handle_error("POST /licenses/<id>/activations", response).await?;
+    let response = handle_unexpected_status("POST /licenses/<id>/activations", response).await?;
     let response: LicenseActivation = response.json().await?;
     Ok(response.id)
 }
@@ -323,8 +327,9 @@ pub async fn delete_license_activation(
             Ok(false)
         } else {
             Err(JinxError::boxed(format!(
-                "DELETE /licenses/<id>/activations/<id> returned status code {}",
-                status_code.as_u16()
+                "DELETE /licenses/<id>/activations/<id> returned status code {}: {:?}",
+                status_code.as_u16(),
+                response
             )))
         }
     }
@@ -342,7 +347,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
         "GET /products/<id> took {}ms",
         start_time.elapsed().as_millis()
     );
-    let response = handle_error("GET /products/<id>", response).await?;
+    let response = handle_unexpected_status("GET /products/<id>", response).await?;
 
     let response: FullProduct = response.json().await?;
     Ok(response)
@@ -357,7 +362,7 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
         .send()
         .await?;
     debug!("GET /products took {}ms", start_time.elapsed().as_millis());
-    let response = handle_error("GET /products", response).await?;
+    let response = handle_unexpected_status("GET /products", response).await?;
 
     let response: dto::ProductList = response.json().await?;
     Ok(response.into())
