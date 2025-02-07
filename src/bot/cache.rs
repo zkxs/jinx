@@ -143,7 +143,9 @@ impl ApiCache {
                                     .checked_sub(elapsed)
                                     .unwrap_or_default();
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                debug!("low-priority worker sleeping for {}s", remaining.as_secs());
+                                if remaining != Duration::ZERO {
+                                    debug!("new guild {} registered; low-priority worker sleeping for {}s", guild_id, remaining.as_secs());
+                                }
                                 sleep_duration = Some(remaining);
                             }
                         }
@@ -350,7 +352,12 @@ impl ApiCache {
                                     .unwrap_or_default();
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                debug!("low-priority worker sleeping for {}s", remaining.as_secs());
+                                if remaining != Duration::ZERO {
+                                    debug!(
+                                        "low-priority worker caught up; sleeping for {}s",
+                                        remaining.as_secs()
+                                    );
+                                }
                                 sleep_duration = Some(remaining);
                             } else {
                                 // the queue was empty, so we can actually sleep forever (or rather until the rx triggers) as there is no work to do
@@ -412,7 +419,10 @@ impl ApiCache {
             Ok(f(cache_entry.value()))
         } else {
             // vacant entry
-            info!("cache missed! Falling back to direct API request for {}", guild_id.get());
+            info!(
+                "cache missed! Falling back to direct API request for {}",
+                guild_id.get()
+            );
             let api_key = db
                 .get_jinxxy_api_key(guild_id)
                 .await?
