@@ -28,9 +28,4 @@ impl JinxError {
     pub fn boxed<T: Into<String>>(message: T) -> Box<Self> {
         Box::new(Self::new(message))
     }
-
-    /// `message` is a message that is safe to display to a user
-    pub fn fail<T: Into<String>>(message: T) -> Result<(), Self> {
-        Err(Self::new(message))
-    }
 }
