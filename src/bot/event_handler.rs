@@ -151,12 +151,14 @@ async fn event_handler_inner<'a>(
                     new_message.content,
                 );
 
-                let reply_content = "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys. \
-                It does not work from DMs: it needs to be set up in a server.\n\
-                For documentation, see <https://github.com/zkxs/jinx>\n\
-                For support, join https://discord.gg/aKkA6m26f9";
-                if let Err(e) = new_message.reply_ping(context, reply_content).await {
-                    warn!("Unable to reply to DM. Error: {:?}", e);
+                if !new_message.author.bot {
+                    let reply_content = "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys. \
+                    It does not work from DMs: it needs to be set up in a server.\n\
+                    For documentation, see <https://github.com/zkxs/jinx>\n\
+                    For support, join https://discord.gg/aKkA6m26f9";
+                    if let Err(e) = new_message.reply_ping(context, reply_content).await {
+                        warn!("Unable to reply to DM. Error: {:?}", e);
+                    }
                 }
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
                 if let Some(guild_id) = new_message.guild_id {
@@ -179,7 +181,8 @@ async fn event_handler_inner<'a>(
                 }
 
                 // since we got mentioned we might as well do something funny here
-                if data.db.is_user_owner(new_message.author.id.get()).await?
+                if !new_message.author.bot
+                    && data.db.is_user_owner(new_message.author.id.get()).await?
                     && EASTER_EGG_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
                 {
                     // Easter egg: when the owner says something matching a specific regex, try to reply
