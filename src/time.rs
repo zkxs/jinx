@@ -4,19 +4,21 @@
 use std::time::{Duration, SystemTime};
 
 /// This just represents time as unsigned 64-bit ms since unix epoch. Ain't no way I'm importing a whole dang time library for this.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SimpleTime {
     unix_millis: u64,
 }
 
 impl SimpleTime {
+    pub const UNIX_EPOCH: SimpleTime = SimpleTime::from_unix_millis(0);
+
     #[inline(always)]
-    pub fn from_unix_millis(unix_millis: u64) -> Self {
+    pub const fn from_unix_millis(unix_millis: u64) -> Self {
         Self { unix_millis }
     }
 
     #[inline(always)]
-    pub fn as_epoch_millis(&self) -> u64 {
+    pub const fn as_epoch_millis(&self) -> u64 {
         self.unix_millis
     }
 
@@ -28,16 +30,17 @@ impl SimpleTime {
         Self::from_unix_millis(duration_since_epoch.as_millis() as u64) // a very naughty truncating cast. This will break in a few hundred million years. If my feeble human consciousness has been somehow been made immortal feel free to complain to me at that time.
     }
 
-    /// Duration since some earlier time with millisecond precision, or None if result was negative
+    /// Duration since some earlier time with millisecond precision, or zero if result was negative
     #[inline(always)]
-    pub fn duration_since(&self, earlier: Self) -> Option<Duration> {
+    pub fn duration_since(&self, earlier: Self) -> Duration {
         self.unix_millis
             .checked_sub(earlier.unix_millis)
             .map(Duration::from_millis)
+            .unwrap_or_default()
     }
 
-    /// Elapsed time since this SimpleTime and the present system clock time, or None if result was negative.
-    pub fn elapsed(&self) -> Option<Duration> {
+    /// Elapsed time since this SimpleTime and the present system clock time, or zero if result was negative.
+    pub fn elapsed(&self) -> Duration {
         Self::now().duration_since(*self)
     }
 }

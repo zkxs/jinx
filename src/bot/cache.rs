@@ -21,11 +21,12 @@ use crate::http::jinxxy::{
 use crate::time::SimpleTime;
 use dashmap::DashMap;
 use poise::serenity_prelude::GuildId;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio::time::Duration;
+use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
@@ -36,8 +37,10 @@ type MapType = Arc<DashMap<GuildId, GuildCache, ahash::RandomState>>;
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
 /// How long before the low priority worker considers a cache entry expired. Currently 24 hours.
 const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
-/// Time the low priority worker sleeps before doing any more work. Intended as a Jinxxy API rate limit. Currently 4.1 seconds.
-const LOW_PRIORITY_WORKER_SLEEP_TIME: Duration = Duration::from_millis(4_100);
+/// Same as `LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME`, but with a bit of extra time as wiggle room
+/// to try and avoid waking right before an entry expires. I'd rather wake a bit after.
+const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration =
+    Duration::from_secs(SECONDS_PER_DAY + 60);
 
 #[derive(Clone)]
 pub struct ApiCache {
@@ -93,6 +96,7 @@ impl ApiCache {
                         }
                     }
                 }
+                debug!("high-priority cache worker task is shutting down");
             });
         }
 
@@ -101,25 +105,61 @@ impl ApiCache {
             let db = db;
             let map = map.clone();
             tokio::task::spawn(async move {
+                // set of all registered guilds ids
                 let mut guild_set = HashSet::with_hasher(ahash::RandomState::default());
-                let mut queue = VecDeque::new();
+
+                // priority queue of all registered guilds. Returns oldest entry first.
+                let mut queue = BinaryHeap::new();
+
+                // time we wait on a new entry to show up before we run the timeout task, which pops the queue
+                // by default we sleep until we get an event. In some cases we sleep for a certain maximum time.
+                let mut sleep_duration = None;
+
                 'outer: loop {
-                    // the first thing we do when we wake is check for newly registered guilds
-                    match refresh_register_rx.try_recv() {
-                        Ok(guild_id) => {
-                            // new guilds cut in line and go to the front of the queue
+                    let received_event = if let Some(sleep_duration) = sleep_duration {
+                        // do a receive or a timeout, whatever happens firs
+                        timeout(sleep_duration, refresh_register_rx.recv()).await
+                    } else {
+                        // we have no data yet, so there is no reason to have a timeout
+                        Ok(refresh_register_rx.recv().await)
+                    };
+                    match received_event {
+                        Ok(Some(guild_id)) => {
+                            // new guild has appeared; insert it into the queue (as long as it isn't a duplicate)
                             if guild_set.insert(guild_id) {
-                                queue.push_front(guild_id);
+                                queue.push(GuildQueueRef {
+                                    guild_id,
+                                    create_time: SimpleTime::UNIX_EPOCH, // some arbitrarily old placeholder value
+                                });
+
+                                // update the sleep time
+                                let next_queue_entry = queue
+                                    .peek()
+                                    .expect("queue should not be empty immediately after push");
+                                // how much time has elapsed since creation (or 0 if creation is in the future)
+                                let elapsed = next_queue_entry.create_time.elapsed();
+                                // remaining time until the entry hits the expiration time, or 0 if it's already expired
+                                let remaining = LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
+                                    .checked_sub(elapsed)
+                                    .unwrap_or_default();
+                                // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
+                                debug!("low-priority worker sleeping for {}s", remaining.as_secs());
+                                sleep_duration = Some(remaining);
                             }
                         }
-                        Err(TryRecvError::Empty) => {
-                            // the second thing we do is check for unregistered guilds
+                        Ok(None) => {
+                            // channel is broken, so stop this task
+                            break 'outer;
+                        }
+                        Err(_elapsed) => {
+                            // ok, we got a timeout.
+                            // first, handle deregistration in an inner loop
                             'inner: loop {
                                 match refresh_unregister_rx.try_recv() {
                                     Ok(guild_id) => {
                                         if guild_set.remove(&guild_id) {
-                                            queue.retain(|queue_guild_id| {
-                                                *queue_guild_id != guild_id
+                                            queue.retain(|queue_entry| {
+                                                queue_entry.guild_id != guild_id
                                             });
                                         }
                                     }
@@ -134,138 +174,195 @@ impl ApiCache {
                                 }
                             }
                             // end of inner loop
-                            // all of the event processing is now done
-                            // process a single guild
+                            // the event processing is now done, so process a single guild
 
-                            // find the first guild that needs a refresh
-                            if let Some((index, guild_id, try_db_load)) =
-                                queue.iter().enumerate().find_map(|(index, guild_id)| {
-                                    // we're looking for an entry that is expired OR vacant
-                                    match map.get(guild_id) {
-                                        Some(entry) => {
-                                            if entry.is_expired_low_priority() {
+                            let mut now = SimpleTime::UNIX_EPOCH; // initialize it to some arbitrary default: we set it later.
+                            let mut work_remaining = true;
+                            while work_remaining {
+                                // find the first guild that needs a refresh. This is a simple queue pop.
+                                if let Some(mut queue_entry) = queue.pop() {
+                                    // grab the current time: we'll need it a couple of times and I want it to keep the same reading
+                                    now = SimpleTime::now();
+
+                                    // figure out what state this entry is in
+                                    let (load, try_db_load) = match map.get(&queue_entry.guild_id) {
+                                        Some(cache_entry) => {
+                                            if cache_entry.is_expired_low_priority(now) {
                                                 // entry exists and was expired
                                                 // no need to do a DB load because we obviously already have data in memory
-                                                Some((index, guild_id, false))
+                                                (true, false)
                                             } else {
                                                 // entry exists and was not expired
-                                                None
+                                                // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
+                                                (false, false)
                                             }
                                         }
                                         None => {
                                             // entry did NOT exist in memory, so it's worth trying a db load
-                                            Some((index, guild_id, true))
+                                            (true, true)
                                         }
-                                    }
-                                })
-                            {
-                                let guild_id = *guild_id;
-                                // refresh that guild
-                                let guild_ok = match db.get_jinxxy_api_key(guild_id).await {
-                                    Ok(api_key) => {
-                                        match api_key {
-                                            Some(api_key) => {
-                                                debug!(
-                                                    "starting low priority refresh of cache for {}",
-                                                    guild_id.get()
-                                                );
+                                    };
 
-                                                let guild_cache = if try_db_load {
-                                                    // try a DB load instead of an API load
-                                                    let db_result =
-                                                        GuildCache::from_db(&db, guild_id).await;
-                                                    match db_result {
-                                                        Ok(Some(guild_cache)) => {
-                                                            // DB read worked: just return it
-                                                            if guild_cache.is_expired_low_priority()
-                                                            {
-                                                                debug!("DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.", guild_id.get());
-                                                            }
-                                                            Ok(guild_cache)
-                                                        }
-                                                        Ok(None) => {
-                                                            // DB had no data
-                                                            debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", guild_id.get());
-                                                            GuildCache::from_jinxxy_api(
-                                                                &db, &api_key, guild_id,
+                                    let guild_valid = if load {
+                                        // refresh that guild
+                                        match db.get_jinxxy_api_key(queue_entry.guild_id).await {
+                                            Ok(api_key) => {
+                                                match api_key {
+                                                    Some(api_key) => {
+                                                        debug!(
+                                                        "starting low priority refresh of cache for {}",
+                                                        queue_entry.guild_id.get()
+                                                    );
+
+                                                        let guild_cache = if try_db_load {
+                                                            // try a DB load instead of an API load
+                                                            let db_result = GuildCache::from_db(
+                                                                &db,
+                                                                queue_entry.guild_id,
                                                             )
-                                                            .await
-                                                        }
-                                                        Err(e) => {
-                                                            // uh this is probably bad because DB read shouldn't fail
-                                                            // fall back to an API load anyways
-                                                            error!("DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}", guild_id.get(), e);
-                                                            GuildCache::from_jinxxy_api(
-                                                                &db, &api_key, guild_id,
-                                                            )
-                                                            .await
-                                                        }
-                                                    }
-                                                } else {
-                                                    GuildCache::from_jinxxy_api(
-                                                        &db, &api_key, guild_id,
-                                                    )
-                                                    .await
-                                                };
-
-                                                match guild_cache {
-                                                    Ok(guild_cache) => {
-                                                        map.insert(guild_id, guild_cache);
-                                                        true
-                                                    }
-                                                    Err(e) => {
-                                                        warn!("Error initializing API cache during low-priority refresh for {}: {:?}", guild_id.get(), e);
-
-                                                        match jinxxy::get_own_user(&api_key).await {
-                                                            Ok(auth_user) => {
-                                                                // we were able to do an API request with this key...
-                                                                // okay must have been a weird fluke, we'll leave this guild registered
-                                                                if !auth_user.has_required_scopes()
-                                                                {
-                                                                    warn!("Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.", guild_id.get());
+                                                            .await;
+                                                            match db_result {
+                                                                Ok(Some(cache_entry)) => {
+                                                                    // DB read worked: just return it
+                                                                    if cache_entry
+                                                                        .is_expired_low_priority(
+                                                                            now,
+                                                                        )
+                                                                    {
+                                                                        debug!("DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.", queue_entry.guild_id.get());
+                                                                    }
+                                                                    Ok(cache_entry)
                                                                 }
+                                                                Ok(None) => {
+                                                                    // DB had no data
+                                                                    debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", queue_entry.guild_id.get());
+                                                                    GuildCache::from_jinxxy_api(
+                                                                        &db,
+                                                                        &api_key,
+                                                                        queue_entry.guild_id,
+                                                                    )
+                                                                    .await
+                                                                }
+                                                                Err(e) => {
+                                                                    // uh this is probably bad because DB read shouldn't fail
+                                                                    // fall back to an API load anyways
+                                                                    error!("DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}", queue_entry.guild_id.get(), e);
+                                                                    GuildCache::from_jinxxy_api(
+                                                                        &db,
+                                                                        &api_key,
+                                                                        queue_entry.guild_id,
+                                                                    )
+                                                                    .await
+                                                                }
+                                                            }
+                                                        } else {
+                                                            GuildCache::from_jinxxy_api(
+                                                                &db,
+                                                                &api_key,
+                                                                queue_entry.guild_id,
+                                                            )
+                                                            .await
+                                                        };
+
+                                                        match guild_cache {
+                                                            Ok(cache_entry) => {
+                                                                // we got a new cache entry from either db or jinxxy!
+
+                                                                // update our queue entry so it's corrected before we re-insert it into the queue
+                                                                queue_entry.create_time =
+                                                                    cache_entry.create_time;
+
+                                                                // actually update the dang cache!
+                                                                map.insert(
+                                                                    queue_entry.guild_id,
+                                                                    cache_entry,
+                                                                );
                                                                 true
                                                             }
                                                             Err(e) => {
-                                                                info!("error checking /me for guild {}, will unregister now: {:?}", guild_id.get(), e);
-                                                                false
+                                                                warn!("Error initializing API cache during low-priority refresh for {}: {:?}", queue_entry.guild_id.get(), e);
+
+                                                                match jinxxy::get_own_user(&api_key)
+                                                                    .await
+                                                                {
+                                                                    Ok(auth_user) => {
+                                                                        // we were able to do an API request with this key...
+                                                                        // okay must have been a weird fluke, we'll leave this guild registered
+                                                                        if !auth_user
+                                                                            .has_required_scopes()
+                                                                        {
+                                                                            warn!("Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.", queue_entry.guild_id.get());
+                                                                        }
+                                                                        true
+                                                                    }
+                                                                    Err(e) => {
+                                                                        info!("error checking /me for guild {}, will unregister now: {:?}", queue_entry.guild_id.get(), e);
+                                                                        false
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
+                                                    None => {
+                                                        info!("low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.", queue_entry.guild_id.get());
+                                                        false
+                                                    }
                                                 }
                                             }
-                                            None => {
-                                                info!("low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.", guild_id.get());
+                                            Err(e) => {
+                                                warn!("Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}", queue_entry.guild_id.get(), e);
                                                 false
                                             }
                                         }
-                                    }
-                                    Err(e) => {
-                                        warn!("Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}", guild_id.get(), e);
-                                        false
-                                    }
-                                };
+                                    } else {
+                                        // if we didn't need to load the guild, then treat it as still valid
+                                        true
+                                    };
 
-                                // pop all the guilds we just passed over and push them to the end
-                                // if the 0th item was process we need to rotate 1 time, hence the `index + 1` expression
-                                queue.rotate_left(index + 1);
-                                if !guild_ok {
-                                    guild_set.remove(&guild_id);
-                                    queue.pop_back();
+                                    if guild_valid {
+                                        // done loading the guild; time to put it back in the queue
+                                        let previous_guild_id = queue_entry.guild_id;
+                                        queue.push(queue_entry);
+                                        let next_guild_id = queue
+                                            .peek()
+                                            .expect(
+                                                "queue should not be empty immediately after push",
+                                            )
+                                            .guild_id;
+
+                                        // if the new head of the queue is different, then go again
+                                        work_remaining = previous_guild_id != next_guild_id;
+                                    } else {
+                                        // something about the guild was screwed up so we're just going to unregister it
+                                        guild_set.remove(&queue_entry.guild_id);
+                                    }
                                 }
                             }
 
-                            // wait a few seconds before doing another low-priority event
-                            tokio::time::sleep(LOW_PRIORITY_WORKER_SLEEP_TIME).await;
-                        }
-                        Err(TryRecvError::Disconnected) => {
-                            // channel is broken, so stop this task
-                            break 'outer;
+                            // update the sleep time
+                            if let Some(next_queue_entry) = queue.peek() {
+                                // how much time has elapsed since creation (or 0 if creation is in the future)
+                                let elapsed = now.duration_since(next_queue_entry.create_time);
+
+                                // remaining time until the entry hits the expiration time, or 0 if it's already expired
+                                let remaining = LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
+                                    .checked_sub(elapsed)
+                                    .unwrap_or_default();
+
+                                // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
+                                debug!("low-priority worker sleeping for {}s", remaining.as_secs());
+                                sleep_duration = Some(remaining);
+                            } else {
+                                // the queue was empty, so we can actually sleep forever (or rather until the rx triggers) as there is no work to do
+                                debug!("low-priority worker has ran out of work!");
+                                sleep_duration = None;
+                            }
                         }
                     }
                 }
                 // end of outer loop
                 // channel is broken, so we're stopping the task
+                debug!("low-priority cache worker task is shutting down");
             });
         }
 
@@ -409,6 +506,37 @@ impl ApiCache {
         .await
     }
 }
+
+/// A reference to a guild cache entry to be kept in a max-heap
+struct GuildQueueRef {
+    guild_id: GuildId,
+    create_time: SimpleTime,
+}
+
+/// We want lower create_time to have higher priority, so we reverse the ord.
+/// This will cause BinaryHeap to yield the smallest create_time, aka the earliest create_time
+impl Ord for GuildQueueRef {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .create_time
+            .cmp(&self.create_time)
+            .then(other.guild_id.cmp(&self.guild_id))
+    }
+}
+
+impl PartialOrd<Self> for GuildQueueRef {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq<Self> for GuildQueueRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.create_time == other.create_time && self.guild_id == other.guild_id
+    }
+}
+
+impl Eq for GuildQueueRef {}
 
 pub struct GuildCache {
     /// id to name
@@ -665,12 +793,12 @@ impl GuildCache {
 
     /// check if the entry is a wee bit expired
     fn is_expired_high_priority(&self) -> bool {
-        self.create_time.elapsed().unwrap_or_default() > HIGH_PRIORITY_CACHE_EXPIRY_TIME
+        self.create_time.elapsed() > HIGH_PRIORITY_CACHE_EXPIRY_TIME
     }
 
     /// check if the entry is _very_ expired
-    fn is_expired_low_priority(&self) -> bool {
-        self.create_time.elapsed().unwrap_or_default() > LOW_PRIORITY_CACHE_EXPIRY_TIME
+    fn is_expired_low_priority(&self, now: SimpleTime) -> bool {
+        now.duration_since(self.create_time) > LOW_PRIORITY_CACHE_EXPIRY_TIME
     }
 }
 
