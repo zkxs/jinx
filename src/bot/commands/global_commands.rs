@@ -149,6 +149,7 @@ pub(in crate::bot) async fn init(
                         .await?;
                     reply
                 } else {
+                    debug!("nagged about API key scopes in {}", guild_id.get());
                     let embed = CreateEmbed::default()
                             .title("Permission Warning")
                             .color(Colour::ORANGE)
@@ -163,7 +164,11 @@ pub(in crate::bot) async fn init(
         }
     } else {
         // user has given us some mystery garbage value for their API key
-        debug!("invalid API key provided: \"{}\"", api_key); // log it to try and diagnose why people have trouble with the initial setup
+        debug!(
+            "invalid API key provided in {}: \"{}\"",
+            guild_id.get(),
+            api_key
+        ); // log it to try and diagnose why people have trouble with the initial setup
         error_reply("Error Initializing Jinx","Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
     };
 
