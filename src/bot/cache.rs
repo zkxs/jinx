@@ -77,7 +77,10 @@ impl ApiCache {
                             Ok(api_key) => match api_key {
                                 Some(api_key) => {
                                     // the high-priority API hit
-                                    match GuildCache::from_jinxxy_api(&db, &api_key, guild_id).await
+                                    match GuildCache::from_jinxxy_api::<true>(
+                                        &db, &api_key, guild_id,
+                                    )
+                                    .await
                                     {
                                         Ok(guild_cache) => {
                                             map.insert(guild_id, guild_cache);
@@ -239,7 +242,9 @@ impl ApiCache {
                                                                 Ok(None) => {
                                                                     // DB had no data
                                                                     debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", queue_entry.guild_id.get());
-                                                                    GuildCache::from_jinxxy_api(
+                                                                    GuildCache::from_jinxxy_api::<
+                                                                        false,
+                                                                    >(
                                                                         &db,
                                                                         &api_key,
                                                                         queue_entry.guild_id,
@@ -250,7 +255,9 @@ impl ApiCache {
                                                                     // uh this is probably bad because DB read shouldn't fail
                                                                     // fall back to an API load anyways
                                                                     error!("DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}", queue_entry.guild_id.get(), e);
-                                                                    GuildCache::from_jinxxy_api(
+                                                                    GuildCache::from_jinxxy_api::<
+                                                                        false,
+                                                                    >(
                                                                         &db,
                                                                         &api_key,
                                                                         queue_entry.guild_id,
@@ -259,7 +266,7 @@ impl ApiCache {
                                                                 }
                                                             }
                                                         } else {
-                                                            GuildCache::from_jinxxy_api(
+                                                            GuildCache::from_jinxxy_api::<false>(
                                                                 &db,
                                                                 &api_key,
                                                                 queue_entry.guild_id,
@@ -432,7 +439,8 @@ impl ApiCache {
                 .await?
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
             // we had a cache miss, implying that there's no reason to load from db
-            let guild_cache = GuildCache::from_jinxxy_api(db, api_key.as_str(), guild_id).await?;
+            let guild_cache =
+                GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
 
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
@@ -580,17 +588,18 @@ pub struct GuildCache {
 impl GuildCache {
     /// Create a cache entry by hitting the Jinxxy API. This is very costly and involves a lot of API hits.
     /// Upon success, it will automatically persist the retrieved data to the DB.
-    async fn from_jinxxy_api(
+    async fn from_jinxxy_api<const PARALLEL: bool>(
         db: &JinxDb,
         api_key: &str,
         guild_id: GuildId,
     ) -> Result<GuildCache, Error> {
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
-        let products: Vec<FullProduct> = jinxxy::get_full_products(api_key, partial_products)
-            .await?
-            .into_iter()
-            .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
-            .collect();
+        let products: Vec<FullProduct> =
+            jinxxy::get_full_products::<PARALLEL>(api_key, partial_products)
+                .await?
+                .into_iter()
+                .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
+                .collect();
 
         // convert into map tuples for products without versions
         let product_name_info: Vec<ProductNameInfo> = products

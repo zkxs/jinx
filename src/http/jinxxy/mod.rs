@@ -371,19 +371,26 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
 /// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.
 /// This is done concurrently which speeds things up slightly, but it is still very costly.
 /// Resulting vec is not guaranteed to be in the same order as the input vec.
-pub async fn get_full_products(
+pub async fn get_full_products<const PARALLEL: bool>(
     api_key: &str,
     partial_products: Vec<PartialProduct>,
 ) -> Result<Vec<FullProduct>, Error> {
     let mut products = Vec::with_capacity(partial_products.len());
-    let mut join_set = JoinSet::new();
-    for partial_product in partial_products {
-        let api_key = api_key.to_string();
-        let product_id = partial_product.id;
-        join_set.spawn(async move { get_product(&api_key, &product_id).await });
-    }
-    while let Some(full_product) = join_set.join_next().await {
-        products.push(full_product??);
+    if PARALLEL {
+        let mut join_set = JoinSet::new();
+        for partial_product in partial_products {
+            let api_key = api_key.to_string();
+            let product_id = partial_product.id;
+            join_set.spawn(async move { get_product(&api_key, &product_id).await });
+        }
+        while let Some(full_product) = join_set.join_next().await {
+            products.push(full_product??);
+        }
+    } else {
+        for partial_product in partial_products {
+            let full_product = get_product(api_key, &partial_product.id).await?;
+            products.push(full_product);
+        }
     }
     Ok(products)
 }
