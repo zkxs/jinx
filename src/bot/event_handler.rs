@@ -144,23 +144,37 @@ async fn event_handler_inner<'a>(
 
             if new_message.fixed_is_private(context).await {
                 debug!(
-                    "Received DM {}: {}",
+                    "Received DM id={}; channel={}; author={}: {}",
                     new_message.id.get(),
-                    new_message.content
+                    new_message.channel_id.get(),
+                    new_message.author.id.get(),
+                    new_message.content,
                 );
+
+                let reply_content = "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys. \
+                It does not work from DMs: it needs to be set up in a server.\n\
+                For documentation, see <https://github.com/zkxs/jinx>\n\
+                For support, join https://discord.gg/aKkA6m26f9";
+                if let Err(e) = new_message.reply_ping(context, reply_content).await {
+                    warn!("Unable to reply to DM. Error: {:?}", e);
+                }
             } else if new_message.mentions_me(context).await.unwrap_or(false) {
                 if let Some(guild_id) = new_message.guild_id {
                     debug!(
-                        "Mentioned in guild {} in message {}: {}",
+                        "Mentioned! guild={}; id={}; channel={}; author={}: {}",
                         guild_id.get(),
                         new_message.id.get(),
+                        new_message.channel_id.get(),
+                        new_message.author.id.get(),
                         new_message.content
                     );
                 } else {
                     debug!(
-                        "Mentioned in non-guild-context in message {}: {}",
+                        "Mentioned in non-guild-context id={}; channel={}; author={}: {}",
                         new_message.id.get(),
-                        new_message.content
+                        new_message.channel_id.get(),
+                        new_message.author.id.get(),
+                        new_message.content,
                     );
                 }
 
