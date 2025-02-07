@@ -9,7 +9,7 @@ use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use reqwest::header;
+use reqwest::{header, Response};
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
@@ -31,6 +31,27 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
     header_map
 }
 
+/// Generic handler for any requests with non-successful status codes. Not suitable for requests
+/// where some status codes are expected.
+async fn handle_error(endpoint: &'static str, response: Response) -> Result<Response, JinxError> {
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        let status_code = response.status().as_u16();
+        let headers = format!("{:?}", response.headers());
+        let bytes_result = response.bytes().await;
+        let body: String = bytes_result
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_default();
+
+        let message = format!(
+            "{} returned status code {}. Headers={}; Body={}",
+            endpoint, status_code, headers, body,
+        );
+        Err(JinxError::new(message))
+    }
+}
+
 /// Get the user the API key belongs to
 pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
     let start_time = Instant::now();
@@ -40,13 +61,7 @@ pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
         .send()
         .await?;
     debug!("GET /me took {}ms", start_time.elapsed().as_millis());
-    if !response.status().is_success() {
-        JinxError::fail(format!(
-            "/me returned status code {}",
-            response.status().as_u16()
-        ))?;
-        unreachable!()
-    }
+    let response = handle_error("GET /me", response).await?;
     let response: AuthUser = response.json().await?;
     Ok(response)
 }
@@ -86,13 +101,7 @@ pub async fn get_license_id(
                 .send()
                 .await?;
             debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            if !response.status().is_success() {
-                JinxError::fail(format!(
-                    "/licenses returned status code {}",
-                    response.status().as_u16()
-                ))?;
-                unreachable!()
-            }
+            let response = handle_error("GET /licenses", response).await?;
             let response: dto::LicenseList = response.json().await?;
             if let Some(result) = response.results.first() {
                 Ok(Some(result.id.to_string()))
@@ -157,7 +166,7 @@ pub async fn check_license(
                     Ok(None)
                 } else {
                     Err(JinxError::boxed(format!(
-                        "/licenses/<id> returned status code {}",
+                        "GET /licenses/<id> returned status code {}",
                         status_code.as_u16()
                     )))
                 }
@@ -178,13 +187,7 @@ pub async fn check_license(
                 .send()
                 .await?;
             debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            if !response.status().is_success() {
-                JinxError::fail(format!(
-                    "/licenses returned status code {}",
-                    response.status().as_u16()
-                ))?;
-                unreachable!()
-            }
+            let response = handle_error("GET /licenses", response).await?;
             let response: dto::LicenseList = response.json().await?;
             if let Some(result) = response.results.first() {
                 // now look up the license directly by ID
@@ -198,13 +201,7 @@ pub async fn check_license(
                     "GET /licenses/<id> took {}ms",
                     start_time.elapsed().as_millis()
                 );
-                if !response.status().is_success() {
-                    JinxError::fail(format!(
-                        "/licenses/<id> returned status code {}",
-                        response.status().as_u16()
-                    ))?;
-                    unreachable!()
-                }
+                let response = handle_error("GET /licenses/<id>", response).await?;
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
                 if inject_product_version_name {
@@ -262,13 +259,7 @@ pub async fn get_license_activations(
         "GET /licenses/<id>/activations took {}ms",
         start_time.elapsed().as_millis()
     );
-    if !response.status().is_success() {
-        JinxError::fail(format!(
-            "/licenses/<id>/activations returned status code {}",
-            response.status().as_u16()
-        ))?;
-        unreachable!()
-    }
+    let response = handle_error("GET /licenses/<id>/activations", response).await?;
 
     let response: dto::LicenseActivationList = response.json().await?;
     Ok(response.results)
@@ -296,13 +287,7 @@ pub async fn create_license_activation(
         "POST /licenses/<id>/activations took {}ms",
         start_time.elapsed().as_millis()
     );
-    if !response.status().is_success() {
-        JinxError::fail(format!(
-            "POST /licenses/<id>/activations returned status code {}",
-            response.status().as_u16()
-        ))?;
-        unreachable!()
-    }
+    let response = handle_error("POST /licenses/<id>/activations", response).await?;
     let response: LicenseActivation = response.json().await?;
     Ok(response.id)
 }
@@ -357,13 +342,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
         "GET /products/<id> took {}ms",
         start_time.elapsed().as_millis()
     );
-    if !response.status().is_success() {
-        JinxError::fail(format!(
-            "/products/<id> returned status code {}",
-            response.status().as_u16()
-        ))?;
-        unreachable!()
-    }
+    let response = handle_error("GET /products/<id>", response).await?;
 
     let response: FullProduct = response.json().await?;
     Ok(response)
@@ -378,13 +357,7 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
         .send()
         .await?;
     debug!("GET /products took {}ms", start_time.elapsed().as_millis());
-    if !response.status().is_success() {
-        JinxError::fail(format!(
-            "/products returned status code {}",
-            response.status().as_u16()
-        ))?;
-        unreachable!()
-    }
+    let response = handle_error("GET /products", response).await?;
 
     let response: dto::ProductList = response.json().await?;
     Ok(response.into())
