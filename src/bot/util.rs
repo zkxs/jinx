@@ -96,9 +96,9 @@ pub(super) async fn assignable_roles(
     let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
         // Despite the above deprecation text I pass a channel in regardless, here.
         // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
-        let guild = context
-            .guild()
-            .ok_or(JinxError::new("expected to be in a guild"))?;
+        let guild = guild_id.to_guild_cached(context).ok_or(JinxError::new(
+            "expected guild to be in the Discord client cache",
+        ))?;
         let highest_role = guild.member_highest_role(&bot_member);
         if let Some(highest_role) = highest_role {
             let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
