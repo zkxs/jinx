@@ -18,6 +18,8 @@ use serenity::{
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::future::Future;
+use std::time::Duration;
 use tracing::{debug, error, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -411,6 +413,70 @@ where
     StandardUniform: Distribution<T>,
 {
     RNG.with_borrow_mut(|rng| rng.random())
+}
+
+/// Result of a retry check
+pub enum RetryCheck {
+    /// Do not retry, and immediately return the latest result
+    DoNotRetry,
+    /// Retry after the specified duration
+    RetryAfter(Duration),
+}
+
+/// calls `provider` until one of its results returns `false` from `should_retry`
+pub async fn retry<Provider, RetryChecker, Result, ResultFuture>(
+    mut provider: Provider,
+    mut should_retry: RetryChecker,
+) -> Result
+where
+    Provider: FnMut() -> ResultFuture,
+    RetryChecker: FnMut(&Result) -> RetryCheck,
+    ResultFuture: Future<Output = Result> + Sized,
+{
+    loop {
+        let result = provider().await;
+        match should_retry(&result) {
+            RetryCheck::DoNotRetry => {
+                return result;
+            }
+            RetryCheck::RetryAfter(duration) => {
+                if !duration.is_zero() {
+                    tokio::time::sleep(duration).await;
+                }
+            }
+        }
+    }
+}
+
+/// Calls `provider` up to four times (three retry attempts maximum) until an `Ok` is returned.
+/// Each retry attempt has a gradually increasing delay (0.3s, 3.0s, 10.0s).
+pub async fn retry_thrice<Provider, T, ResultFuture>(provider: Provider) -> Result<T, Error>
+where
+    Provider: FnMut() -> ResultFuture,
+    ResultFuture: Future<Output = Result<T, Error>> + Sized,
+{
+    let mut retry_count: u8 = 0;
+    retry(provider, move |result| match result {
+        Ok(_) => RetryCheck::DoNotRetry,
+        Err(e) => {
+            let retry_check = match retry_count {
+                0 => RetryCheck::RetryAfter(Duration::from_millis(300)),
+                1 => RetryCheck::RetryAfter(Duration::from_secs(3)),
+                2 => RetryCheck::RetryAfter(Duration::from_secs(10)),
+                _ => RetryCheck::DoNotRetry,
+            };
+            if !matches!(retry_check, RetryCheck::DoNotRetry) {
+                // set up for the retry we are about to perform
+                retry_count += 1;
+                warn!(
+                    "retry attempt {} on something because: {:?}",
+                    retry_count, e
+                );
+            } // else, we're not retrying so there's no reason to do set-up
+            retry_check
+        }
+    })
+    .await
 }
 
 #[cfg(test)]

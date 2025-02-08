@@ -6,6 +6,7 @@
 mod dto;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
+use crate::bot::util;
 use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -381,7 +382,9 @@ pub async fn get_full_products<const PARALLEL: bool>(
         for partial_product in partial_products {
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
-            join_set.spawn(async move { get_product(&api_key, &product_id).await });
+            join_set.spawn(async move {
+                util::retry_thrice(|| get_product(&api_key, &product_id)).await
+            });
         }
         while let Some(full_product) = join_set.join_next().await {
             products.push(full_product??);
