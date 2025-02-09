@@ -25,7 +25,12 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Error> {
+pub(in crate::bot) async fn owner_stats(
+    context: Context<'_>,
+    #[description = "if \"False\", response will be public. Defaults to True."] ephemeral: Option<
+        bool,
+    >,
+) -> Result<(), Error> {
     let start = Instant::now();
     let db_size = context.data().db.size().await?.div_ceil(1024);
     let configured_guild_count = context.data().db.guild_count().await?;
@@ -82,7 +87,11 @@ pub(in crate::bot) async fn owner_stats(context: Context<'_>) -> Result<(), Erro
         .title("Jinx Owner Stats")
         .description(message);
     context
-        .send(CreateReply::default().embed(embed).ephemeral(true))
+        .send(
+            CreateReply::default()
+                .embed(embed)
+                .ephemeral(ephemeral.unwrap_or(true)),
+        )
         .await?;
     Ok(())
 }
