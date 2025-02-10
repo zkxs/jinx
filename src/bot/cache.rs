@@ -117,12 +117,19 @@ impl ApiCache {
 
                 // time we wait on a new entry to show up before we run the timeout task, which pops the queue
                 // by default we sleep until we get an event. In some cases we sleep for a certain maximum time.
-                let mut sleep_duration = None;
+                let mut sleep_duration: Option<Duration> = None;
 
                 'outer: loop {
                     let received_event = if let Some(sleep_duration) = sleep_duration {
-                        // do a receive or a timeout, whatever happens firs
-                        timeout(sleep_duration, refresh_register_rx.recv()).await
+                        if sleep_duration.is_zero() {
+                            // handle an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
+                            Err(())
+                        } else {
+                            // do a receive or a timeout, whatever happens firs
+                            timeout(sleep_duration, refresh_register_rx.recv())
+                                .await
+                                .map_err(|_| ())
+                        }
                     } else {
                         // we have no data yet, so there is no reason to have a timeout
                         Ok(refresh_register_rx.recv().await)
@@ -157,7 +164,7 @@ impl ApiCache {
                             // channel is broken, so stop this task
                             break 'outer;
                         }
-                        Err(_elapsed) => {
+                        Err(()) => {
                             // ok, we got a timeout.
                             // first, handle deregistration in an inner loop
                             'inner: loop {
