@@ -64,7 +64,7 @@ pub(in crate::bot) async fn owner_stats(
 
     let message = format!(
         "db_size={db_size} KiB\n\
-        ceched users={user_count}\n\
+        cached users={user_count}\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
         log channels={log_channel_count}\n\
