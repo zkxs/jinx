@@ -834,6 +834,10 @@ impl GuildCache {
     fn is_expired_low_priority(&self, now: SimpleTime) -> bool {
         now.duration_since(self.create_time) > LOW_PRIORITY_CACHE_EXPIRY_TIME
     }
+
+    pub fn product_name_iter(&self) -> impl Iterator<Item = &str> {
+        self.product_name_to_id_map.keys().map(|str| str.as_str())
+    }
 }
 
 #[cfg(test)]

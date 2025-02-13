@@ -597,3 +597,63 @@ pub(in crate::bot) async fn sudo_list_links(
 
     Ok(())
 }
+
+/// List product names cached for a target guild.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn debug_product_cache(
+    context: Context<'_>,
+    #[description = "ID of guild"] guild_id: String,
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    match guild_id.parse::<u64>() {
+        Ok(guild_id) => {
+            if guild_id == 0 {
+                // guild was invalid (0)
+                let embed = CreateEmbed::default()
+                    .title("debug_product_cache Error")
+                    .color(Colour::RED)
+                    .description("Guild was invalid (id of 0)");
+                let reply = CreateReply::default().embed(embed);
+                context.send(reply.ephemeral(true)).await?;
+            } else {
+                let guild_id = GuildId::new(guild_id);
+
+                let mut message = String::new();
+                context
+                    .data()
+                    .api_cache
+                    .get(&context.data().db, guild_id, |cache| {
+                        for (index, product_name) in cache.product_name_iter().enumerate() {
+                            if index != 0 {
+                                message.push('\n');
+                            }
+                            message.push_str("- ");
+                            message.push_str(product_name);
+                        }
+                    })
+                    .await?;
+                let embed = CreateEmbed::default().title("").description(message);
+                let reply = CreateReply::default().embed(embed);
+                context.send(reply.ephemeral(true)).await?;
+            }
+        }
+        Err(e) => {
+            // guild was invalid (not a number)
+            let embed = CreateEmbed::default()
+                .title("debug_product_cache Error")
+                .color(Colour::RED)
+                .description(format!("Guild was invalid (parse error: {})", e));
+            let reply = CreateReply::default().embed(embed);
+            context.send(reply.ephemeral(true)).await?;
+        }
+    }
+
+    Ok(())
+}
