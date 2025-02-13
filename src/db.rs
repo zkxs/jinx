@@ -1033,6 +1033,7 @@ impl JinxDb {
             .call(move |connection| {
                 connection.execute("DELETE FROM product", ())?;
                 connection.execute("DELETE FROM product_version", ())?;
+                connection.execute("UPDATE guild SET cache_time_unix_ms = 0", ())?;
                 Ok(())
             })
             .await
