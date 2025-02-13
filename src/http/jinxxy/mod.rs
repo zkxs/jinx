@@ -99,7 +99,7 @@ pub async fn get_license_id(
             };
             let start_time = Instant::now();
             let response = HTTP_CLIENT
-                .get(format!("{}licenses", JINXXY_BASE_URL))
+                .get(format!("{}licenses?limit=2147483647", JINXXY_BASE_URL))
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
@@ -254,7 +254,7 @@ pub async fn get_license_activations(
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!(
-            "{}licenses/{}/activations",
+            "{}licenses/{}/activations?limit=2147483647",
             JINXXY_BASE_URL, license_id
         ))
         .headers(get_headers(api_key))
@@ -358,7 +358,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{}products", JINXXY_BASE_URL))
+        .get(format!("{}products?limit=2147483647", JINXXY_BASE_URL))
         .headers(get_headers(api_key))
         .send()
         .await?;
