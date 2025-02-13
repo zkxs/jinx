@@ -99,7 +99,7 @@ pub async fn get_license_id(
             };
             let start_time = Instant::now();
             let response = HTTP_CLIENT
-                .get(format!("{}licenses?limit=2147483647", JINXXY_BASE_URL))
+                .get(format!("{}licenses", JINXXY_BASE_URL)) // this does NOT work with `limit` set.
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
