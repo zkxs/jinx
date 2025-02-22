@@ -187,13 +187,21 @@ impl ApiCache {
                                 }
                             }
                             // end of inner loop
-                            // the event processing is now done, so process a single guild
+                            // the event processing is now done, so process guilds until none are expired in a "work loop"
 
                             let mut now = SimpleTime::UNIX_EPOCH; // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
+                            let mut touched_guild_set =
+                                HashSet::with_hasher(ahash::RandomState::default());
                             while work_remaining {
                                 // find the first guild that needs a refresh. This is a simple queue pop.
                                 if let Some(mut queue_entry) = queue.pop() {
+                                    // if the queue is now empty no reason to go again
+                                    work_remaining &= !queue.is_empty();
+
+                                    // record that we've touched this guild ID in the work loop
+                                    touched_guild_set.insert(queue_entry.guild_id);
+
                                     // grab the current time: we'll need it a couple of times and I want it to keep the same reading
                                     now = SimpleTime::now();
 
@@ -338,23 +346,27 @@ impl ApiCache {
 
                                     if guild_valid {
                                         // done loading the guild; time to put it back in the queue
-                                        let previous_guild_id = queue_entry.guild_id;
                                         queue.push(queue_entry);
-                                        let next_guild_id = queue
-                                            .peek()
-                                            .expect(
-                                                "queue should not be empty immediately after push",
-                                            )
-                                            .guild_id;
 
-                                        // if the new head of the queue is different, then go again
-                                        work_remaining = previous_guild_id != next_guild_id;
+                                        // check if we want to enter the work loop again
+                                        if work_remaining {
+                                            let next_guild_id = queue
+                                                .peek()
+                                                .expect(
+                                                    "queue should not be empty immediately after push",
+                                                )
+                                                .guild_id;
+
+                                            // if we haven't touched the next guild ID yet, then go again
+                                            work_remaining &=
+                                                !touched_guild_set.contains(&next_guild_id);
+                                        }
                                     } else {
                                         // something about the guild was screwed up so we're just going to unregister it
                                         guild_set.remove(&queue_entry.guild_id);
                                     }
                                 }
-                            }
+                            } // end work loop
 
                             // update the sleep time
                             if let Some(next_queue_entry) = queue.peek() {
