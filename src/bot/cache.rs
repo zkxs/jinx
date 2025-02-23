@@ -439,7 +439,11 @@ impl ApiCache {
         F: FnOnce(&GuildCache) -> T,
     {
         if let Some(cache_entry) = self.map.get(&guild_id) {
-            if cache_entry.is_expired_high_priority() {
+            let (result, is_expired) = {
+                let cache_entry = cache_entry;
+                (f(cache_entry.value()), cache_entry.is_expired_high_priority())
+            };
+            if is_expired {
                 debug!(
                     "queuing priority product cache refresh for {} due to expiry",
                     guild_id.get()
@@ -451,7 +455,7 @@ impl ApiCache {
             self.register_guild_in_cache(guild_id).await?;
 
             // got an entry; return it immediately, even if it's expired
-            Ok(f(cache_entry.value()))
+            Ok(result)
         } else {
             // vacant entry
             info!(
@@ -468,12 +472,15 @@ impl ApiCache {
 
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
-            let guild_cache = self.map.entry(guild_id).insert(guild_cache);
+            let result = {
+                let guild_cache = self.map.entry(guild_id).insert(guild_cache);
+                f(&guild_cache)
+            };
 
             // ensure this guild is registered in the cache
             self.register_guild_in_cache(guild_id).await?;
 
-            Ok(f(&guild_cache))
+            Ok(result)
         }
     }
 
