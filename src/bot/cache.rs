@@ -441,7 +441,10 @@ impl ApiCache {
         if let Some(cache_entry) = self.map.get(&guild_id) {
             let (result, is_expired) = {
                 let cache_entry = cache_entry;
-                (f(cache_entry.value()), cache_entry.is_expired_high_priority())
+                (
+                    f(cache_entry.value()),
+                    cache_entry.is_expired_high_priority(),
+                )
             };
             if is_expired {
                 debug!(
