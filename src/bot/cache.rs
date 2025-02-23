@@ -107,7 +107,7 @@ impl ApiCache {
         // low priority refresh task. Used for initial cache warm and refresh. Initial cache warm. Hits DB values if they exist.
         {
             let db = db;
-            let map = map.clone();
+            let dashmap = map.clone();
             tokio::task::spawn(async move {
                 // set of all registered guilds ids
                 let mut guild_set = HashSet::with_hasher(ahash::RandomState::default());
@@ -191,22 +191,26 @@ impl ApiCache {
 
                             let mut now = SimpleTime::UNIX_EPOCH; // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
+                            let mut work_counter = 0;
                             let mut touched_guild_set =
                                 HashSet::with_hasher(ahash::RandomState::default());
-                            while work_remaining {
+                            const MAX_WORK_COUNT: u16 = 1000;
+                            while work_remaining && work_counter < MAX_WORK_COUNT {
                                 // find the first guild that needs a refresh. This is a simple queue pop.
                                 if let Some(mut queue_entry) = queue.pop() {
+                                    work_counter += 1;
+
                                     // if the queue is now empty no reason to go again
                                     work_remaining &= !queue.is_empty();
 
                                     // record that we've touched this guild ID in the work loop
-                                    touched_guild_set.insert(queue_entry.guild_id);
+                                    touched_guild_set.insert(queue_entry.guild_id.get());
 
                                     // grab the current time: we'll need it a couple of times and I want it to keep the same reading
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) = match map.get(&queue_entry.guild_id) {
+                                    let (load, try_db_load) = match dashmap.get(&queue_entry.guild_id) {
                                         Some(cache_entry) => {
                                             if cache_entry.is_expired_low_priority(now) {
                                                 // entry exists and was expired
@@ -298,7 +302,7 @@ impl ApiCache {
                                                                     cache_entry.create_time;
 
                                                                 // actually update the dang cache!
-                                                                map.insert(
+                                                                dashmap.insert(
                                                                     queue_entry.guild_id,
                                                                     cache_entry,
                                                                 );
@@ -347,26 +351,26 @@ impl ApiCache {
                                     if guild_valid {
                                         // done loading the guild; time to put it back in the queue
                                         queue.push(queue_entry);
-
-                                        // check if we want to enter the work loop again
-                                        if work_remaining {
-                                            let next_guild_id = queue
-                                                .peek()
-                                                .expect(
-                                                    "queue should not be empty immediately after push",
-                                                )
-                                                .guild_id;
-
-                                            // if we haven't touched the next guild ID yet, then go again
-                                            work_remaining &=
-                                                !touched_guild_set.contains(&next_guild_id);
-                                        }
                                     } else {
                                         // something about the guild was screwed up so we're just going to unregister it
                                         guild_set.remove(&queue_entry.guild_id);
                                     }
+
+                                    // if we haven't touched the next guild ID yet, then go again (true)
+                                    // if there is no next guild, then do not go again (false)
+                                    work_remaining &= queue
+                                        .peek()
+                                        .map(|next_guild| {
+                                            !touched_guild_set.contains(&next_guild.guild_id.get())
+                                        })
+                                        .unwrap_or(false);
                                 }
                             } // end work loop
+
+                            if work_counter > MAX_WORK_COUNT {
+                                warn!("ended low-priority work loop due to exceeding maximum loop count!");
+                                //TODO: print debug information on variable state to hopefully get to the bottom of why this happened
+                            }
 
                             // update the sleep time
                             if let Some(next_queue_entry) = queue.peek() {
