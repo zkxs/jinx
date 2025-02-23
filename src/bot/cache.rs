@@ -210,23 +210,24 @@ impl ApiCache {
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) = match dashmap.get(&queue_entry.guild_id) {
-                                        Some(cache_entry) => {
-                                            if cache_entry.is_expired_low_priority(now) {
-                                                // entry exists and was expired
-                                                // no need to do a DB load because we obviously already have data in memory
-                                                (true, false)
-                                            } else {
-                                                // entry exists and was not expired
-                                                // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
-                                                (false, false)
+                                    let (load, try_db_load) =
+                                        match dashmap.get(&queue_entry.guild_id) {
+                                            Some(cache_entry) => {
+                                                if cache_entry.is_expired_low_priority(now) {
+                                                    // entry exists and was expired
+                                                    // no need to do a DB load because we obviously already have data in memory
+                                                    (true, false)
+                                                } else {
+                                                    // entry exists and was not expired
+                                                    // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
+                                                    (false, false)
+                                                }
                                             }
-                                        }
-                                        None => {
-                                            // entry did NOT exist in memory, so it's worth trying a db load
-                                            (true, true)
-                                        }
-                                    };
+                                            None => {
+                                                // entry did NOT exist in memory, so it's worth trying a db load
+                                                (true, true)
+                                            }
+                                        };
 
                                     let guild_valid = if load {
                                         // refresh that guild
