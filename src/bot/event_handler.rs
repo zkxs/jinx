@@ -303,7 +303,7 @@ async fn event_handler_inner<'a>(
                         - A valid, previously unactivated license that was activated by someone else while going through this flow
                         - An invalid license
                         */
-                        let send_fail_message = || async {
+                        let send_fail_message = async || {
                             if license_type.is_license() {
                                 debug!(
                                     "failed to verify license in {} for <@{}> which looks like {}",

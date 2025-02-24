@@ -104,7 +104,7 @@ async fn main() -> ExitCode {
                 constants::GIT_COMMIT_HASH
             );
 
-            let result = Toplevel::new(|subsystem| async move {
+            let result = Toplevel::new(async |subsystem| {
                 subsystem.start(SubsystemBuilder::new("Discord bot", bot_subsystem));
             })
             .catch_signals()
