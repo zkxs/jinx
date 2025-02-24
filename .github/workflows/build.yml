@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust Toolchain
+        run: rustup update
       - uses: EmbarkStudios/cargo-deny-action@v2
   cargo-fmt:
     # only run for pushes to tags or non-dependabot branches
