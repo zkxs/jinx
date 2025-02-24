@@ -23,6 +23,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Update Rust Toolchain
+        run: rustup update
       - name: Publish
         run: cargo publish
         env:

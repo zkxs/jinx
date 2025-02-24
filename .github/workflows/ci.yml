@@ -24,6 +24,8 @@ jobs:
   cargo-fmt:
     runs-on: ubuntu-latest
     steps:
+      - name: Update Rust Toolchain
+        run: rustup update
       - name: Install Cargo
         run: rustup component add cargo
       - name: Install Clippy
