@@ -20,10 +20,10 @@ use crate::http::jinxxy::{
 };
 use crate::time::SimpleTime;
 use poise::serenity_prelude::GuildId;
+use scc::hash_map::Entry;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
-use scc::hash_map::Entry;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::{timeout, Duration};
@@ -211,17 +211,20 @@ impl ApiCache {
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) = map.read_async(&queue_entry.guild_id, |_key, value| {
-                                        if value.is_expired_low_priority(now) {
-                                            // entry exists and was expired
-                                            // no need to do a DB load because we obviously already have data in memory
-                                            (true, false)
-                                        } else {
-                                            // entry exists and was not expired
-                                            // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
-                                            (false, false)
-                                        }
-                                    }).await.unwrap_or((true, true)); // or else entry did NOT exist in memory, so it's worth trying a db load
+                                    let (load, try_db_load) = map
+                                        .read_async(&queue_entry.guild_id, |_key, value| {
+                                            if value.is_expired_low_priority(now) {
+                                                // entry exists and was expired
+                                                // no need to do a DB load because we obviously already have data in memory
+                                                (true, false)
+                                            } else {
+                                                // entry exists and was not expired
+                                                // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
+                                                (false, false)
+                                            }
+                                        })
+                                        .await
+                                        .unwrap_or((true, true)); // or else entry did NOT exist in memory, so it's worth trying a db load
 
                                     let guild_valid = if load {
                                         // refresh that guild
@@ -300,7 +303,8 @@ impl ApiCache {
                                                                 map.upsert_async(
                                                                     queue_entry.guild_id,
                                                                     cache_entry,
-                                                                ).await;
+                                                                )
+                                                                .await;
                                                                 true
                                                             }
                                                             Err(e) => {
@@ -435,7 +439,10 @@ impl ApiCache {
         match self.map.entry_async(guild_id).await {
             Entry::Occupied(entry) => {
                 if entry.is_expired_high_priority() {
-                    debug!("queuing priority product cache refresh for {} due to expiry", guild_id.get());
+                    debug!(
+                        "queuing priority product cache refresh for {} due to expiry",
+                        guild_id.get()
+                    );
                     self.refresh_guild_in_cache(guild_id).await?;
                 }
 
@@ -446,7 +453,10 @@ impl ApiCache {
                 Ok(f(entry.get()))
             }
             Entry::Vacant(entry) => {
-                info!("cache missed! Falling back to direct API request for {}", guild_id.get());
+                info!(
+                    "cache missed! Falling back to direct API request for {}",
+                    guild_id.get()
+                );
                 let api_key = db
                     .get_jinxxy_api_key(guild_id)
                     .await?
@@ -477,14 +487,17 @@ impl ApiCache {
 
     pub async fn product_count(&self) -> usize {
         let mut count = 0;
-        self.map.scan_async(|_key, value| count += value.product_count()).await;
+        self.map
+            .scan_async(|_key, value| count += value.product_count())
+            .await;
         count
     }
 
     pub async fn product_version_count(&self) -> usize {
         let mut count = 0;
         self.map
-            .scan_async(|_key, value| count += value.product_version_count()).await;
+            .scan_async(|_key, value| count += value.product_version_count())
+            .await;
         count
     }
 

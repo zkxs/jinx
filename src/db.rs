@@ -5,9 +5,9 @@ use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
+use scc::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use scc::hash_map::Entry;
 use tokio::time::Instant;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
@@ -424,8 +424,9 @@ impl JinxDb {
                 let api_key = self
                     .connection
                     .call(move |connection| {
-                        let mut statement = connection
-                            .prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
+                        let mut statement = connection.prepare_cached(
+                            "SELECT jinxxy_api_key FROM guild WHERE guild_id = ?",
+                        )?;
                         let result: Option<String> = statement
                             .query_row([guild.get()], |row| row.get(0))
                             .optional()?;
