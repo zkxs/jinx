@@ -66,7 +66,8 @@ impl ApiCache {
             tokio::task::spawn(async move {
                 while let Some(guild_id) = high_priority_rx.recv().await {
                     // first, check to make sure this entry is still expired
-                    let needs_refresh = map.pin()
+                    let needs_refresh = map
+                        .pin()
                         .get(&guild_id)
                         .map(|entry| entry.is_expired_high_priority())
                         .unwrap_or(true);
@@ -224,7 +225,9 @@ impl ApiCache {
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) = map.pin().get(&queue_entry.guild_id)
+                                    let (load, try_db_load) = map
+                                        .pin()
+                                        .get(&queue_entry.guild_id)
                                         .map(|value| {
                                             if value.is_expired_low_priority(now) {
                                                 // entry exists and was expired
@@ -489,7 +492,10 @@ impl ApiCache {
             let expired = entry.is_expired_high_priority();
             (result, expired)
         } else {
-            info!("cache missed! Falling back to direct API request for {}", guild_id.get());
+            info!(
+                "cache missed! Falling back to direct API request for {}",
+                guild_id.get()
+            );
             let api_key = db
                 .get_jinxxy_api_key(guild_id)
                 .await?
@@ -509,7 +515,10 @@ impl ApiCache {
 
         // ensure expired guild gets a priority refresh, as it has a very high chance of having get() called again soon
         if expired {
-            debug!("queuing priority product cache refresh for {} due to expiry", guild_id.get());
+            debug!(
+                "queuing priority product cache refresh for {} due to expiry",
+                guild_id.get()
+            );
             self.refresh_guild_in_cache(guild_id).await?;
         }
 
@@ -525,12 +534,16 @@ impl ApiCache {
 
     pub fn product_count(&self) -> usize {
         let map = self.map.pin();
-        map.values().map(|guild_cache| guild_cache.product_count()).sum()
+        map.values()
+            .map(|guild_cache| guild_cache.product_count())
+            .sum()
     }
 
     pub fn product_version_count(&self) -> usize {
         let map = self.map.pin();
-        map.values().map(|guild_cache| guild_cache.product_version_count()).sum()
+        map.values()
+            .map(|guild_cache| guild_cache.product_version_count())
+            .sum()
     }
 
     /// Remove all cache entries

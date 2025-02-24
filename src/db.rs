@@ -422,9 +422,8 @@ impl JinxDb {
             let api_key = self
                 .connection
                 .call(move |connection| {
-                    let mut statement = connection.prepare_cached(
-                        "SELECT jinxxy_api_key FROM guild WHERE guild_id = ?",
-                    )?;
+                    let mut statement = connection
+                        .prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
                     let result: Option<String> = statement
                         .query_row([guild.get()], |row| row.get(0))
                         .optional()?;
