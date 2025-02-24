@@ -4,7 +4,6 @@
 use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
-use dashmap::DashMap;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -18,7 +17,7 @@ const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
     connection: Connection,
-    api_key_cache: DashMap<GuildId, Option<String>, ahash::RandomState>,
+    api_key_cache: scc::HashMap<GuildId, Option<String>, ahash::RandomState>,
 }
 
 impl Drop for JinxDb {
@@ -408,7 +407,7 @@ impl JinxDb {
             statement.execute(named_params! {":guild": guild.get(), ":api_key": api_key_clone})?;
             Ok(())
         }).await?;
-        self.api_key_cache.insert(guild, Some(api_key));
+        self.api_key_cache.upsert(guild, Some(api_key));
         Ok(())
     }
 
@@ -416,7 +415,7 @@ impl JinxDb {
     pub async fn get_jinxxy_api_key(&self, guild: GuildId) -> Result<Option<String>> {
         if let Some(api_key) = self.api_key_cache.get(&guild) {
             // cached read
-            Ok(api_key.value().clone())
+            Ok(api_key.get().clone())
         } else {
             // cache miss
             let api_key = self
@@ -430,7 +429,7 @@ impl JinxDb {
                     Ok(result)
                 })
                 .await?;
-            self.api_key_cache.insert(guild, api_key.clone());
+            self.api_key_cache.upsert(guild, api_key.clone());
             Ok(api_key)
         }
     }

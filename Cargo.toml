@@ -27,7 +27,7 @@ tracing = "0.1" # Logging API
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
 regex = "1" # Pattern matching
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] } # RNG
-dashmap = "6" # concurrent map
+scc = "2" # concurrent map
 ahash = "0.8" # faster hashing algorithm than std
 percent-encoding = "2" # URL encoding
 semver = "1" # Semver parsing (for update check)

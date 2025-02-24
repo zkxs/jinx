@@ -19,7 +19,6 @@ use crate::http::jinxxy::{
     FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo,
 };
 use crate::time::SimpleTime;
-use dashmap::DashMap;
 use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -31,7 +30,7 @@ use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type MapType = Arc<DashMap<GuildId, GuildCache, ahash::RandomState>>;
+type MapType = Arc<scc::HashMap<GuildId, GuildCache, ahash::RandomState>>;
 
 /// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
@@ -83,7 +82,7 @@ impl ApiCache {
                                     .await
                                     {
                                         Ok(guild_cache) => {
-                                            map.insert(guild_id, guild_cache);
+                                            map.upsert(guild_id, guild_cache);
                                         }
                                         Err(e) => {
                                             warn!("Error initializing API cache during high-priority refresh for {}: {:?}", guild_id.get(), e);
@@ -107,7 +106,7 @@ impl ApiCache {
         // low priority refresh task. Used for initial cache warm and refresh. Initial cache warm. Hits DB values if they exist.
         {
             let db = db;
-            let dashmap = map.clone();
+            let map = map.clone();
             tokio::task::spawn(async move {
                 // set of all registered guilds ids
                 let mut guild_set = HashSet::with_hasher(ahash::RandomState::default());
@@ -210,24 +209,23 @@ impl ApiCache {
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) =
-                                        match dashmap.get(&queue_entry.guild_id) {
-                                            Some(cache_entry) => {
-                                                if cache_entry.is_expired_low_priority(now) {
-                                                    // entry exists and was expired
-                                                    // no need to do a DB load because we obviously already have data in memory
-                                                    (true, false)
-                                                } else {
-                                                    // entry exists and was not expired
-                                                    // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
-                                                    (false, false)
-                                                }
+                                    let (load, try_db_load) = match map.get(&queue_entry.guild_id) {
+                                        Some(cache_entry) => {
+                                            if cache_entry.is_expired_low_priority(now) {
+                                                // entry exists and was expired
+                                                // no need to do a DB load because we obviously already have data in memory
+                                                (true, false)
+                                            } else {
+                                                // entry exists and was not expired
+                                                // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
+                                                (false, false)
                                             }
-                                            None => {
-                                                // entry did NOT exist in memory, so it's worth trying a db load
-                                                (true, true)
-                                            }
-                                        };
+                                        }
+                                        None => {
+                                            // entry did NOT exist in memory, so it's worth trying a db load
+                                            (true, true)
+                                        }
+                                    };
 
                                     let guild_valid = if load {
                                         // refresh that guild
@@ -303,7 +301,7 @@ impl ApiCache {
                                                                     cache_entry.create_time;
 
                                                                 // actually update the dang cache!
-                                                                dashmap.insert(
+                                                                map.upsert(
                                                                     queue_entry.guild_id,
                                                                     cache_entry,
                                                                 );
@@ -441,10 +439,7 @@ impl ApiCache {
         if let Some(cache_entry) = self.map.get(&guild_id) {
             let (result, is_expired) = {
                 let cache_entry = cache_entry;
-                (
-                    f(cache_entry.value()),
-                    cache_entry.is_expired_high_priority(),
-                )
+                (f(cache_entry.get()), cache_entry.is_expired_high_priority())
             };
             if is_expired {
                 debug!(
@@ -476,7 +471,7 @@ impl ApiCache {
             // You might wonder why I don't use the same dashmap entry here as I do above in the initial lookup.
             // I purposefully drop the dashmap lock (aka the entry) across the .await to avoid deadlocks, which DO happen.
             let result = {
-                let guild_cache = self.map.entry(guild_id).insert(guild_cache);
+                let guild_cache = self.map.entry(guild_id).insert_entry(guild_cache);
                 f(&guild_cache)
             };
 
@@ -496,17 +491,16 @@ impl ApiCache {
     }
 
     pub fn product_count(&self) -> usize {
-        self.map
-            .iter()
-            .map(|entry| entry.value().product_count())
-            .sum()
+        let mut count = 0;
+        self.map.scan(|_key, value| count += value.product_count());
+        count
     }
 
     pub fn product_version_count(&self) -> usize {
+        let mut count = 0;
         self.map
-            .iter()
-            .map(|entry| entry.value().product_version_count())
-            .sum()
+            .scan(|_key, value| count += value.product_version_count());
+        count
     }
 
     /// Remove all cache entries
