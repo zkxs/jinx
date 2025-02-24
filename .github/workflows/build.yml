@@ -72,6 +72,8 @@ jobs:
     name: Build ${{ matrix.target.build-name }}
     runs-on: ${{ matrix.target.runs-on }}
     steps:
+      - name: Update Rust Toolchain
+        run: rustup update
       - name: Install Rust target
         run: rustup target add ${{ matrix.target.triple }}
       - name: Install Cargo
