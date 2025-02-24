@@ -7,6 +7,7 @@ use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use scc::hash_map::Entry;
 use tokio::time::Instant;
 use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
 use tracing::debug;
@@ -407,30 +408,33 @@ impl JinxDb {
             statement.execute(named_params! {":guild": guild.get(), ":api_key": api_key_clone})?;
             Ok(())
         }).await?;
-        self.api_key_cache.upsert(guild, Some(api_key));
+        self.api_key_cache.upsert_async(guild, Some(api_key)).await;
         Ok(())
     }
 
     /// Get Jinxxy API key for this guild
     pub async fn get_jinxxy_api_key(&self, guild: GuildId) -> Result<Option<String>> {
-        if let Some(api_key) = self.api_key_cache.get(&guild) {
-            // cached read
-            Ok(api_key.get().clone())
-        } else {
-            // cache miss
-            let api_key = self
-                .connection
-                .call(move |connection| {
-                    let mut statement = connection
-                        .prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
-                    let result: Option<String> = statement
-                        .query_row([guild.get()], |row| row.get(0))
-                        .optional()?;
-                    Ok(result)
-                })
-                .await?;
-            self.api_key_cache.upsert(guild, api_key.clone());
-            Ok(api_key)
+        match self.api_key_cache.entry_async(guild).await {
+            Entry::Occupied(entry) => {
+                // cached read
+                Ok(entry.get().clone())
+            }
+            Entry::Vacant(entry) => {
+                // cache miss
+                let api_key = self
+                    .connection
+                    .call(move |connection| {
+                        let mut statement = connection
+                            .prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
+                        let result: Option<String> = statement
+                            .query_row([guild.get()], |row| row.get(0))
+                            .optional()?;
+                        Ok(result)
+                    })
+                    .await?;
+                entry.insert_entry(api_key.clone());
+                Ok(api_key)
+            }
         }
     }
 

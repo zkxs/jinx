@@ -39,8 +39,8 @@ pub(in crate::bot) async fn owner_stats(
     let blanket_role_count = context.data().db.blanket_role_count().await?;
     let product_role_count = context.data().db.product_role_count().await?;
     let product_version_role_count = context.data().db.product_version_role_count().await?;
-    let api_cache_products = context.data().api_cache.product_count();
-    let api_cache_product_versions = context.data().api_cache.product_version_count();
+    let api_cache_products = context.data().api_cache.product_count().await;
+    let api_cache_product_versions = context.data().api_cache.product_version_count().await;
     let api_cache_len = context.data().api_cache.len();
     let api_cache_capacity = context.data().api_cache.capacity();
     let log_channel_count = context.data().db.log_channel_count().await?;
@@ -131,8 +131,8 @@ pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Err
 pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
 
-    let before_api_cache_products = context.data().api_cache.product_count();
-    let before_api_cache_product_versions = context.data().api_cache.product_version_count();
+    let before_api_cache_products = context.data().api_cache.product_count().await;
+    let before_api_cache_product_versions = context.data().api_cache.product_version_count().await;
     let before_api_cache_len = context.data().api_cache.len();
     let before_api_cache_capacity = context.data().api_cache.capacity();
     let time_after_metrics_1 = Instant::now();
@@ -140,11 +140,11 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
     context.data().db.clear_cache().await?;
     let time_after_db_clear = Instant::now();
 
-    context.data().api_cache.clear();
+    context.data().api_cache.clear().await;
     let time_after_cache_clear = Instant::now();
 
-    let after_api_cache_products = context.data().api_cache.product_count();
-    let after_api_cache_product_versions = context.data().api_cache.product_version_count();
+    let after_api_cache_products = context.data().api_cache.product_count().await;
+    let after_api_cache_product_versions = context.data().api_cache.product_version_count().await;
     let after_api_cache_len = context.data().api_cache.len();
     let after_api_cache_capacity = context.data().api_cache.capacity();
     let time_after_metrics_2 = Instant::now();
