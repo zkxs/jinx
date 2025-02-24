@@ -269,8 +269,8 @@ impl JinxDb {
     pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection
-                    .prepare_cached("INSERT OR IGNORE INTO owner (owner_id) VALUES (:owner)")?;
+                let mut statement =
+                    connection.prepare_cached("INSERT OR IGNORE INTO owner (owner_id) VALUES (:owner)")?;
                 statement.execute(named_params! {":owner": owner_id})?;
                 Ok(())
             })
@@ -280,8 +280,7 @@ impl JinxDb {
     pub async fn delete_owner(&self, owner_id: u64) -> Result<()> {
         self.connection
             .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("DELETE FROM owner WHERE owner_id = :owner")?;
+                let mut statement = connection.prepare_cached("DELETE FROM owner WHERE owner_id = :owner")?;
                 statement.execute(named_params! {":owner": owner_id})?;
                 Ok(())
             })
@@ -291,11 +290,9 @@ impl JinxDb {
     pub async fn set_discord_token(&self, discord_token: String) -> Result<()> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)",
-                )?;
-                statement
-                    .execute(named_params! {":key": DISCORD_TOKEN_KEY, ":value": discord_token})?;
+                let mut statement =
+                    connection.prepare_cached("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
+                statement.execute(named_params! {":key": DISCORD_TOKEN_KEY, ":value": discord_token})?;
                 Ok(())
             })
             .await
@@ -321,13 +318,12 @@ impl JinxDb {
     pub async fn is_user_owner(&self, owner_id: u64) -> Result<bool> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection
-                    .prepare_cached("SELECT EXISTS(SELECT * FROM owner WHERE owner_id = :owner)")?;
-                let owner_exists =
-                    statement.query_row(named_params! {":owner": owner_id}, |row| {
-                        let exists: bool = row.get(0)?;
-                        Ok(exists)
-                    })?;
+                let mut statement =
+                    connection.prepare_cached("SELECT EXISTS(SELECT * FROM owner WHERE owner_id = :owner)")?;
+                let owner_exists = statement.query_row(named_params! {":owner": owner_id}, |row| {
+                    let exists: bool = row.get(0)?;
+                    Ok(exists)
+                })?;
                 Ok(owner_exists)
             })
             .await
@@ -339,8 +335,7 @@ impl JinxDb {
             .call(move |connection| {
                 let result: Option<String> = connection
                     .query_row(
-                        format!(r#"SELECT value FROM settings WHERE key = "{DISCORD_TOKEN_KEY}""#)
-                            .as_str(),
+                        format!(r#"SELECT value FROM settings WHERE key = "{DISCORD_TOKEN_KEY}""#).as_str(),
                         [],
                         |row| row.get(0),
                     )
@@ -422,11 +417,9 @@ impl JinxDb {
             let api_key = self
                 .connection
                 .call(move |connection| {
-                    let mut statement = connection
-                        .prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
-                    let result: Option<String> = statement
-                        .query_row([guild.get()], |row| row.get(0))
-                        .optional()?;
+                    let mut statement =
+                        connection.prepare_cached("SELECT jinxxy_api_key FROM guild WHERE guild_id = ?")?;
+                    let result: Option<String> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
                     Ok(result)
                 })
                 .await?;
@@ -445,12 +438,7 @@ impl JinxDb {
     }
 
     /// blanket link a Jinxxy product and a role
-    pub async fn link_product(
-        &self,
-        guild: GuildId,
-        product_id: String,
-        role: RoleId,
-    ) -> Result<()> {
+    pub async fn link_product(&self, guild: GuildId, product_id: String, role: RoleId) -> Result<()> {
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (:guild, :product, :role)")?;
             statement.execute(named_params! {":guild": guild.get(), ":product": product_id, ":role": role.get()})?;
@@ -459,17 +447,17 @@ impl JinxDb {
     }
 
     /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
-    pub async fn unlink_product(
-        &self,
-        guild: GuildId,
-        product_id: String,
-        role: RoleId,
-    ) -> Result<bool> {
-        self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("DELETE FROM product_role WHERE guild_id = :guild AND product_id = :product AND role_id = :role")?;
-            let delete_count = statement.execute(named_params! {":guild": guild.get(), ":product": product_id, ":role": role.get()})?;
-            Ok(delete_count != 0)
-        }).await
+    pub async fn unlink_product(&self, guild: GuildId, product_id: String, role: RoleId) -> Result<bool> {
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare_cached(
+                    "DELETE FROM product_role WHERE guild_id = :guild AND product_id = :product AND role_id = :role",
+                )?;
+                let delete_count = statement
+                    .execute(named_params! {":guild": guild.get(), ":product": product_id, ":role": role.get()})?;
+                Ok(delete_count != 0)
+            })
+            .await
     }
 
     /// link a Jinxxy product-version and a role
@@ -503,11 +491,7 @@ impl JinxDb {
     }
 
     /// Get role grants for a product ID. This includes blanket grants.
-    pub async fn get_role_grants(
-        &self,
-        guild: GuildId,
-        product_version_id: ProductVersionId,
-    ) -> Result<Vec<RoleId>> {
+    pub async fn get_role_grants(&self, guild: GuildId, product_version_id: ProductVersionId) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` and `version_role_lookup` indices
@@ -530,22 +514,18 @@ impl JinxDb {
     }
 
     /// Get roles for a product. This is ONLY product-level blanket grants.
-    pub async fn get_linked_roles_for_product(
-        &self,
-        guild: GuildId,
-        product_id: String,
-    ) -> Result<Vec<RoleId>> {
+    pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> Result<Vec<RoleId>> {
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` index
-                let mut statement = connection.prepare_cached("SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product")?;
-                let result = statement.query_map(
-                    named_params! {":guild": guild.get(), ":product": product_id},
-                    |row| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product",
+                )?;
+                let result =
+                    statement.query_map(named_params! {":guild": guild.get(), ":product": product_id}, |row| {
                         let role_id: u64 = row.get(0)?;
                         Ok(RoleId::new(role_id))
-                    },
-                )?;
+                    })?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
                     vec.push(row?);
@@ -583,32 +563,26 @@ impl JinxDb {
     }
 
     /// get all links
-    pub async fn get_links(
-        &self,
-        guild: GuildId,
-    ) -> Result<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
+    pub async fn get_links(&self, guild: GuildId) -> Result<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
         self.connection
             .call(move |connection| {
                 let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
 
                 // deal with global blanket
-                let mut blanket_statement = connection.prepare_cached(
-                    "SELECT blanket_role_id from guild where guild_id = ?",
-                )?;
-                let blanket_result: Option<Option<u64>> = blanket_statement.query_row([guild.get()], |row| {
-                    row.get(0)
-                }).optional()?;
-                let blanket_result = blanket_result.flatten()
-                    .map(|role_id| RoleId::new(role_id));
+                let mut blanket_statement =
+                    connection.prepare_cached("SELECT blanket_role_id from guild where guild_id = ?")?;
+                let blanket_result: Option<Option<u64>> = blanket_statement
+                    .query_row([guild.get()], |row| row.get(0))
+                    .optional()?;
+                let blanket_result = blanket_result.flatten().map(|role_id| RoleId::new(role_id));
                 if let Some(blanket_role) = blanket_result {
                     map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
                 }
 
                 // deal with product blankets
                 //TODO: could use an index
-                let mut product_statement = connection.prepare_cached(
-                    "SELECT product_id, role_id FROM product_role WHERE guild_id = ?",
-                )?;
+                let mut product_statement =
+                    connection.prepare_cached("SELECT product_id, role_id FROM product_role WHERE guild_id = ?")?;
                 let product_result = product_statement.query_map([guild.get()], |row| {
                     let product_id: String = row.get(0)?;
                     let role_id: u64 = row.get(1)?;
@@ -616,7 +590,9 @@ impl JinxDb {
                 })?;
                 for row in product_result {
                     let (role, product_id) = row?;
-                    map.entry(role).or_default().push(LinkSource::ProductBlanket { product_id });
+                    map.entry(role)
+                        .or_default()
+                        .push(LinkSource::ProductBlanket { product_id });
                 }
 
                 // deal with specific links
@@ -633,7 +609,9 @@ impl JinxDb {
                 })?;
                 for row in product_version_result {
                     let (role, product_version_id) = row?;
-                    map.entry(role).or_default().push(LinkSource::ProductVersion(product_version_id));
+                    map.entry(role)
+                        .or_default()
+                        .push(LinkSource::ProductVersion(product_version_id));
                 }
                 Ok(map)
             })
@@ -644,14 +622,13 @@ impl JinxDb {
     pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> Result<Vec<String>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached("SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user")?;
-                let result = statement.query_map(
-                    named_params! {":guild": guild.get(), ":user": user_id},
-                    |row| {
-                        let license_id: String = row.get(0)?;
-                        Ok(license_id)
-                    },
+                let mut statement = connection.prepare_cached(
+                    "SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user",
                 )?;
+                let result = statement.query_map(named_params! {":guild": guild.get(), ":user": user_id}, |row| {
+                    let license_id: String = row.get(0)?;
+                    Ok(license_id)
+                })?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
                     vec.push(row?);
@@ -662,12 +639,7 @@ impl JinxDb {
     }
 
     /// Locally check if any activations exist for this user/license combo. This may be out of sync with Jinxxy!
-    pub async fn has_user_license_activations(
-        &self,
-        guild: GuildId,
-        user_id: u64,
-        license_id: String,
-    ) -> Result<bool> {
+    pub async fn has_user_license_activations(&self, guild: GuildId, user_id: u64, license_id: String) -> Result<bool> {
         self.connection
             .call(move |connection| {
                 let mut statement = connection
@@ -713,14 +685,14 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 //TODO: could use an index
-                let mut statement = connection.prepare_cached("SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license")?;
-                let result = statement.query_map(
-                    named_params! {":guild": guild.get(), ":license": license_id},
-                    |row| {
+                let mut statement = connection.prepare_cached(
+                    "SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license",
+                )?;
+                let result =
+                    statement.query_map(named_params! {":guild": guild.get(), ":license": license_id}, |row| {
                         let user_id: u64 = row.get(0)?;
                         Ok(user_id)
-                    },
-                )?;
+                    })?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
                     vec.push(row?);
@@ -732,18 +704,30 @@ impl JinxDb {
 
     /// Get DB size in bytes
     pub async fn size(&self) -> Result<u64> {
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        self.connection
+            .call(move |connection| {
+                let result: u64 = connection.query_row(
+                    "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(result)
+            })
+            .await
     }
 
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> Result<u64> {
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        self.connection
+            .call(move |connection| {
+                let result: u64 = connection.query_row(
+                    "SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(result)
+            })
+            .await
     }
 
     /// Get count of distinct users who have activated licenses
@@ -758,11 +742,8 @@ impl JinxDb {
     pub async fn guild_count(&self) -> Result<u64> {
         self.connection
             .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(*) FROM guild WHERE test = 0",
-                    [],
-                    |row| row.get(0),
-                )?;
+                let result: u64 =
+                    connection.query_row("SELECT count(*) FROM guild WHERE test = 0", [], |row| row.get(0))?;
                 Ok(result)
             })
             .await
@@ -784,26 +765,44 @@ impl JinxDb {
 
     /// Get count of guilds with blanket role set
     pub async fn blanket_role_count(&self) -> Result<u64> {
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        self.connection
+            .call(move |connection| {
+                let result: u64 = connection.query_row(
+                    "SELECT count(*) FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(result)
+            })
+            .await
     }
 
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> Result<u64> {
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        self.connection
+            .call(move |connection| {
+                let result: u64 = connection.query_row(
+                    "SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(result)
+            })
+            .await
     }
 
     /// Get count of product+version->role mappings
     pub async fn product_version_role_count(&self) -> Result<u64> {
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(*) FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        self.connection
+            .call(move |connection| {
+                let result: u64 = connection.query_row(
+                    "SELECT count(*) FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(result)
+            })
+            .await
     }
 
     /// Get count of license activations in a guild
@@ -820,11 +819,8 @@ impl JinxDb {
         let channel_id = self
             .connection
             .call(move |connection| {
-                let mut statement = connection
-                    .prepare_cached("SELECT log_channel_id FROM guild WHERE guild_id = ?")?;
-                let result: Option<Option<u64>> = statement
-                    .query_row([guild.get()], |row| row.get(0))
-                    .optional()?;
+                let mut statement = connection.prepare_cached("SELECT log_channel_id FROM guild WHERE guild_id = ?")?;
+                let result: Option<Option<u64>> = statement.query_row([guild.get()], |row| row.get(0)).optional()?;
                 // inner optional is for if the guild has no log channel set
                 // outer optional is for if the guild does not exist in our DB
                 Ok(result.flatten())
@@ -875,8 +871,7 @@ impl JinxDb {
     pub async fn is_test_guild(&self, guild: GuildId) -> Result<bool> {
         self.connection
             .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("SELECT test FROM guild WHERE guild_id = :guild")?;
+                let mut statement = connection.prepare_cached("SELECT test FROM guild WHERE guild_id = :guild")?;
                 let test = statement
                     .query_row(named_params! {":guild": guild.get()}, |row| {
                         let test: bool = row.get(0)?;
@@ -901,8 +896,7 @@ impl JinxDb {
     pub async fn is_owner_guild(&self, guild: GuildId) -> Result<bool> {
         self.connection
             .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("SELECT owner FROM guild WHERE guild_id = :guild")?;
+                let mut statement = connection.prepare_cached("SELECT owner FROM guild WHERE guild_id = :guild")?;
                 let owner = statement
                     .query_row(named_params! {":guild": guild.get()}, |row| {
                         let owner: bool = row.get(0)?;
@@ -918,9 +912,8 @@ impl JinxDb {
     pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> Result<Option<u64>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached(
-                    "SELECT gumroad_failure_count FROM guild WHERE guild_id = :guild",
-                )?;
+                let mut statement =
+                    connection.prepare_cached("SELECT gumroad_failure_count FROM guild WHERE guild_id = :guild")?;
                 let gumroad_failure_count = statement
                     .query_row(named_params! {":guild": guild.get()}, |row| {
                         let gumroad_failure_count: u64 = row.get(0)?;
@@ -936,8 +929,9 @@ impl JinxDb {
     pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> Result<()> {
         self.connection
             .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = :guild")?;
+                let mut statement = connection.prepare_cached(
+                    "UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = :guild",
+                )?;
                 statement.execute(named_params! {":guild": guild.get()})?;
                 Ok(())
             })
@@ -970,9 +964,8 @@ impl JinxDb {
     pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> Result<Option<u64>> {
         self.connection
             .call(move |connection| {
-                let mut statement = connection.prepare_cached(
-                    "SELECT gumroad_nag_count FROM guild WHERE guild_id = :guild",
-                )?;
+                let mut statement =
+                    connection.prepare_cached("SELECT gumroad_nag_count FROM guild WHERE guild_id = :guild")?;
                 let gumroad_nag_count = statement
                     .query_row(named_params! {":guild": guild.get()}, |row| {
                         let gumroad_nag_count: u64 = row.get(0)?;
@@ -988,8 +981,9 @@ impl JinxDb {
     pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> Result<()> {
         self.connection
             .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = :guild")?;
+                let mut statement = connection.prepare_cached(
+                    "UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = :guild",
+                )?;
                 statement.execute(named_params! {":guild": guild.get()})?;
                 Ok(())
             })
@@ -1001,8 +995,7 @@ impl JinxDb {
             .call(move |connection| {
                 let cache_time = JinxDb::get_cache_time(connection, guild)?;
                 let product_name_info = JinxDb::product_names_in_guild(connection, guild)?;
-                let product_version_name_info =
-                    JinxDb::product_version_names_in_guild(connection, guild)?;
+                let product_version_name_info = JinxDb::product_version_names_in_guild(connection, guild)?;
                 Ok(GuildCache {
                     product_name_info,
                     product_version_name_info,
@@ -1016,11 +1009,7 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 JinxDb::persist_product_names(connection, guild, cache_entry.product_name_info)?;
-                JinxDb::persist_product_version_names(
-                    connection,
-                    guild,
-                    cache_entry.product_version_name_info,
-                )?;
+                JinxDb::persist_product_version_names(connection, guild, cache_entry.product_version_name_info)?;
                 JinxDb::set_cache_time(connection, guild, cache_entry.cache_time)?;
                 Ok(())
             })
@@ -1040,35 +1029,25 @@ impl JinxDb {
     }
 
     fn get_cache_time(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
-        let mut statement = connection
-            .prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;
-        let cache_time_unix_ms =
-            statement.query_row(named_params! {":guild": guild.get()}, |row| {
-                let cache_time_unix_ms: u64 = row.get(0)?;
-                Ok(cache_time_unix_ms)
-            })?;
+        let mut statement =
+            connection.prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;
+        let cache_time_unix_ms = statement.query_row(named_params! {":guild": guild.get()}, |row| {
+            let cache_time_unix_ms: u64 = row.get(0)?;
+            Ok(cache_time_unix_ms)
+        })?;
         Ok(SimpleTime::from_unix_millis(cache_time_unix_ms))
     }
 
-    fn set_cache_time(
-        connection: &mut rusqlite::Connection,
-        guild: GuildId,
-        time: SimpleTime,
-    ) -> Result<()> {
+    fn set_cache_time(connection: &mut rusqlite::Connection, guild: GuildId, time: SimpleTime) -> Result<()> {
         let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (:guild, :time) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms")?;
-        statement
-            .execute(named_params! {":guild": guild.get(), ":time": time.as_epoch_millis()})?;
+        statement.execute(named_params! {":guild": guild.get(), ":time": time.as_epoch_millis()})?;
         Ok(())
     }
 
     /// Get name info for products in a guild
-    fn product_names_in_guild(
-        connection: &mut rusqlite::Connection,
-        guild: GuildId,
-    ) -> Result<Vec<ProductNameInfo>> {
-        let mut statement = connection.prepare_cached(
-            "SELECT product_id, product_name FROM product WHERE guild_id = :guild",
-        )?;
+    fn product_names_in_guild(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+        let mut statement =
+            connection.prepare_cached("SELECT product_id, product_name FROM product WHERE guild_id = :guild")?;
         let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
             let product_id: String = row.get(0)?;
             let product_name: String = row.get(1)?;
@@ -1090,8 +1069,9 @@ impl JinxDb {
         connection: &mut rusqlite::Connection,
         guild: GuildId,
     ) -> Result<Vec<ProductVersionNameInfo>> {
-        let mut statement =
-                    connection.prepare_cached("SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild")?;
+        let mut statement = connection.prepare_cached(
+            "SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild",
+        )?;
         let mapped_rows = statement.query_map(named_params! {":guild": guild.get()}, |row| {
             let product_id: String = row.get(0)?;
             let version_id: String = row.get(1)?;
@@ -1115,10 +1095,7 @@ impl JinxDb {
         guild: GuildId,
         product_name_info: Vec<ProductNameInfo>,
     ) -> Result<()> {
-        let mut new_key_set = HashSet::with_capacity_and_hasher(
-            product_name_info.len(),
-            ahash::RandomState::default(),
-        );
+        let mut new_key_set = HashSet::with_capacity_and_hasher(product_name_info.len(), ahash::RandomState::default());
         let mut unexpected_keys = Vec::new();
 
         // step 1: insert all entries and keep track of their keys in a set for later
@@ -1126,13 +1103,14 @@ impl JinxDb {
         for info in product_name_info {
             let product_id = info.id;
             let product_name = info.product_name;
-            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":product_name": product_name})?;
+            statement.execute(
+                named_params! {":guild": guild.get(), ":product_id": product_id, ":product_name": product_name},
+            )?;
             new_key_set.insert(product_id);
         }
 
         // step 2: query all existing keys, and record any keys that we did NOT just insert
-        let mut statement =
-            connection.prepare_cached("SELECT product_id FROM product WHERE guild_id = :guild")?;
+        let mut statement = connection.prepare_cached("SELECT product_id FROM product WHERE guild_id = :guild")?;
         let mut rows = statement.query(named_params! {":guild": guild.get()})?;
         while let Some(row) = rows.next()? {
             let product_id: String = row.get(0)?;
@@ -1142,9 +1120,8 @@ impl JinxDb {
         }
 
         // step 3: delete any rows with keys that we did NOT just insert
-        let mut statement = connection.prepare_cached(
-            "DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id",
-        )?;
+        let mut statement =
+            connection.prepare_cached("DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id")?;
         for product_id in unexpected_keys {
             statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id})?;
         }
@@ -1156,10 +1133,8 @@ impl JinxDb {
         guild: GuildId,
         product_version_name_info: Vec<ProductVersionNameInfo>,
     ) -> Result<()> {
-        let mut new_key_set = HashSet::with_capacity_and_hasher(
-            product_version_name_info.len(),
-            ahash::RandomState::default(),
-        );
+        let mut new_key_set =
+            HashSet::with_capacity_and_hasher(product_version_name_info.len(), ahash::RandomState::default());
         let mut unexpected_keys = Vec::new();
         // step 1: insert all entries and keep track of their keys in a set for later
         let mut statement = connection.prepare_cached("INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (:guild, :product_id, :version_id, :product_version_name) ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name")?;
@@ -1171,9 +1146,8 @@ impl JinxDb {
         }
 
         // step 2: query all existing keys, and record any keys that we did NOT just insert
-        let mut statement = connection.prepare_cached(
-            "SELECT product_id, version_id FROM product_version WHERE guild_id = :guild",
-        )?;
+        let mut statement =
+            connection.prepare_cached("SELECT product_id, version_id FROM product_version WHERE guild_id = :guild")?;
         let mut rows = statement.query(named_params! {":guild": guild.get()})?;
         while let Some(row) = rows.next()? {
             let product_id: String = row.get(0)?;
@@ -1187,7 +1161,8 @@ impl JinxDb {
         // step 3: delete any rows with keys that we did NOT just insert
         let mut statement = connection.prepare_cached("DELETE FROM product_version WHERE guild_id = :guild AND product_id = :product_id AND version_id = :version_id")?;
         for (product_id, version_id) in unexpected_keys {
-            statement.execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id})?;
+            statement
+                .execute(named_params! {":guild": guild.get(), ":product_id": product_id, ":version_id": version_id})?;
         }
         Ok(())
     }
@@ -1221,11 +1196,7 @@ impl ProductVersionId {
     }
 
     fn from_db_values(product_id: String, version_id: String) -> Self {
-        let product_version_id = if version_id.is_empty() {
-            None
-        } else {
-            Some(version_id)
-        };
+        let product_version_id = if version_id.is_empty() { None } else { Some(version_id) };
         Self {
             product_id,
             product_version_id,

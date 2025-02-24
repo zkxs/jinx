@@ -15,9 +15,7 @@ use crate::db;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{
-    FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo,
-};
+use crate::http::jinxxy::{FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
@@ -38,8 +36,7 @@ const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
 const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
 /// Same as `LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME`, but with a bit of extra time as wiggle room
 /// to try and avoid waking right before an entry expires. I'd rather wake a bit after.
-const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration =
-    Duration::from_secs(SECONDS_PER_DAY + 60);
+const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration = Duration::from_secs(SECONDS_PER_DAY + 60);
 
 /// Cloning returns a reference to this same ApiCache instance
 #[derive(Clone)]
@@ -77,11 +74,7 @@ impl ApiCache {
                             Ok(api_key) => match api_key {
                                 Some(api_key) => {
                                     // the high-priority API hit
-                                    match GuildCache::from_jinxxy_api::<true>(
-                                        &db, &api_key, guild_id,
-                                    )
-                                    .await
-                                    {
+                                    match GuildCache::from_jinxxy_api::<true>(&db, &api_key, guild_id).await {
                                         Ok(guild_cache) => {
                                             map.pin().insert(guild_id, guild_cache);
                                         }
@@ -155,9 +148,8 @@ impl ApiCache {
                                 });
 
                                 // update the sleep time
-                                let next_queue_entry = queue
-                                    .peek()
-                                    .expect("queue should not be empty immediately after push");
+                                let next_queue_entry =
+                                    queue.peek().expect("queue should not be empty immediately after push");
                                 // how much time has elapsed since creation (or 0 if creation is in the future)
                                 let elapsed = next_queue_entry.create_time.elapsed();
                                 // remaining time until the entry hits the expiration time, or 0 if it's already expired
@@ -186,9 +178,7 @@ impl ApiCache {
                                 match refresh_unregister_rx.try_recv() {
                                     Ok(guild_id) => {
                                         if guild_set.remove(&guild_id) {
-                                            queue.retain(|queue_entry| {
-                                                queue_entry.guild_id != guild_id
-                                            });
+                                            queue.retain(|queue_entry| queue_entry.guild_id != guild_id);
                                         }
                                     }
                                     Err(TryRecvError::Empty) => {
@@ -207,8 +197,7 @@ impl ApiCache {
                             let mut now = SimpleTime::UNIX_EPOCH; // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
                             let mut work_counter = 0;
-                            let mut touched_guild_set =
-                                HashSet::with_hasher(ahash::RandomState::default());
+                            let mut touched_guild_set = HashSet::with_hasher(ahash::RandomState::default());
                             const MAX_WORK_COUNT: u16 = 1000;
                             while work_remaining && work_counter < MAX_WORK_COUNT {
                                 // find the first guild that needs a refresh. This is a simple queue pop.
@@ -254,24 +243,15 @@ impl ApiCache {
 
                                                         let guild_cache = if try_db_load {
                                                             // try a DB load instead of an API load
-                                                            let db_result = GuildCache::from_db(
-                                                                &db,
-                                                                queue_entry.guild_id,
-                                                            )
-                                                            .await;
+                                                            let db_result =
+                                                                GuildCache::from_db(&db, queue_entry.guild_id).await;
                                                             match db_result {
                                                                 Ok(Some(cache_entry)) => {
                                                                     // DB read worked: just return it
-                                                                    if cache_entry
-                                                                        .is_expired_low_priority(
-                                                                            now,
-                                                                        )
-                                                                    {
+                                                                    if cache_entry.is_expired_low_priority(now) {
                                                                         debug!(
                                                                             "DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.",
-                                                                            queue_entry
-                                                                                .guild_id
-                                                                                .get()
+                                                                            queue_entry.guild_id.get()
                                                                         );
                                                                     }
                                                                     Ok(cache_entry)
@@ -282,9 +262,7 @@ impl ApiCache {
                                                                         "DB cache miss trying to initialize API cache for {}. Falling back to API load.",
                                                                         queue_entry.guild_id.get()
                                                                     );
-                                                                    GuildCache::from_jinxxy_api::<
-                                                                        false,
-                                                                    >(
+                                                                    GuildCache::from_jinxxy_api::<false>(
                                                                         &db,
                                                                         &api_key,
                                                                         queue_entry.guild_id,
@@ -299,9 +277,7 @@ impl ApiCache {
                                                                         queue_entry.guild_id.get(),
                                                                         e
                                                                     );
-                                                                    GuildCache::from_jinxxy_api::<
-                                                                        false,
-                                                                    >(
+                                                                    GuildCache::from_jinxxy_api::<false>(
                                                                         &db,
                                                                         &api_key,
                                                                         queue_entry.guild_id,
@@ -323,14 +299,10 @@ impl ApiCache {
                                                                 // we got a new cache entry from either db or jinxxy!
 
                                                                 // update our queue entry so it's corrected before we re-insert it into the queue
-                                                                queue_entry.create_time =
-                                                                    cache_entry.create_time;
+                                                                queue_entry.create_time = cache_entry.create_time;
 
                                                                 // actually update the dang cache!
-                                                                map.pin().insert(
-                                                                    queue_entry.guild_id,
-                                                                    cache_entry,
-                                                                );
+                                                                map.pin().insert(queue_entry.guild_id, cache_entry);
                                                                 true
                                                             }
                                                             Err(e) => {
@@ -340,20 +312,14 @@ impl ApiCache {
                                                                     e
                                                                 );
 
-                                                                match jinxxy::get_own_user(&api_key)
-                                                                    .await
-                                                                {
+                                                                match jinxxy::get_own_user(&api_key).await {
                                                                     Ok(auth_user) => {
                                                                         // we were able to do an API request with this key...
                                                                         // okay must have been a weird fluke, we'll leave this guild registered
-                                                                        if !auth_user
-                                                                            .has_required_scopes()
-                                                                        {
+                                                                        if !auth_user.has_required_scopes() {
                                                                             warn!(
                                                                                 "Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.",
-                                                                                queue_entry
-                                                                                    .guild_id
-                                                                                    .get()
+                                                                                queue_entry.guild_id.get()
                                                                             );
                                                                         }
                                                                         true
@@ -361,9 +327,7 @@ impl ApiCache {
                                                                     Err(e) => {
                                                                         info!(
                                                                             "error checking /me for guild {}, will unregister now: {:?}",
-                                                                            queue_entry
-                                                                                .guild_id
-                                                                                .get(),
+                                                                            queue_entry.guild_id.get(),
                                                                             e
                                                                         );
                                                                         false
@@ -407,17 +371,13 @@ impl ApiCache {
                                     // if there is no next guild, then do not go again (false)
                                     work_remaining &= queue
                                         .peek()
-                                        .map(|next_guild| {
-                                            !touched_guild_set.contains(&next_guild.guild_id.get())
-                                        })
+                                        .map(|next_guild| !touched_guild_set.contains(&next_guild.guild_id.get()))
                                         .unwrap_or(false);
                                 }
                             } // end work loop
 
                             if work_counter > MAX_WORK_COUNT {
-                                warn!(
-                                    "ended low-priority work loop due to exceeding maximum loop count!"
-                                );
+                                warn!("ended low-priority work loop due to exceeding maximum loop count!");
                                 //TODO: print debug information on variable state to hopefully get to the bottom of why this happened
                             }
 
@@ -433,10 +393,7 @@ impl ApiCache {
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining != Duration::ZERO {
-                                    debug!(
-                                        "low-priority worker caught up; sleeping for {}s",
-                                        remaining.as_secs()
-                                    );
+                                    debug!("low-priority worker caught up; sleeping for {}s", remaining.as_secs());
                                 }
                                 sleep_duration = Some(remaining);
                             } else {
@@ -502,8 +459,7 @@ impl ApiCache {
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
 
             // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
-            let guild_cache =
-                GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
+            let guild_cache = GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
             let result = f(&guild_cache);
 
             // update the cache
@@ -534,9 +490,7 @@ impl ApiCache {
 
     pub fn product_count(&self) -> usize {
         let map = self.map.pin();
-        map.values()
-            .map(|guild_cache| guild_cache.product_count())
-            .sum()
+        map.values().map(|guild_cache| guild_cache.product_count()).sum()
     }
 
     pub fn product_version_count(&self) -> usize {
@@ -571,9 +525,7 @@ impl ApiCache {
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
         self.get(db, guild_id, |cache_entry| {
-            cache_entry
-                .product_version_names_with_prefix(prefix)
-                .collect()
+            cache_entry.product_version_names_with_prefix(prefix).collect()
         })
         .await
     }
@@ -597,9 +549,7 @@ impl ApiCache {
         product_name: &str,
     ) -> Result<Vec<ProductVersionId>, Error> {
         self.get(db, guild_id, |cache_entry| {
-            cache_entry
-                .product_version_name_to_version_ids(product_name)
-                .to_vec()
+            cache_entry.product_version_name_to_version_ids(product_name).to_vec()
         })
         .await
     }
@@ -666,12 +616,11 @@ impl GuildCache {
         guild_id: GuildId,
     ) -> Result<GuildCache, Error> {
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
-        let products: Vec<FullProduct> =
-            jinxxy::get_full_products::<PARALLEL>(api_key, partial_products)
-                .await?
-                .into_iter()
-                .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
-                .collect();
+        let products: Vec<FullProduct> = jinxxy::get_full_products::<PARALLEL>(api_key, partial_products)
+            .await?
+            .into_iter()
+            .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
+            .collect();
 
         // convert into map tuples for products without versions
         let product_name_info: Vec<ProductNameInfo> = products
@@ -698,8 +647,7 @@ impl GuildCache {
                         product_id: product.id.clone(),
                         product_version_id: Some(version.id.clone()),
                     };
-                    let product_version_name =
-                        util::product_display_name(&product.name, Some(version.name.as_str()));
+                    let product_version_name = util::product_display_name(&product.name, Some(version.name.as_str()));
                     ProductVersionNameInfo {
                         id,
                         product_version_name,
@@ -800,8 +748,7 @@ impl GuildCache {
             .collect();
 
         // build reverse map without versions
-        let mut product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState> =
-            Default::default();
+        let mut product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState> = Default::default();
         for name_info in product_name_info {
             product_name_to_id_map
                 .entry(name_info.product_name)
@@ -810,11 +757,8 @@ impl GuildCache {
         }
 
         // build reverse map with versions
-        let mut product_name_to_version_id_map: HashMap<
-            String,
-            Vec<ProductVersionId>,
-            ahash::RandomState,
-        > = Default::default();
+        let mut product_name_to_version_id_map: HashMap<String, Vec<ProductVersionId>, ahash::RandomState> =
+            Default::default();
         for name_info in product_version_name_info {
             product_name_to_version_id_map
                 .entry(name_info.product_version_name)
@@ -835,34 +779,23 @@ impl GuildCache {
         })
     }
 
-    fn product_names_with_prefix<'a>(
-        &'a self,
-        prefix: &'a str,
-    ) -> impl Iterator<Item = String> + 'a {
+    fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = String> + 'a {
         self.product_name_trie
             .predictive_search(prefix.to_lowercase())
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
-    fn product_version_names_with_prefix<'a>(
-        &'a self,
-        prefix: &'a str,
-    ) -> impl Iterator<Item = String> + 'a {
+    fn product_version_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = String> + 'a {
         self.product_version_name_trie
             .predictive_search(prefix.to_lowercase())
             .map(|(_key, value): (Vec<u8>, &String)| value.to_string())
     }
 
     pub fn product_id_to_name(&self, product_id: &str) -> Option<&str> {
-        self.product_id_to_name_map
-            .get(product_id)
-            .map(|str| str.as_str())
+        self.product_id_to_name_map.get(product_id).map(|str| str.as_str())
     }
 
-    pub fn product_version_id_to_name(
-        &self,
-        product_version_id: &ProductVersionId,
-    ) -> Option<&str> {
+    pub fn product_version_id_to_name(&self, product_version_id: &ProductVersionId) -> Option<&str> {
         self.product_version_id_to_name_map
             .get(product_version_id)
             .map(|str| str.as_str())
@@ -911,11 +844,7 @@ mod test {
 
     #[test]
     fn test_trie_empty_prefix() {
-        let tuples = [
-            ("foo", "foo_data"),
-            ("bar", "bar_data"),
-            ("baz", "baz_data"),
-        ];
+        let tuples = [("foo", "foo_data"), ("bar", "bar_data"), ("baz", "baz_data")];
 
         let mut trie_builder = TrieBuilder::new();
         for (key, value) in tuples.iter() {

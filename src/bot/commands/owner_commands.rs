@@ -27,9 +27,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 )]
 pub(in crate::bot) async fn owner_stats(
     context: Context<'_>,
-    #[description = "if \"False\", response will be public. Defaults to True."] ephemeral: Option<
-        bool,
-    >,
+    #[description = "if \"False\", response will be public. Defaults to True."] ephemeral: Option<bool>,
 ) -> Result<(), Error> {
     let start = Instant::now();
     let db_size = context.data().db.size().await?.div_ceil(1024);
@@ -51,8 +49,7 @@ pub(in crate::bot) async fn owner_stats(
         let shard_manager = context.framework().shard_manager();
         let lock = shard_manager.runners.lock().await;
         for (shard_id, info) in &*lock {
-            shard_list
-                .push_str(format!("\n- {} {:?} {}", shard_id, info.latency, info.stage).as_str());
+            shard_list.push_str(format!("\n- {} {:?} {}", shard_id, info.latency, info.stage).as_str());
         }
     }
     let tokio_metrics = tokio::runtime::Handle::current().metrics();
@@ -81,15 +78,9 @@ pub(in crate::bot) async fn owner_stats(
         tokio_global_queue_depth={tokio_global_queue_depth}\n\
         query time={elapsed_micros}μs" // this is a shitty metric of db load
     );
-    let embed = CreateEmbed::default()
-        .title("Jinx Owner Stats")
-        .description(message);
+    let embed = CreateEmbed::default().title("Jinx Owner Stats").description(message);
     context
-        .send(
-            CreateReply::default()
-                .embed(embed)
-                .ephemeral(ephemeral.unwrap_or(true)),
-        )
+        .send(CreateReply::default().embed(embed).ephemeral(ephemeral.unwrap_or(true)))
         .await?;
     Ok(())
 }
@@ -104,16 +95,9 @@ pub(in crate::bot) async fn owner_stats(
 )]
 pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Error> {
     for guild_id in context.cache().guilds() {
-        context
-            .data()
-            .api_cache
-            .register_guild_in_cache(guild_id)
-            .await?;
+        context.data().api_cache.register_guild_in_cache(guild_id).await?;
     }
-    let reply = success_reply(
-        "Success",
-        "All guilds re-registered in cache refresh worker",
-    );
+    let reply = success_reply("Success", "All guilds re-registered in cache refresh worker");
     context.send(reply).await?;
     Ok(())
 }
@@ -147,15 +131,9 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
 
     // calculate how long each step took
     let metrics_1_elapsed = time_after_metrics_1.duration_since(start).as_micros();
-    let db_clear_elapsed = time_after_db_clear
-        .duration_since(time_after_metrics_1)
-        .as_millis();
-    let cache_clear_elapsed = time_after_cache_clear
-        .duration_since(time_after_db_clear)
-        .as_micros();
-    let metrics_2_elapsed = time_after_metrics_2
-        .duration_since(time_after_cache_clear)
-        .as_micros();
+    let db_clear_elapsed = time_after_db_clear.duration_since(time_after_metrics_1).as_millis();
+    let cache_clear_elapsed = time_after_cache_clear.duration_since(time_after_db_clear).as_micros();
+    let metrics_2_elapsed = time_after_metrics_2.duration_since(time_after_cache_clear).as_micros();
 
     let message = format!(
         "**Before:**\n\
@@ -173,9 +151,7 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
         m2={metrics_2_elapsed}μs"
     );
 
-    let embed = CreateEmbed::default()
-        .title("API Cache Cleared")
-        .description(message);
+    let embed = CreateEmbed::default().title("API Cache Cleared").description(message);
     context
         .send(CreateReply::default().embed(embed).ephemeral(true))
         .await?;
@@ -192,9 +168,7 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
 )]
 pub(in crate::bot) async fn exit(context: Context<'_>) -> Result<(), Error> {
     info!("starting shutdown…");
-    context
-        .send(success_reply("Success", "Shutting down now!"))
-        .await?;
+    context.send(success_reply("Success", "Shutting down now!")).await?;
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
 }
@@ -209,9 +183,7 @@ pub(in crate::bot) async fn exit(context: Context<'_>) -> Result<(), Error> {
 )]
 pub(in crate::bot) async fn restart(context: Context<'_>) -> Result<(), Error> {
     info!("starting restart…");
-    context
-        .send(success_reply("Success", "Restarting now!"))
-        .await?;
+    context.send(success_reply("Success", "Restarting now!")).await?;
     SHOULD_RESTART.store(true, atomic::Ordering::Release);
     context.framework().shard_manager.shutdown_all().await;
     Ok(())
@@ -365,10 +337,7 @@ pub(in crate::bot) async fn verify_guild(
                     }
                 }
 
-                if let Some(guild) = guild_id
-                    .to_guild_cached(&context)
-                    .map(|guild| to_guild_data(guild))
-                {
+                if let Some(guild) = guild_id.to_guild_cached(&context).map(|guild| to_guild_data(guild)) {
                     // guild was valid!
                     let verify_embed = if let Some(expected_owner_id) = owner_id {
                         // we have an expected owner to check
@@ -394,17 +363,13 @@ pub(in crate::bot) async fn verify_guild(
                             .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
                     };
 
-                    let api_embed = if let Some(api_key) =
-                        context.data().db.get_jinxxy_api_key(guild.id).await?
-                    {
+                    let api_embed = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild.id).await? {
                         match jinxxy::get_own_user(&api_key).await {
                             Ok(auth_user) => {
                                 let embed = CreateEmbed::default()
                                     .title("API Verification Success")
                                     .color(Colour::DARK_GREEN);
-                                let embed = if let Some(profile_image_url) =
-                                    auth_user.profile_image_url()
-                                {
+                                let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
                                     embed.thumbnail(profile_image_url)
                                 } else {
                                     embed
@@ -436,36 +401,24 @@ pub(in crate::bot) async fn verify_guild(
                     let guild_embed = {
                         let guild_name = guild.name;
                         let guild_description = guild.description.unwrap_or_default();
-                        let log_channel =
-                            context.data().db.get_log_channel(guild_id).await?.is_some();
+                        let log_channel = context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
-                        let is_administrator =
-                            match util::is_administrator(&context, guild_id).await {
-                                Ok(true) => "true",
-                                Ok(false) => "false",
-                                Err(_) => "error",
-                            };
-                        let license_activation_count = context
-                            .data()
-                            .db
-                            .guild_license_activation_count(guild_id)
-                            .await?;
+                        let is_administrator = match util::is_administrator(&context, guild_id).await {
+                            Ok(true) => "true",
+                            Ok(false) => "false",
+                            Err(_) => "error",
+                        };
+                        let license_activation_count =
+                            context.data().db.guild_license_activation_count(guild_id).await?;
                         let gumroad_failure_count = context
                             .data()
                             .db
                             .get_gumroad_failure_count(guild_id)
                             .await?
                             .unwrap_or(0);
-                        let gumroad_nag_count = context
-                            .data()
-                            .db
-                            .get_gumroad_nag_count(guild_id)
-                            .await?
-                            .unwrap_or(0);
-                        let guild_embed = CreateEmbed::default()
-                            .title("Guild Information")
-                            .description(format!(
-                                "Name={guild_name}\n\
+                        let gumroad_nag_count = context.data().db.get_gumroad_nag_count(guild_id).await?.unwrap_or(0);
+                        let guild_embed = CreateEmbed::default().title("Guild Information").description(format!(
+                            "Name={guild_name}\n\
                                 Description={guild_description}\n\
                                 Log channel={log_channel}\n\
                                 Test={is_test}\n\
@@ -473,7 +426,7 @@ pub(in crate::bot) async fn verify_guild(
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
                                 gumroad nags={gumroad_nag_count}"
-                            ));
+                        ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)
                         } else {

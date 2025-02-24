@@ -29,14 +29,12 @@ const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_D
 const SECONDS_PER_HOUR: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 
 /// Message shown to admins when the Jinxxy API key is missing
-pub static MISSING_API_KEY_MESSAGE: &str =
-    "Jinxxy API key is not set: please use the `/init` command to set it.";
+pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
 
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
 /// commands to be installed globally
-static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
-    LazyLock::new(|| vec![help(), init(), version()]);
+static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| vec![help(), init(), version()]);
 
 /// commands to be installed only after successful Jinxxy init
 static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
@@ -87,8 +85,11 @@ pub async fn run_bot() -> Result<(), Error> {
     let db = JinxDb::open().await?;
     debug!("DB opened");
 
-    let discord_token = db.get_discord_token().await?
-        .ok_or_else(|| JinxError::new("discord token not provided. Re-run the application with the `init` subcommand to run first-time setup."))?;
+    let discord_token = db.get_discord_token().await?.ok_or_else(|| {
+        JinxError::new(
+            "discord token not provided. Re-run the application with the `init` subcommand to run first-time setup.",
+        )
+    })?;
     let intents = GatewayIntents::GUILDS
         .union(GatewayIntents::GUILD_MESSAGES)
         .union(GatewayIntents::DIRECT_MESSAGES);
@@ -133,9 +134,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 verify_guild(),
                 version(),
             ],
-            event_handler: |ctx, event, framework, data| {
-                Box::pin(event_handler(ctx, event, framework, data))
-            },
+            event_handler: |ctx, event, framework, data| Box::pin(event_handler(ctx, event, framework, data)),
             on_error: |e| Box::pin(error_handler(e)),
             initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
             prefix_options: PrefixFrameworkOptions {
@@ -161,8 +160,7 @@ pub async fn run_bot() -> Result<(), Error> {
             Box::pin(async move {
                 let db = framework_db_clone;
                 debug!("registering global commands…");
-                let commands_to_create =
-                    poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
+                let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                 ctx.http.create_global_commands(&commands_to_create).await?;
 
                 // set up the task to periodically optimize the DB
@@ -198,9 +196,7 @@ pub async fn run_bot() -> Result<(), Error> {
         .await
         .expect("Failed to read distinct user count from DB");
     let mut client = serenity::ClientBuilder::new(discord_token, intents)
-        .activity(ActivityData::custom(get_activity_string(
-            distinct_user_count,
-        )))
+        .activity(ActivityData::custom(get_activity_string(distinct_user_count)))
         .framework(framework)
         .await
         .expect("Failed to set bot's initial activity");
@@ -238,27 +234,20 @@ pub async fn run_bot() -> Result<(), Error> {
                                 .send_message((&cache, http.as_ref()), message)
                                 .await
                             {
-                                Ok(_message) => {
-                                    match db.increment_gumroad_nag_count(pending_nag.guild_id).await
-                                    {
-                                        Ok(()) => {
-                                            sent_nag_count += 1;
-                                        }
-                                        Err(e) => {
-                                            error!(
-                                                "failed to increment gumroad nag count for {}: {:?}",
-                                                pending_nag.guild_id.get(),
-                                                e
-                                            );
-                                        }
+                                Ok(_message) => match db.increment_gumroad_nag_count(pending_nag.guild_id).await {
+                                    Ok(()) => {
+                                        sent_nag_count += 1;
                                     }
-                                }
+                                    Err(e) => {
+                                        error!(
+                                            "failed to increment gumroad nag count for {}: {:?}",
+                                            pending_nag.guild_id.get(),
+                                            e
+                                        );
+                                    }
+                                },
                                 Err(e) => {
-                                    error!(
-                                        "failed to send nag message for {}: {:?}",
-                                        pending_nag.guild_id.get(),
-                                        e
-                                    );
+                                    error!("failed to send nag message for {}: {:?}", pending_nag.guild_id.get(), e);
                                 }
                             }
 
@@ -274,11 +263,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 let elapsed = start.elapsed();
                 const EXPECTED_DURATION: Duration = Duration::from_millis(15);
                 if sent_nag_count != 0 || elapsed > EXPECTED_DURATION {
-                    info!(
-                        "sent {} gumroad nags in {}ms",
-                        sent_nag_count,
-                        elapsed.as_millis()
-                    );
+                    info!("sent {} gumroad nags in {}ms", sent_nag_count, elapsed.as_millis());
                 }
 
                 // wait 1 hour for each subsequent nag wave
@@ -306,9 +291,9 @@ pub async fn run_bot() -> Result<(), Error> {
                             distinct_user_count = new_distinct_user_count;
                             let custom_activity = get_activity_string(new_distinct_user_count);
                             for runner in shard_manager.runners.lock().await.values() {
-                                runner.runner_tx.set_activity(Some(ActivityData::custom(
-                                    custom_activity.as_str(),
-                                )));
+                                runner
+                                    .runner_tx
+                                    .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
                             }
                             true
                         } else {

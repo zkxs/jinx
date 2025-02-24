@@ -13,8 +13,8 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serenity::{
-    CacheHttp, ChannelId, Colour, CreateEmbed, GuildId, Http, Message, MessageFlags, MessageType,
-    MessageUpdateEvent, Role, RoleId,
+    CacheHttp, ChannelId, Colour, CreateEmbed, GuildId, Http, Message, MessageFlags, MessageType, MessageUpdateEvent,
+    Role, RoleId,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -26,11 +26,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Check if the calling user is a bot owner
 pub(super) async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
-    Ok(context
-        .data()
-        .db
-        .is_user_owner(context.author().id.get())
-        .await?)
+    Ok(context.data().db.is_user_owner(context.author().id.get()).await?)
 }
 
 /// Set (or reset) guild commands for this guild.
@@ -54,10 +50,7 @@ pub async fn set_guild_commands(
         db.get_jinxxy_api_key(guild_id).await?.is_some()
     };
     let owner_commands = owner.then_some(OWNER_COMMANDS.iter()).into_iter().flatten();
-    let creator_commands = creator
-        .then_some(CREATOR_COMMANDS.iter())
-        .into_iter()
-        .flatten();
+    let creator_commands = creator.then_some(CREATOR_COMMANDS.iter()).into_iter().flatten();
     let command_iter = owner_commands.chain(creator_commands);
     let commands = poise::builtins::create_application_commands(command_iter);
     guild_id.set_commands(http, commands).await?;
@@ -98,9 +91,9 @@ pub(super) async fn assignable_roles(
     let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
         // Despite the above deprecation text I pass a channel in regardless, here.
         // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
-        let guild = guild_id.to_guild_cached(context).ok_or(JinxError::new(
-            "expected guild to be in the Discord client cache",
-        ))?;
+        let guild = guild_id
+            .to_guild_cached(context)
+            .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
         let highest_role = guild.member_highest_role(&bot_member);
         if let Some(highest_role) = highest_role {
             let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
@@ -115,10 +108,7 @@ pub(super) async fn assignable_roles(
             roles.into_iter().map(|role| role.id).collect()
         } else {
             // bot has no roles (this should not be possible)
-            error!(
-                "in {} bot has manage role perms but no roles!",
-                guild_id.get()
-            );
+            error!("in {} bot has manage role perms but no roles!", guild_id.get());
             Default::default()
         }
     } else {
@@ -129,10 +119,7 @@ pub(super) async fn assignable_roles(
     Ok(assignable_roles)
 }
 
-pub(super) async fn is_administrator(
-    context: &Context<'_>,
-    guild_id: GuildId,
-) -> Result<bool, Error> {
+pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -> Result<bool, Error> {
     let bot_id = context.framework().bot_id;
     let bot_member = guild_id.member(context, bot_id).await?;
 
@@ -153,9 +140,7 @@ pub fn create_role_warning_from_roles<T: Iterator<Item = RoleId>>(
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-pub fn create_role_warning_from_unassignable<T: Iterator<Item = RoleId>>(
-    unassignable_roles: T,
-) -> Option<CreateEmbed> {
+pub fn create_role_warning_from_unassignable<T: Iterator<Item = RoleId>>(unassignable_roles: T) -> Option<CreateEmbed> {
     let mut unassignable_roles: Vec<RoleId> = unassignable_roles.into_iter().collect();
     create_role_warning(&mut unassignable_roles)
 }
@@ -173,7 +158,10 @@ fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmb
         }
         let embed = CreateEmbed::default()
             .title("Warning")
-            .description(format!("I don't currently have access to grant the following roles. Please check bot permissions.{}", warning_lines))
+            .description(format!(
+                "I don't currently have access to grant the following roles. Please check bot permissions.{}",
+                warning_lines
+            ))
             .color(Colour::ORANGE);
         Some(embed)
     }
@@ -225,8 +213,7 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
                     const LENGTH_A: usize = 50;
                     const LENGTH_B: usize = MAX_LENGTH - LENGTH_A;
                     let product_name: String = product_name.chars().take(LENGTH_A).collect();
-                    let product_version_name: String =
-                        product_name.chars().take(LENGTH_B).collect();
+                    let product_version_name: String = product_name.chars().take(LENGTH_B).collect();
                     format!("{product_name} {product_version_name}")
                 } else if product_version_len <= PRODUCT_VERSION_MAX_LENGTH {
                     // product version seems short-ish, so I've arbitrarily decided it doesn't need trimming
@@ -237,10 +224,8 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
                     // product version will be truncated to PRODUCT_VERSION_MAX_LENGTH because why the hell not
                     const LENGTH_A: usize = MAX_LENGTH - PRODUCT_VERSION_MAX_LENGTH;
                     let product_name: String = product_name.chars().take(LENGTH_A).collect();
-                    let product_version_name: String = product_version_name
-                        .chars()
-                        .take(PRODUCT_VERSION_MAX_LENGTH)
-                        .collect();
+                    let product_version_name: String =
+                        product_version_name.chars().take(PRODUCT_VERSION_MAX_LENGTH).collect();
                     format!("{product_name} {product_version_name}")
                 }
             } else {
@@ -468,10 +453,7 @@ where
             if !matches!(retry_check, RetryCheck::DoNotRetry) {
                 // set up for the retry we are about to perform
                 retry_count += 1;
-                warn!(
-                    "retry attempt {} on something because: {:?}",
-                    retry_count, e
-                );
+                warn!("retry attempt {} on something because: {:?}", retry_count, e);
             } // else, we're not retrying so there's no reason to do set-up
             retry_check
         }

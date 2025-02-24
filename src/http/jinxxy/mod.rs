@@ -24,8 +24,7 @@ const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
 
 /// Get extra headers needed for Jinxxy API calls
 fn get_headers(api_key: &str) -> header::HeaderMap {
-    let mut api_key = header::HeaderValue::try_from(api_key)
-        .expect("Failed to construct Jinxxy x-api-key header");
+    let mut api_key = header::HeaderValue::try_from(api_key).expect("Failed to construct Jinxxy x-api-key header");
     api_key.set_sensitive(true);
     let mut header_map = header::HeaderMap::new();
     header_map.insert("x-api-key", api_key);
@@ -34,10 +33,7 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
 
 /// Generic handler for any requests with non-successful status codes. Not suitable for requests
 /// where some status codes are expected.
-async fn handle_unexpected_status(
-    endpoint: &'static str,
-    response: Response,
-) -> Result<Response, JinxError> {
+async fn handle_unexpected_status(endpoint: &'static str, response: Response) -> Result<Response, JinxError> {
     if response.status().is_success() {
         Ok(response)
     } else {
@@ -81,10 +77,7 @@ pub enum LicenseKey<'a> {
 ///
 /// Note that this function does **not** verify if a provided license ID is valid: it only converts
 /// keys into IDs.
-pub async fn get_license_id(
-    api_key: &str,
-    license: LicenseKey<'_>,
-) -> Result<Option<String>, Error> {
+pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Option<String>, Error> {
     match license {
         LicenseKey::Id(license_id) => {
             // maybe one day I'll need to verify these, but not today
@@ -125,12 +118,7 @@ pub async fn check_license_id(
     license_id: &str,
     inject_product_version_name: bool,
 ) -> Result<Option<LicenseInfo>, Error> {
-    check_license(
-        api_key,
-        LicenseKey::Id(license_id),
-        inject_product_version_name,
-    )
-    .await
+    check_license(api_key, LicenseKey::Id(license_id), inject_product_version_name).await
 }
 
 /// Get the license info corresponding to a license key, or `None` if the license key is invalid.
@@ -150,10 +138,7 @@ pub async fn check_license(
                 .headers(get_headers(api_key))
                 .send()
                 .await?;
-            debug!(
-                "GET /licenses/<id> took {}ms",
-                start_time.elapsed().as_millis()
-            );
+            debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
             if response.status().is_success() {
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
@@ -202,10 +187,7 @@ pub async fn check_license(
                     .headers(get_headers(api_key))
                     .send()
                     .await?;
-                debug!(
-                    "GET /licenses/<id> took {}ms",
-                    start_time.elapsed().as_millis()
-                );
+                debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
                 let response = handle_unexpected_status("GET /licenses/<id>", response).await?;
                 let response: dto::License = response.json().await?;
                 let mut response: LicenseInfo = response.into();
@@ -222,18 +204,13 @@ pub async fn check_license(
 }
 
 /// This performs an API call to get_product
-async fn add_product_version_name_to_license_info(
-    api_key: &str,
-    license_info: &mut LicenseInfo,
-) -> Result<(), Error> {
+async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<(), Error> {
     if let Some(product_version_info) = &mut license_info.product_version_info {
         let product = get_product(api_key, &license_info.product_id).await?;
         if let Some(product_version_name) = product
             .versions
             .into_iter()
-            .find(|found_product_version| {
-                found_product_version.id == product_version_info.product_version_id
-            })
+            .find(|found_product_version| found_product_version.id == product_version_info.product_version_id)
             .map(|found_product_version| found_product_version.name)
         {
             product_version_info.product_version_name = product_version_name;
@@ -243,10 +220,7 @@ async fn add_product_version_name_to_license_info(
 }
 
 /// Get list of all license activations
-pub async fn get_license_activations(
-    api_key: &str,
-    license_id: &str,
-) -> Result<Vec<LicenseActivation>, Error> {
+pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<Vec<LicenseActivation>, Error> {
     //TODO: build db cache into this using "Etag" header value into "If-None-Match" header value, and check for 304 Not Modified
     //TODO: ...actually... ugh this thing is a list. Is this thing cache-safe?
     //TODO: stop calling db from outside this function
@@ -271,18 +245,11 @@ pub async fn get_license_activations(
 }
 
 /// Create a new license activation
-pub async fn create_license_activation(
-    api_key: &str,
-    license_id: &str,
-    user_id: u64,
-) -> Result<String, Error> {
+pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> Result<String, Error> {
     let body = dto::CreateLicenseActivation::from_user_id(user_id);
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .post(format!(
-            "{}licenses/{}/activations",
-            JINXXY_BASE_URL, license_id
-        ))
+        .post(format!("{}licenses/{}/activations", JINXXY_BASE_URL, license_id))
         .headers(get_headers(api_key))
         .header(header::CONTENT_TYPE, "application/json")
         .json(&body)
@@ -298,11 +265,7 @@ pub async fn create_license_activation(
 }
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
-pub async fn delete_license_activation(
-    api_key: &str,
-    license_id: &str,
-    activation_id: &str,
-) -> Result<bool, Error> {
+pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .delete(format!(
@@ -344,10 +307,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
         .headers(get_headers(api_key))
         .send()
         .await?;
-    debug!(
-        "GET /products/<id> took {}ms",
-        start_time.elapsed().as_millis()
-    );
+    debug!("GET /products/<id> took {}ms", start_time.elapsed().as_millis());
     let response = handle_unexpected_status("GET /products/<id>", response).await?;
 
     let response: FullProduct = response.json().await?;
@@ -382,9 +342,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
         for partial_product in partial_products {
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
-            join_set.spawn(async move {
-                util::retry_thrice(|| get_product(&api_key, &product_id)).await
-            });
+            join_set.spawn(async move { util::retry_thrice(|| get_product(&api_key, &product_id)).await });
         }
         while let Some(full_product) = join_set.join_next().await {
             products.push(full_product??);
@@ -512,12 +470,8 @@ pub trait GetProfileUrl {
 
 impl<T: GetUsername> GetProfileUrl for T {
     fn profile_url(&self) -> Option<String> {
-        self.username().map(|username| {
-            format!(
-                "https://jinxxy.com/{}",
-                utf8_percent_encode(username, NON_ALPHANUMERIC)
-            )
-        })
+        self.username()
+            .map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
     }
 }
 

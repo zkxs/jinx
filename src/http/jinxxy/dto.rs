@@ -47,14 +47,13 @@ pub struct License {
 
 impl From<License> for super::LicenseInfo {
     fn from(license: License) -> Self {
-        let product_version_info =
-            license
-                .inventory_item
-                .target_version_id
-                .map(|version_id| ProductVersionInfo {
-                    product_version_id: version_id,
-                    product_version_name: String::new(), // this gets injected later after some async stuff happens, don't worry about it for now
-                });
+        let product_version_info = license
+            .inventory_item
+            .target_version_id
+            .map(|version_id| ProductVersionInfo {
+                product_version_id: version_id,
+                product_version_name: String::new(), // this gets injected later after some async stuff happens, don't worry about it for now
+            });
         Self {
             license_id: license.id,
             short_key: license.short_key,
@@ -121,9 +120,7 @@ impl AuthUser {
 
     /// Check if this API key has all the required scopes
     pub fn has_required_scopes(&self) -> bool {
-        self.has_scope_licenses_read()
-            && self.has_scope_licenses_write()
-            && self.has_scope_products_read()
+        self.has_scope_licenses_read() && self.has_scope_licenses_write() && self.has_scope_products_read()
     }
 
     /// Check if this API key has the `products_read` scope
@@ -236,11 +233,7 @@ pub struct ProductList {
 
 impl From<ProductList> for Vec<PartialProduct> {
     fn from(product_list: ProductList) -> Self {
-        product_list
-            .results
-            .into_iter()
-            .map(|item| item.into())
-            .collect()
+        product_list.results.into_iter().map(|item| item.into()).collect()
     }
 }
 
@@ -278,9 +271,13 @@ pub struct LicenseActivation {
 impl LicenseActivation {
     /// Try to extract a Discord user ID from this license activation
     pub fn try_into_user_id(&self) -> Option<u64> {
-        JINXXY_ACTIVATION_DESCRIPTION_REGEX.with(|regex| regex.captures(&self.description))
+        JINXXY_ACTIVATION_DESCRIPTION_REGEX
+            .with(|regex| regex.captures(&self.description))
             .or_else(|| {
-                warn!("JINXXY_ACTIVATION_DESCRIPTION_REGEX did not match Jinxxy license activation description \"{}\"", self.description);
+                warn!(
+                    "JINXXY_ACTIVATION_DESCRIPTION_REGEX did not match Jinxxy license activation description \"{}\"",
+                    self.description
+                );
                 None
             })
             .and_then(|captures| {
@@ -289,24 +286,19 @@ impl LicenseActivation {
                     error!("JINXXY_ACTIVATION_DESCRIPTION_REGEX capture group 1 not found!");
                 }
                 capture
-            }).and_then(|capture| {
-            match capture.as_str().parse::<u64>() {
-                Ok(id) => {
-                    Some(id)
-                }
+            })
+            .and_then(|capture| match capture.as_str().parse::<u64>() {
+                Ok(id) => Some(id),
                 Err(e) => {
                     error!("error parsing activation description \"{}\": {:?}", self.description, e);
                     None
                 }
-            }
-        })
+            })
     }
 
     /// Check if this activation is a lock
     pub fn is_lock(&self) -> bool {
-        self.try_into_user_id()
-            .map(|id| id == LOCKING_USER_ID)
-            .unwrap_or(false)
+        self.try_into_user_id().map(|id| id == LOCKING_USER_ID).unwrap_or(false)
     }
 }
 
@@ -345,16 +337,14 @@ impl JinxxyError {
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
     pub fn looks_like_403(&self) -> bool {
-        self.status_code == 403
-            || (self.error == "Bad Request" && self.message == "You are not authorized.")
+        self.status_code == 403 || (self.error == "Bad Request" && self.message == "You are not authorized.")
     }
 
     /// Check if an error looks like a 404.
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
     pub fn looks_like_404(&self) -> bool {
-        self.status_code == 404
-            || (self.error == "Bad Request" && self.message == "Resource not found.")
+        self.status_code == 404 || (self.error == "Bad Request" && self.message == "Resource not found.")
     }
 }
 
