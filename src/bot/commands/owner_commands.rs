@@ -39,10 +39,9 @@ pub(in crate::bot) async fn owner_stats(
     let blanket_role_count = context.data().db.blanket_role_count().await?;
     let product_role_count = context.data().db.product_role_count().await?;
     let product_version_role_count = context.data().db.product_version_role_count().await?;
-    let api_cache_products = context.data().api_cache.product_count().await;
-    let api_cache_product_versions = context.data().api_cache.product_version_count().await;
+    let api_cache_products = context.data().api_cache.product_count();
+    let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
-    let api_cache_capacity = context.data().api_cache.capacity();
     let log_channel_count = context.data().db.log_channel_count().await?;
     let user_count = context.serenity_context().cache.user_count();
     let cached_guild_count = context.serenity_context().cache.guild_count();
@@ -76,7 +75,6 @@ pub(in crate::bot) async fn owner_stats(
         API cache total products={api_cache_products}\n\
         API cache total product versions={api_cache_product_versions}\n\
         API cache guilds={api_cache_len}\n\
-        API cache guild capacity={api_cache_capacity}\n\
         shards={shard_count}{shard_list}\n\
         tokio_num_workers={tokio_num_workers}\n\
         tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
@@ -131,22 +129,20 @@ pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Err
 pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
 
-    let before_api_cache_products = context.data().api_cache.product_count().await;
-    let before_api_cache_product_versions = context.data().api_cache.product_version_count().await;
+    let before_api_cache_products = context.data().api_cache.product_count();
+    let before_api_cache_product_versions = context.data().api_cache.product_version_count();
     let before_api_cache_len = context.data().api_cache.len();
-    let before_api_cache_capacity = context.data().api_cache.capacity();
     let time_after_metrics_1 = Instant::now();
 
     context.data().db.clear_cache().await?;
     let time_after_db_clear = Instant::now();
 
-    context.data().api_cache.clear().await;
+    context.data().api_cache.clear();
     let time_after_cache_clear = Instant::now();
 
-    let after_api_cache_products = context.data().api_cache.product_count().await;
-    let after_api_cache_product_versions = context.data().api_cache.product_version_count().await;
+    let after_api_cache_products = context.data().api_cache.product_count();
+    let after_api_cache_product_versions = context.data().api_cache.product_version_count();
     let after_api_cache_len = context.data().api_cache.len();
-    let after_api_cache_capacity = context.data().api_cache.capacity();
     let time_after_metrics_2 = Instant::now();
 
     // calculate how long each step took
@@ -166,12 +162,10 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
         API cache total products={before_api_cache_products}\n\
         API cache total product versions={before_api_cache_product_versions}\n\
         API cache guilds={before_api_cache_len}\n\
-        API cache guild capacity={before_api_cache_capacity}\n\n\
         **After:**\n\
         API cache total products={after_api_cache_products}\n\
         API cache total product versions={after_api_cache_product_versions}\n\
         API cache guilds={after_api_cache_len}\n\
-        API cache guild capacity={after_api_cache_capacity}\n\n\
         **Elapsed:**\n\
         m1={metrics_1_elapsed}μs\n\
         db={db_clear_elapsed}ms\n\

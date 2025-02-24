@@ -20,7 +20,6 @@ use crate::http::jinxxy::{
 };
 use crate::time::SimpleTime;
 use poise::serenity_prelude::GuildId;
-use scc::hash_map::Entry;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
@@ -31,7 +30,7 @@ use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type MapType = Arc<scc::HashMap<GuildId, GuildCache, ahash::RandomState>>;
+type MapType = Arc<papaya::HashMap<GuildId, GuildCache, ahash::RandomState>>;
 
 /// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
@@ -67,9 +66,8 @@ impl ApiCache {
             tokio::task::spawn(async move {
                 while let Some(guild_id) = high_priority_rx.recv().await {
                     // first, check to make sure this entry is still expired
-                    let needs_refresh = map
-                        .get_async(&guild_id)
-                        .await
+                    let needs_refresh = map.pin()
+                        .get(&guild_id)
                         .map(|entry| entry.is_expired_high_priority())
                         .unwrap_or(true);
 
@@ -84,7 +82,7 @@ impl ApiCache {
                                     .await
                                     {
                                         Ok(guild_cache) => {
-                                            map.upsert_async(guild_id, guild_cache).await;
+                                            map.pin().insert(guild_id, guild_cache);
                                         }
                                         Err(e) => {
                                             warn!(
@@ -226,8 +224,8 @@ impl ApiCache {
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
-                                    let (load, try_db_load) = map
-                                        .read_async(&queue_entry.guild_id, |_key, value| {
+                                    let (load, try_db_load) = map.pin().get(&queue_entry.guild_id)
+                                        .map(|value| {
                                             if value.is_expired_low_priority(now) {
                                                 // entry exists and was expired
                                                 // no need to do a DB load because we obviously already have data in memory
@@ -238,7 +236,6 @@ impl ApiCache {
                                                 (false, false)
                                             }
                                         })
-                                        .await
                                         .unwrap_or((true, true)); // or else entry did NOT exist in memory, so it's worth trying a db load
 
                                     let guild_valid = if load {
@@ -327,11 +324,10 @@ impl ApiCache {
                                                                     cache_entry.create_time;
 
                                                                 // actually update the dang cache!
-                                                                map.upsert_async(
+                                                                map.pin().insert(
                                                                     queue_entry.guild_id,
                                                                     cache_entry,
-                                                                )
-                                                                .await;
+                                                                );
                                                                 true
                                                             }
                                                             Err(e) => {
@@ -487,74 +483,60 @@ impl ApiCache {
     where
         F: FnOnce(&GuildCache) -> T,
     {
-        match self.map.entry_async(guild_id).await {
-            Entry::Occupied(entry) => {
-                if entry.is_expired_high_priority() {
-                    debug!(
-                        "queuing priority product cache refresh for {} due to expiry",
-                        guild_id.get()
-                    );
-                    self.refresh_guild_in_cache(guild_id).await?;
-                }
+        let (result, expired) = if let Some(entry) = self.map.pin().get(&guild_id) {
+            // got an entry; return it immediately, even if it's expired
+            let result = f(entry);
+            let expired = entry.is_expired_high_priority();
+            (result, expired)
+        } else {
+            info!("cache missed! Falling back to direct API request for {}", guild_id.get());
+            let api_key = db
+                .get_jinxxy_api_key(guild_id)
+                .await?
+                .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
 
-                // ensure this guild is registered in the cache
-                self.register_guild_in_cache(guild_id).await?;
+            // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
+            let guild_cache =
+                GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
+            let result = f(&guild_cache);
 
-                // got an entry; return it immediately, even if it's expired
-                Ok(f(entry.get()))
-            }
-            Entry::Vacant(entry) => {
-                info!(
-                    "cache missed! Falling back to direct API request for {}",
-                    guild_id.get()
-                );
-                let api_key = db
-                    .get_jinxxy_api_key(guild_id)
-                    .await?
-                    .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
-                // we had a cache miss, implying that there's no reason to load from db
-                let guild_cache =
-                    GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
-                let result = f(&guild_cache);
+            // update the cache
+            self.map.pin().insert(guild_id, guild_cache);
 
-                // update the cache
-                entry.insert_entry(guild_cache);
+            // it is nonsensical for a freshly-created entry to be expired, so hardcode expired=false
+            (result, false)
+        };
 
-                // ensure this guild is registered in the cache
-                self.register_guild_in_cache(guild_id).await?;
-
-                Ok(result)
-            }
+        // ensure expired guild gets a priority refresh, as it has a very high chance of having get() called again soon
+        if expired {
+            debug!("queuing priority product cache refresh for {} due to expiry", guild_id.get());
+            self.refresh_guild_in_cache(guild_id).await?;
         }
+
+        // ensure this guild is registered in the cache
+        self.register_guild_in_cache(guild_id).await?;
+
+        Ok(result)
     }
 
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    pub fn capacity(&self) -> usize {
-        self.map.capacity()
+    pub fn product_count(&self) -> usize {
+        let map = self.map.pin();
+        map.values().map(|guild_cache| guild_cache.product_count()).sum()
     }
 
-    pub async fn product_count(&self) -> usize {
-        let mut count = 0;
-        self.map
-            .scan_async(|_key, value| count += value.product_count())
-            .await;
-        count
-    }
-
-    pub async fn product_version_count(&self) -> usize {
-        let mut count = 0;
-        self.map
-            .scan_async(|_key, value| count += value.product_version_count())
-            .await;
-        count
+    pub fn product_version_count(&self) -> usize {
+        let map = self.map.pin();
+        map.values().map(|guild_cache| guild_cache.product_version_count()).sum()
     }
 
     /// Remove all cache entries
-    pub async fn clear(&self) {
-        self.map.clear_async().await;
+    pub fn clear(&self) {
+        let map = self.map.pin();
+        map.clear();
     }
 
     pub async fn product_names_with_prefix(

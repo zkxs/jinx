@@ -5,7 +5,6 @@ use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
-use scc::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tokio::time::Instant;
@@ -18,7 +17,7 @@ const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
     connection: Connection,
-    api_key_cache: scc::HashMap<GuildId, Option<String>, ahash::RandomState>,
+    api_key_cache: papaya::HashMap<GuildId, Option<String>, ahash::RandomState>,
 }
 
 impl Drop for JinxDb {
@@ -408,34 +407,32 @@ impl JinxDb {
             statement.execute(named_params! {":guild": guild.get(), ":api_key": api_key_clone})?;
             Ok(())
         }).await?;
-        self.api_key_cache.upsert_async(guild, Some(api_key)).await;
+        let api_key_cache = self.api_key_cache.pin();
+        api_key_cache.insert(guild, Some(api_key));
         Ok(())
     }
 
     /// Get Jinxxy API key for this guild
     pub async fn get_jinxxy_api_key(&self, guild: GuildId) -> Result<Option<String>> {
-        match self.api_key_cache.entry_async(guild).await {
-            Entry::Occupied(entry) => {
-                // cached read
-                Ok(entry.get().clone())
-            }
-            Entry::Vacant(entry) => {
-                // cache miss
-                let api_key = self
-                    .connection
-                    .call(move |connection| {
-                        let mut statement = connection.prepare_cached(
-                            "SELECT jinxxy_api_key FROM guild WHERE guild_id = ?",
-                        )?;
-                        let result: Option<String> = statement
-                            .query_row([guild.get()], |row| row.get(0))
-                            .optional()?;
-                        Ok(result)
-                    })
-                    .await?;
-                entry.insert_entry(api_key.clone());
-                Ok(api_key)
-            }
+        if let Some(api_key) = self.api_key_cache.pin().get(&guild) {
+            // cache hit
+            Ok(api_key.clone())
+        } else {
+            // cache miss
+            let api_key = self
+                .connection
+                .call(move |connection| {
+                    let mut statement = connection.prepare_cached(
+                        "SELECT jinxxy_api_key FROM guild WHERE guild_id = ?",
+                    )?;
+                    let result: Option<String> = statement
+                        .query_row([guild.get()], |row| row.get(0))
+                        .optional()?;
+                    Ok(result)
+                })
+                .await?;
+            self.api_key_cache.pin().insert(guild, api_key.clone());
+            Ok(api_key)
         }
     }
 
