@@ -13,7 +13,7 @@ use crate::bot::event_handler::event_handler;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use commands::*;
-use poise::{serenity_prelude as serenity, Command, PrefixFrameworkOptions};
+use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
 use serenity::{ActivityData, Colour, CreateEmbed, CreateMessage, GatewayIntents};
 use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
@@ -245,7 +245,11 @@ pub async fn run_bot() -> Result<(), Error> {
                                             sent_nag_count += 1;
                                         }
                                         Err(e) => {
-                                            error!("failed to increment gumroad nag count for {}: {:?}", pending_nag.guild_id.get(), e);
+                                            error!(
+                                                "failed to increment gumroad nag count for {}: {:?}",
+                                                pending_nag.guild_id.get(),
+                                                e
+                                            );
                                         }
                                     }
                                 }

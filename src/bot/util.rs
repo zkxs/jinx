@@ -3,12 +3,12 @@
 
 //! Utils used by bot commands.
 
-use crate::bot::{Context, CREATOR_COMMANDS, OWNER_COMMANDS};
+use crate::bot::{CREATOR_COMMANDS, Context, OWNER_COMMANDS};
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
-use poise::{serenity_prelude as serenity, CreateReply};
+use poise::{CreateReply, serenity_prelude as serenity};
 use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

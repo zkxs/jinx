@@ -10,7 +10,7 @@
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 
 use crate::bot::MISSING_API_KEY_MESSAGE;
-use crate::bot::{util, SECONDS_PER_DAY};
+use crate::bot::{SECONDS_PER_DAY, util};
 use crate::db;
 use crate::db::JinxDb;
 use crate::error::JinxError;
@@ -26,7 +26,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
@@ -87,16 +87,27 @@ impl ApiCache {
                                             map.upsert_async(guild_id, guild_cache).await;
                                         }
                                         Err(e) => {
-                                            warn!("Error initializing API cache during high-priority refresh for {}: {:?}", guild_id.get(), e);
+                                            warn!(
+                                                "Error initializing API cache during high-priority refresh for {}: {:?}",
+                                                guild_id.get(),
+                                                e
+                                            );
                                         }
                                     }
                                 }
                                 None => {
-                                    warn!("High-priority refresh was somehow triggered for guild {}, which has no api key set!", guild_id);
+                                    warn!(
+                                        "High-priority refresh was somehow triggered for guild {}, which has no api key set!",
+                                        guild_id
+                                    );
                                 }
                             },
                             Err(e) => {
-                                warn!("Error retrieving API key during high-priority refresh for {}: {:?}", guild_id.get(), e);
+                                warn!(
+                                    "Error retrieving API key during high-priority refresh for {}: {:?}",
+                                    guild_id.get(),
+                                    e
+                                );
                             }
                         }
                     }
@@ -156,7 +167,11 @@ impl ApiCache {
                                     .unwrap_or_default();
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining != Duration::ZERO {
-                                    debug!("new guild {} registered; low-priority worker sleeping for {}s", guild_id, remaining.as_secs());
+                                    debug!(
+                                        "new guild {} registered; low-priority worker sleeping for {}s",
+                                        guild_id,
+                                        remaining.as_secs()
+                                    );
                                 }
                                 sleep_duration = Some(remaining);
                             }
@@ -233,9 +248,9 @@ impl ApiCache {
                                                 match api_key {
                                                     Some(api_key) => {
                                                         debug!(
-                                                        "starting low priority refresh of cache for {}",
-                                                        queue_entry.guild_id.get()
-                                                    );
+                                                            "starting low priority refresh of cache for {}",
+                                                            queue_entry.guild_id.get()
+                                                        );
 
                                                         let guild_cache = if try_db_load {
                                                             // try a DB load instead of an API load
@@ -252,13 +267,21 @@ impl ApiCache {
                                                                             now,
                                                                         )
                                                                     {
-                                                                        debug!("DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.", queue_entry.guild_id.get());
+                                                                        debug!(
+                                                                            "DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.",
+                                                                            queue_entry
+                                                                                .guild_id
+                                                                                .get()
+                                                                        );
                                                                     }
                                                                     Ok(cache_entry)
                                                                 }
                                                                 Ok(None) => {
                                                                     // DB had no data
-                                                                    debug!("DB cache miss trying to initialize API cache for {}. Falling back to API load.", queue_entry.guild_id.get());
+                                                                    debug!(
+                                                                        "DB cache miss trying to initialize API cache for {}. Falling back to API load.",
+                                                                        queue_entry.guild_id.get()
+                                                                    );
                                                                     GuildCache::from_jinxxy_api::<
                                                                         false,
                                                                     >(
@@ -271,7 +294,11 @@ impl ApiCache {
                                                                 Err(e) => {
                                                                     // uh this is probably bad because DB read shouldn't fail
                                                                     // fall back to an API load anyways
-                                                                    error!("DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}", queue_entry.guild_id.get(), e);
+                                                                    error!(
+                                                                        "DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}",
+                                                                        queue_entry.guild_id.get(),
+                                                                        e
+                                                                    );
                                                                     GuildCache::from_jinxxy_api::<
                                                                         false,
                                                                     >(
@@ -308,7 +335,11 @@ impl ApiCache {
                                                                 true
                                                             }
                                                             Err(e) => {
-                                                                warn!("Error initializing API cache during low-priority refresh for {}: {:?}", queue_entry.guild_id.get(), e);
+                                                                warn!(
+                                                                    "Error initializing API cache during low-priority refresh for {}: {:?}",
+                                                                    queue_entry.guild_id.get(),
+                                                                    e
+                                                                );
 
                                                                 match jinxxy::get_own_user(&api_key)
                                                                     .await
@@ -319,12 +350,23 @@ impl ApiCache {
                                                                         if !auth_user
                                                                             .has_required_scopes()
                                                                         {
-                                                                            warn!("Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.", queue_entry.guild_id.get());
+                                                                            warn!(
+                                                                                "Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.",
+                                                                                queue_entry
+                                                                                    .guild_id
+                                                                                    .get()
+                                                                            );
                                                                         }
                                                                         true
                                                                     }
                                                                     Err(e) => {
-                                                                        info!("error checking /me for guild {}, will unregister now: {:?}", queue_entry.guild_id.get(), e);
+                                                                        info!(
+                                                                            "error checking /me for guild {}, will unregister now: {:?}",
+                                                                            queue_entry
+                                                                                .guild_id
+                                                                                .get(),
+                                                                            e
+                                                                        );
                                                                         false
                                                                     }
                                                                 }
@@ -332,13 +374,20 @@ impl ApiCache {
                                                         }
                                                     }
                                                     None => {
-                                                        info!("low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.", queue_entry.guild_id.get());
+                                                        info!(
+                                                            "low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.",
+                                                            queue_entry.guild_id.get()
+                                                        );
                                                         false
                                                     }
                                                 }
                                             }
                                             Err(e) => {
-                                                warn!("Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}", queue_entry.guild_id.get(), e);
+                                                warn!(
+                                                    "Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}",
+                                                    queue_entry.guild_id.get(),
+                                                    e
+                                                );
                                                 false
                                             }
                                         }
@@ -367,7 +416,9 @@ impl ApiCache {
                             } // end work loop
 
                             if work_counter > MAX_WORK_COUNT {
-                                warn!("ended low-priority work loop due to exceeding maximum loop count!");
+                                warn!(
+                                    "ended low-priority work loop due to exceeding maximum loop count!"
+                                );
                                 //TODO: print debug information on variable state to hopefully get to the bottom of why this happened
                             }
 

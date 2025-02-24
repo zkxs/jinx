@@ -1,14 +1,14 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::Context;
 use crate::bot::util;
 use crate::bot::util::{check_owner, error_reply, success_reply};
-use crate::bot::Context;
 use crate::constants;
 use crate::error::JinxError;
 use crate::http::{jinxxy, update_checker};
-use poise::serenity_prelude as serenity;
 use poise::CreateReply;
+use poise::serenity_prelude as serenity;
 use regex::Regex;
 use serenity::{Colour, CreateEmbed};
 use std::sync::LazyLock;
@@ -35,13 +35,11 @@ thread_local! {
     interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn help(context: Context<'_>) -> Result<(), Error> {
-    let embed = CreateEmbed::default()
-        .title("Jinx Help")
-        .description(
-            "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys.\n\
+    let embed = CreateEmbed::default().title("Jinx Help").description(
+        "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys.\n\
             For documentation, see https://github.com/zkxs/jinx\n\
-            For support, join https://discord.gg/aKkA6m26f9"
-        );
+            For support, join https://discord.gg/aKkA6m26f9",
+    );
     let reply = CreateReply::default().ephemeral(true).embed(embed);
     context.send(reply).await?;
     Ok(())
@@ -140,7 +138,12 @@ pub(in crate::bot) async fn init(
                     .await?;
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true))
                     .await?;
-                let reply = success_reply("Success", format!("Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."));
+                let reply = success_reply(
+                    "Success",
+                    format!(
+                        "Welcome, {display_name}! API key set and additional slash commands enabled. Please continue bot setup."
+                    ),
+                );
                 if has_required_scopes {
                     context
                         .data()
@@ -169,7 +172,10 @@ pub(in crate::bot) async fn init(
             guild_id.get(),
             api_key
         ); // log it to try and diagnose why people have trouble with the initial setup
-        error_reply("Error Initializing Jinx","Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).")
+        error_reply(
+            "Error Initializing Jinx",
+            "Provided API key appears to be invalid. API keys should look like `sk_9bba2064ee8c20aa4fd6b015eed2001a`. If you need help, bot setup documentation can be found [here](<https://github.com/zkxs/jinx#installation>).",
+        )
     };
 
     context.send(reply).await?;

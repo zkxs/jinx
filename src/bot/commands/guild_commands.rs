@@ -10,9 +10,9 @@ use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
+use poise::CreateReply;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::GuildId;
-use poise::CreateReply;
 use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage,
     RoleId,
@@ -107,7 +107,14 @@ pub(in crate::bot) async fn set_log_channel(
                 Err(e) => {
                     // test log failed, so let the user know
                     warn!("Error sending message to test log channel: {:?}", e);
-                    error_reply("Error Setting Log Channel", format!("Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.", channel.get(), e))
+                    error_reply(
+                        "Error Setting Log Channel",
+                        format!(
+                            "Log channel not set because there was an error sending a message to <#{}>: {}. Please check bot and channel permissions.",
+                            channel.get(),
+                            e
+                        ),
+                    )
                 }
             }
         }
@@ -134,11 +141,11 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
 
     let channel = context.channel_id();
 
-    let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(
-        REGISTER_BUTTON_ID,
-    )
-    .label("Register")
-    .style(ButtonStyle::Primary)])];
+    let components = vec![CreateActionRow::Buttons(vec![
+        CreateButton::new(REGISTER_BUTTON_ID)
+            .label("Register")
+            .style(ButtonStyle::Primary),
+    ])];
 
     let api_key = context
         .data()
@@ -166,7 +173,10 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
 
             if let Err(e) = channel.send_message(context, message).await {
                 warn!("Error in /create_post when sending message: {:?}", e);
-                error_reply("Error Creating Post", "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.")
+                error_reply(
+                    "Error Creating Post",
+                    "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.",
+                )
             } else {
                 success_reply("Success", "Registration post created!")
             }
@@ -375,7 +385,13 @@ pub async fn deactivate_license(
                 ),
             )
         } else {
-            error_reply("Error Deactivating License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply(
+                "Error Deactivating License",
+                format!(
+                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
+                    license
+                ),
+            )
         }
     } else {
         error_reply("Error Deactivating License", MISSING_API_KEY_MESSAGE)
@@ -482,7 +498,10 @@ pub async fn license_info(
                 // license is invalid... but we somehow found it in the license list search by key?
                 // that or an ID was provided directly
                 let message = if local_license_users.is_empty() {
-                    format!("License `{} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`", license)
+                    format!(
+                        "License `{} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`",
+                        license
+                    )
                 } else {
                     let mut message =
                         format!("License `{}` not found, but somehow has users:", license);
@@ -501,7 +520,13 @@ pub async fn license_info(
                 error_reply("License Info Validation Error", message)
             }
         } else {
-            error_reply("Error Getting License Info", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply(
+                "Error Getting License Info",
+                format!(
+                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
+                    license
+                ),
+            )
         }
     } else {
         error_reply("Error Getting License Info", MISSING_API_KEY_MESSAGE)
@@ -547,7 +572,13 @@ pub async fn lock_license(
                 ),
             )
         } else {
-            error_reply("Error Locking License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply(
+                "Error Locking License",
+                format!(
+                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
+                    license
+                ),
+            )
         }
     } else {
         error_reply("Error Locking License", MISSING_API_KEY_MESSAGE)
@@ -597,12 +628,21 @@ pub async fn unlock_license(
                     license
                 )
             } else {
-                format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license)
+                format!(
+                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
+                    license
+                )
             };
 
             success_reply("Success", message)
         } else {
-            error_reply("Error Unlocking License", format!("License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.", license))
+            error_reply(
+                "Error Unlocking License",
+                format!(
+                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
+                    license
+                ),
+            )
         }
     } else {
         error_reply("Error Unlocking License", MISSING_API_KEY_MESSAGE)

@@ -14,7 +14,7 @@ use poise::serenity_prelude::{
     CreateInteractionResponse, CreateMessage, CreateModal, EditInteractionResponse, FullEvent,
     InputTextStyle, Interaction,
 };
-use poise::{serenity_prelude as serenity, FrameworkContext};
+use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use std::sync::LazyLock;
 use tracing::{debug, error, info, warn};
@@ -187,7 +187,10 @@ async fn event_handler_inner<'a>(
                 {
                     // Easter egg: when the owner says something matching a specific regex, try to reply
                     if let Err(e) = new_message.reply_ping(context, "no, you! 😳").await {
-                        warn!("Unable to reply to owner easter-egg prompt. Falling back to reaction. Error: {:?}", e);
+                        warn!(
+                            "Unable to reply to owner easter-egg prompt. Falling back to reaction. Error: {:?}",
+                            e
+                        );
                         if let Err(e) = new_message.react(context, '😳').await {
                             warn!("Unable to react to owner easter-egg prompt: {:?}", e);
                         }
@@ -313,7 +316,13 @@ async fn event_handler_inner<'a>(
                                 );
                             } else {
                                 // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
-                                debug!("failed to verify license \"{}\" in {} for <@{}> which looks like {}", license_key, guild_id.get(), user_id.get(), license_type);
+                                debug!(
+                                    "failed to verify license \"{}\" in {} for <@{}> which looks like {}",
+                                    license_key,
+                                    guild_id.get(),
+                                    user_id.get(),
+                                    license_type
+                                );
                             }
 
                             if matches!(license_type, LicenseType::Gumroad) {
@@ -380,9 +389,15 @@ async fn event_handler_inner<'a>(
                                         data.db.get_log_channel(guild_id).await?
                                     {
                                         let message = if validation.locked {
-                                            format!("<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.", user_id.get())
+                                            format!(
+                                                "<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.",
+                                                user_id.get()
+                                            )
                                         } else {
-                                            let mut message = format!("<@{}> attempted to activate a license that has already been used by:", user_id.get());
+                                            let mut message = format!(
+                                                "<@{}> attempted to activate a license that has already been used by:",
+                                                user_id.get()
+                                            );
                                             activations
                                                 .iter()
                                                 .flat_map(|vec| vec.iter())
@@ -412,7 +427,13 @@ async fn event_handler_inner<'a>(
                                 } else {
                                     // log if multiple activations for this user
                                     if validation.multiple {
-                                        warn!("in {} <@{}> is about to activate {}. User already has multiple activations: {:?}", guild_id.get(), user_id.get(), license_info.license_id, activations);
+                                        warn!(
+                                            "in {} <@{}> is about to activate {}. User already has multiple activations: {:?}",
+                                            guild_id.get(),
+                                            user_id.get(),
+                                            license_info.license_id,
+                                            activations
+                                        );
                                     }
 
                                     // check our db to see if we have a record there
@@ -441,9 +462,17 @@ async fn event_handler_inner<'a>(
                                                         user_id.get(),
                                                     )
                                                     .await?;
-                                                warn!("in {} <@{}> just activated {}, but it was not in the DB! That's weird. Restored via {}", guild_id.get(), user_id.get(), license_info.license_id, activation.id);
+                                                warn!(
+                                                    "in {} <@{}> just activated {}, but it was not in the DB! That's weird. Restored via {}",
+                                                    guild_id.get(),
+                                                    user_id.get(),
+                                                    license_info.license_id,
+                                                    activation.id
+                                                );
                                             } else {
-                                                warn!("This should be impossible: we JUST validated this activation but now it is empty.")
+                                                warn!(
+                                                    "This should be impossible: we JUST validated this activation but now it is empty."
+                                                )
                                             }
                                         }
                                         true
@@ -475,7 +504,14 @@ async fn event_handler_inner<'a>(
 
                                         // log if multiple activations for different users
                                         if validation.multiple {
-                                            warn!("in {} <@{}> just activated {} via {}. User already has multiple activations: {:?}", guild_id.get(), user_id.get(), license_info.license_id, new_activation_id, activations);
+                                            warn!(
+                                                "in {} <@{}> just activated {} via {}. User already has multiple activations: {:?}",
+                                                guild_id.get(),
+                                                user_id.get(),
+                                                license_info.license_id,
+                                                new_activation_id,
+                                                activations
+                                            );
                                         }
 
                                         // create roles if no non-us activations
@@ -484,13 +520,20 @@ async fn event_handler_inner<'a>(
                                     if validation.deadlocked() {
                                         // Two different people just race-conditioned their way to multiple activations so this license is now rendered unusable ever again.
                                         // A moderator can use `/deactivate_license` to fix this manually.
-                                        warn!("in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable", guild_id.get(), license_info.license_id);
+                                        warn!(
+                                            "in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable",
+                                            guild_id.get(),
+                                            license_info.license_id
+                                        );
 
                                         // also send a notification to the guild owner bot log if it's set up for this guild
                                         if let Some(log_channel) =
                                             data.db.get_log_channel(guild_id).await?
                                         {
-                                            let message = format!("<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.", user_id.get());
+                                            let message = format!(
+                                                "<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
+                                                user_id.get()
+                                            );
                                             let embed = CreateEmbed::default()
                                                 .title("Activation Error")
                                                 .description(message)
@@ -524,8 +567,15 @@ async fn event_handler_inner<'a>(
                                             } else {
                                                 license_info.product_name
                                             };
-                                        let mut client_message = format!("Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:", product_display_name);
-                                        let mut owner_message = format!("<@{}> has registered the {} product and has been granted the following roles:", user_id.get(), product_display_name);
+                                        let mut client_message = format!(
+                                            "Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:",
+                                            product_display_name
+                                        );
+                                        let mut owner_message = format!(
+                                            "<@{}> has registered the {} product and has been granted the following roles:",
+                                            user_id.get(),
+                                            product_display_name
+                                        );
                                         let mut errors: String = String::new();
                                         for role in roles {
                                             match member.add_role(context, role).await {
@@ -553,7 +603,10 @@ async fn event_handler_inner<'a>(
                                                 .description(client_message)
                                                 .color(Colour::DARK_GREEN)
                                         } else {
-                                            let message = format!("{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.", client_message, errors);
+                                            let message = format!(
+                                                "{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.",
+                                                client_message, errors
+                                            );
                                             CreateEmbed::default()
                                                 .title("Registration Partial Success")
                                                 .description(message)

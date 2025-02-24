@@ -1,15 +1,15 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::SHOULD_RESTART;
 use crate::bot::commands::guild_commands;
 use crate::bot::util::{check_owner, error_reply, success_reply};
-use crate::bot::{util, Context};
+use crate::bot::{Context, util};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
-use crate::SHOULD_RESTART;
-use poise::serenity_prelude as serenity;
 use poise::CreateReply;
+use poise::serenity_prelude as serenity;
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
 use tokio::time::{Duration, Instant};

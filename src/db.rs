@@ -9,7 +9,7 @@ use scc::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tokio::time::Instant;
-use tokio_rusqlite::{named_params, Connection, OptionalExtension, Result};
+use tokio_rusqlite::{Connection, OptionalExtension, Result, named_params};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";

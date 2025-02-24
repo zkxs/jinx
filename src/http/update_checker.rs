@@ -133,12 +133,36 @@ impl VersionCheck {
 impl Display for VersionCheck {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            VersionCheck::Outdated(remote_version) => write!(f, "{} is outdated! The bot owner should upgrade to {}.", env!("CARGO_PKG_NAME"), remote_version),
+            VersionCheck::Outdated(remote_version) => write!(
+                f,
+                "{} is outdated! The bot owner should upgrade to {}.",
+                env!("CARGO_PKG_NAME"),
+                remote_version
+            ),
             VersionCheck::Current => write!(f, "{} is up-to-date!", env!("CARGO_PKG_NAME")),
-            VersionCheck::Future(remote_version) => write!(f, "{} is somehow ahead of the version on GitHub ({}). If you're not beta testing a pre-release then something is wrong.", env!("CARGO_PKG_NAME"), remote_version),
-            VersionCheck::BadLocal(remote_version) => write!(f, "{} local version is not semver-compatible, so could not be compared to the version on GitHub ({}).", env!("CARGO_PKG_NAME"), remote_version),
-            VersionCheck::BadRemote(remote_version) => write!(f, "{} version on GitHub ({}) is not semver-compatible, so could not be compared to the currently running version.", env!("CARGO_PKG_NAME"), remote_version),
-            VersionCheck::UnknownRemote => write!(f, "Unable to retrieve version from GitHub. This means we cannot determine if {} is outdated.", env!("CARGO_PKG_NAME")),
+            VersionCheck::Future(remote_version) => write!(
+                f,
+                "{} is somehow ahead of the version on GitHub ({}). If you're not beta testing a pre-release then something is wrong.",
+                env!("CARGO_PKG_NAME"),
+                remote_version
+            ),
+            VersionCheck::BadLocal(remote_version) => write!(
+                f,
+                "{} local version is not semver-compatible, so could not be compared to the version on GitHub ({}).",
+                env!("CARGO_PKG_NAME"),
+                remote_version
+            ),
+            VersionCheck::BadRemote(remote_version) => write!(
+                f,
+                "{} version on GitHub ({}) is not semver-compatible, so could not be compared to the currently running version.",
+                env!("CARGO_PKG_NAME"),
+                remote_version
+            ),
+            VersionCheck::UnknownRemote => write!(
+                f,
+                "Unable to retrieve version from GitHub. This means we cannot determine if {} is outdated.",
+                env!("CARGO_PKG_NAME")
+            ),
         }
     }
 }

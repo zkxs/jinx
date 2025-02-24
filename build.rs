@@ -45,20 +45,22 @@ fn create_constants<P: AsRef<Path>>(path: P) -> io::Result<()> {
 
 /// override version string displayed by clap
 fn clap_version(git_commit_hash: &str) -> String {
-    format!("{} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\nWritten by: {}",
-            env!("CARGO_PKG_VERSION"),
-            git_commit_hash,
-            env!("CARGO_PKG_AUTHORS"),
+    format!(
+        "{} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\nWritten by: {}",
+        env!("CARGO_PKG_VERSION"),
+        git_commit_hash,
+        env!("CARGO_PKG_AUTHORS"),
     )
 }
 
 /// String shown when via the Discord bot's `/version` command
 fn discord_bot_version(git_commit_hash: &str) -> String {
-    format!("{} {} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\n{}",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION"),
-            git_commit_hash,
-            env!("CARGO_PKG_REPOSITORY"),
+    format!(
+        "{} {} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\n{}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        git_commit_hash,
+        env!("CARGO_PKG_REPOSITORY"),
     )
 }
 

@@ -4,7 +4,7 @@
 use crate::bot::util;
 use crate::bot::util::error_reply;
 use crate::bot::{Context, Data, Error};
-use poise::{serenity_prelude as serenity, FrameworkError};
+use poise::{FrameworkError, serenity_prelude as serenity};
 use std::fmt::Debug;
 use tracing::error;
 

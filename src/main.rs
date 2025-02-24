@@ -49,7 +49,9 @@ async fn main() -> ExitCode {
                     .expect("Failed to set discord token");
                 ExitCode::SUCCESS
             } else {
-                eprintln!("discord token must be provided either via command-line parameter or DISCORD_TOKEN environment variable");
+                eprintln!(
+                    "discord token must be provided either via command-line parameter or DISCORD_TOKEN environment variable"
+                );
                 ExitCode::FAILURE
             }
         }

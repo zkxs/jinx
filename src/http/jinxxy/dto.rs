@@ -3,7 +3,7 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo, DISCORD_PREFIX};
+use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, ProductVersionInfo};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use regex::Regex;
