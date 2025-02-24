@@ -20,9 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Update Rust Toolchain
-        run: rustup update
       - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: "1.85.0"
   cargo-fmt:
     runs-on: ubuntu-latest
     steps:
