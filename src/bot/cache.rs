@@ -198,7 +198,7 @@ impl ApiCache {
                             let mut work_remaining = true;
                             let mut work_counter = 0;
                             let mut touched_guild_set = HashSet::with_hasher(ahash::RandomState::default());
-                            const MAX_WORK_COUNT: u16 = 1000;
+                            const MAX_WORK_COUNT: u16 = 250;
                             while work_remaining && work_counter < MAX_WORK_COUNT {
                                 // find the first guild that needs a refresh. This is a simple queue pop.
                                 if let Some(mut queue_entry) = queue.pop() {
@@ -373,12 +373,14 @@ impl ApiCache {
                                         .peek()
                                         .map(|next_guild| !touched_guild_set.contains(&next_guild.guild_id.get()))
                                         .unwrap_or(false);
+                                } else {
+                                    warn!("ended low-priority work loop due to empty work queue!");
+                                    work_remaining = false;
                                 }
                             } // end work loop
 
-                            if work_counter > MAX_WORK_COUNT {
+                            if work_counter >= MAX_WORK_COUNT {
                                 warn!("ended low-priority work loop due to exceeding maximum loop count!");
-                                //TODO: print debug information on variable state to hopefully get to the bottom of why this happened
                             }
 
                             // update the sleep time
