@@ -37,6 +37,8 @@ const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER
 /// Same as `LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME`, but with a bit of extra time as wiggle room
 /// to try and avoid waking right before an entry expires. I'd rather wake a bit after.
 const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration = Duration::from_secs(SECONDS_PER_DAY + 60);
+/// Minimum time the low priority worker will use as its poll timeout
+const MIN_SLEEP_DURATION: Duration = Duration::from_millis(250);
 
 /// Cloning returns a reference to this same ApiCache instance
 #[derive(Clone)]
@@ -127,10 +129,12 @@ impl ApiCache {
                     let received_event = if let Some(sleep_duration) = sleep_duration {
                         if sleep_duration.is_zero() {
                             // handle an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
+                            // we yield here just in case this thread tries to spin on zero-duration timeouts due to any kind of bug
+                            tokio::task::yield_now().await;
                             Err(())
                         } else {
-                            // do a receive or a timeout, whatever happens firs
-                            timeout(sleep_duration, refresh_register_rx.recv())
+                            // do a receive or a timeout, whatever happens first
+                            timeout(MIN_SLEEP_DURATION.max(sleep_duration), refresh_register_rx.recv())
                                 .await
                                 .map_err(|_| ())
                         }
@@ -199,10 +203,13 @@ impl ApiCache {
                             let mut work_counter = 0;
                             let mut touched_guild_set = HashSet::with_hasher(ahash::RandomState::default());
                             const MAX_WORK_COUNT: u16 = 250;
-                            while work_remaining && work_counter < MAX_WORK_COUNT {
+                            while work_remaining {
                                 // find the first guild that needs a refresh. This is a simple queue pop.
                                 if let Some(mut queue_entry) = queue.pop() {
                                     work_counter += 1;
+
+                                    // if we've processed too many work items this loop, then stop
+                                    work_remaining &= work_counter < MAX_WORK_COUNT;
 
                                     // if the queue is now empty no reason to go again
                                     work_remaining &= !queue.is_empty();
@@ -394,7 +401,9 @@ impl ApiCache {
                                     .unwrap_or_default();
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                if remaining != Duration::ZERO {
+                                if remaining == Duration::ZERO {
+                                    debug!("low-priority worker caught up; sleeping for 0");
+                                } else {
                                     debug!("low-priority worker caught up; sleeping for {}s", remaining.as_secs());
                                 }
                                 sleep_duration = Some(remaining);
