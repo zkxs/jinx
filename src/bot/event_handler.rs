@@ -523,74 +523,109 @@ async fn event_handler_inner<'a>(
                                         } else {
                                             license_info.product_name
                                         };
-                                        let mut client_message = format!(
-                                            "Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:",
-                                            product_display_name
-                                        );
-                                        let mut owner_message = format!(
-                                            "<@{}> has registered the {} product and has been granted the following roles:",
-                                            user_id.get(),
-                                            product_display_name
-                                        );
-                                        let mut errors: String = String::new();
-                                        for role in roles {
-                                            match member.add_role(context, role).await {
-                                                Ok(()) => {
-                                                    let bullet_point = format!("\n- <@&{}>", role.get());
-                                                    client_message.push_str(bullet_point.as_str());
-                                                    owner_message.push_str(bullet_point.as_str());
-                                                }
-                                                Err(e) => {
-                                                    errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
-                                                    warn!("in {} error granting role: {:?}", guild_id.get(), e);
+                                        if roles.is_empty() {
+                                            let embed = CreateEmbed::default()
+                                                .title("Registration Partial Success")
+                                                .description(format!("You have registered {}, but there are no configured role links. Please notify the server owner and then try again after role links have been configured.", product_display_name))
+                                                .color(Colour::GOLD);
+
+                                            /*
+                                            Let the user know what happened.
+                                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
+                                            - 3s after a non-acked interaction
+                                            - 15m after an acked interaction
+                                             */
+                                            let edit = EditInteractionResponse::default().embed(embed);
+                                            let user_notification_result =
+                                                modal_interaction.edit_response(context, edit).await;
+                                            if let Err(error) = user_notification_result {
+                                                error!("Error notifying user of license activation: {:?}", error);
+                                            }
+
+                                            // also send a notification to the guild owner bot log if it's set up for this guild
+                                            if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                                let owner_message = format!(
+                                                    "<@{}> has registered the {} product, which has no configured roles!",
+                                                    user_id.get(),
+                                                    product_display_name
+                                                );
+                                                let embed = CreateEmbed::default()
+                                                    .title("License Activation")
+                                                    .color(Colour::GOLD)
+                                                    .description(owner_message);
+                                                let bot_log_message = CreateMessage::default().embed(embed);
+                                                log_channel.send_message(context, bot_log_message).await?;
+                                            }
+                                        } else {
+                                            let mut client_message = format!(
+                                                "Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:",
+                                                product_display_name
+                                            );
+                                            let mut owner_message = format!(
+                                                "<@{}> has registered the {} product and has been granted the following roles:",
+                                                user_id.get(),
+                                                product_display_name
+                                            );
+                                            let mut errors: String = String::new();
+                                            for role in roles {
+                                                match member.add_role(context, role).await {
+                                                    Ok(()) => {
+                                                        let bullet_point = format!("\n- <@&{}>", role.get());
+                                                        client_message.push_str(bullet_point.as_str());
+                                                        owner_message.push_str(bullet_point.as_str());
+                                                    }
+                                                    Err(e) => {
+                                                        errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                                                        warn!("in {} error granting role: {:?}", guild_id.get(), e);
+                                                    }
                                                 }
                                             }
-                                        }
-                                        let embed = if errors.is_empty() {
-                                            CreateEmbed::default()
-                                                .title("Registration Success")
-                                                .description(client_message)
-                                                .color(Colour::DARK_GREEN)
-                                        } else {
-                                            let message = format!(
-                                                "{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.",
-                                                client_message, errors
-                                            );
-                                            CreateEmbed::default()
-                                                .title("Registration Partial Success")
-                                                .description(message)
-                                                .color(Colour::ORANGE)
-                                        };
-
-                                        /*
-                                        Let the user know what happened.
-                                        Note that this can fail if the interaction has been invalidated, which happens in some cases:
-                                        - 3s after a non-acked interaction
-                                        - 15m after an acked interaction
-                                         */
-                                        let edit = EditInteractionResponse::default().embed(embed);
-                                        let user_notification_result =
-                                            modal_interaction.edit_response(context, edit).await;
-                                        if let Err(error) = user_notification_result {
-                                            error!("Error notifying user of license activation: {:?}", error);
-                                        }
-
-                                        // also send a notification to the guild owner bot log if it's set up for this guild
-                                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
-                                            let embed = CreateEmbed::default()
-                                                .title("License Activation")
-                                                .description(owner_message);
-                                            let bot_log_message = CreateMessage::default().embed(embed);
-                                            let bot_log_message = if errors.is_empty() {
-                                                bot_log_message
+                                            let embed = if errors.is_empty() {
+                                                CreateEmbed::default()
+                                                    .title("Registration Success")
+                                                    .description(client_message)
+                                                    .color(Colour::DARK_GREEN)
                                             } else {
-                                                let error_embed = CreateEmbed::default()
-                                                    .title("Role Grant Error")
-                                                    .description(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors))
-                                                    .color(Colour::RED);
-                                                bot_log_message.embed(error_embed)
+                                                let message = format!(
+                                                    "{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.",
+                                                    client_message, errors
+                                                );
+                                                CreateEmbed::default()
+                                                    .title("Registration Partial Success")
+                                                    .description(message)
+                                                    .color(Colour::ORANGE)
                                             };
-                                            log_channel.send_message(context, bot_log_message).await?;
+
+                                            /*
+                                            Let the user know what happened.
+                                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
+                                            - 3s after a non-acked interaction
+                                            - 15m after an acked interaction
+                                             */
+                                            let edit = EditInteractionResponse::default().embed(embed);
+                                            let user_notification_result =
+                                                modal_interaction.edit_response(context, edit).await;
+                                            if let Err(error) = user_notification_result {
+                                                error!("Error notifying user of license activation: {:?}", error);
+                                            }
+
+                                            // also send a notification to the guild owner bot log if it's set up for this guild
+                                            if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                                                let embed = CreateEmbed::default()
+                                                    .title("License Activation")
+                                                    .description(owner_message);
+                                                let bot_log_message = CreateMessage::default().embed(embed);
+                                                let bot_log_message = if errors.is_empty() {
+                                                    bot_log_message
+                                                } else {
+                                                    let error_embed = CreateEmbed::default()
+                                                        .title("Role Grant Error")
+                                                        .description(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors))
+                                                        .color(Colour::RED);
+                                                    bot_log_message.embed(error_embed)
+                                                };
+                                                log_channel.send_message(context, bot_log_message).await?;
+                                            }
                                         }
                                     } else {
                                         // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
