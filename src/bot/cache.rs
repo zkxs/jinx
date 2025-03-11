@@ -212,7 +212,11 @@ impl ApiCache {
                                     work_remaining &= work_counter < MAX_WORK_COUNT;
 
                                     // if the queue is now empty no reason to go again
-                                    work_remaining &= !queue.is_empty();
+                                    let queue_empty = queue.is_empty();
+                                    if queue_empty {
+                                        warn!("stopping work loop because queue is empty!");
+                                    }
+                                    work_remaining &= !queue_empty;
 
                                     // record that we've touched this guild ID in the work loop
                                     touched_guild_set.insert(queue_entry.guild_id.get());
@@ -232,6 +236,7 @@ impl ApiCache {
                                             } else {
                                                 // entry exists and was not expired
                                                 // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
+                                                debug!("skipping unexpired guild {}", queue_entry.guild_id.get());
                                                 (false, false)
                                             }
                                         })
@@ -376,10 +381,14 @@ impl ApiCache {
 
                                     // if we haven't touched the next guild ID yet, then go again (true)
                                     // if there is no next guild, then do not go again (false)
-                                    work_remaining &= queue
+                                    let next_guild_pending_work = queue
                                         .peek()
                                         .map(|next_guild| !touched_guild_set.contains(&next_guild.guild_id.get()))
                                         .unwrap_or(false);
+                                    if !next_guild_pending_work {
+                                        debug!("stopping work loop because next guild has already been touched");
+                                    }
+                                    work_remaining &= next_guild_pending_work;
                                 } else {
                                     warn!("ended low-priority work loop due to empty work queue!");
                                     work_remaining = false;
@@ -403,10 +412,15 @@ impl ApiCache {
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining == Duration::ZERO {
                                     debug!("low-priority worker caught up; sleeping for 0");
+                                    // force this to 5s
+                                    //TODO: remove this special case: it's a dirty hack to work around the spinning bug
+                                    sleep_duration = Some(Duration::from_secs(5));
                                 } else {
                                     debug!("low-priority worker caught up; sleeping for {}s", remaining.as_secs());
+
+                                    // this is the normal case for setting `sleep_duration`
+                                    sleep_duration = Some(remaining);
                                 }
-                                sleep_duration = Some(remaining);
                             } else {
                                 // the queue was empty, so we can actually sleep forever (or rather until the rx triggers) as there is no work to do
                                 debug!("low-priority worker has ran out of work!");
