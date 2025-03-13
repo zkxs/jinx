@@ -225,8 +225,11 @@ impl ApiCache {
                                     let (load, try_db_load) = map
                                         .pin()
                                         .get(&queue_entry.guild_id)
-                                        .map(|value| {
-                                            if value.is_expired_low_priority(now) {
+                                        .map(|cache_entry| {
+                                            // sync our thread-local copy of the create time with the source of truth (the cache)
+                                            queue_entry.create_time = cache_entry.create_time;
+
+                                            if cache_entry.is_expired_low_priority(now) {
                                                 // entry exists and was expired
                                                 // no need to do a DB load because we obviously already have data in memory
                                                 (true, false)
@@ -579,9 +582,11 @@ impl ApiCache {
     }
 }
 
-/// A reference to a guild cache entry to be kept in a max-heap
+/// A reference to a guild cache entry to be kept in a max-heap. This is NOT the actual cache entry!
 struct GuildQueueRef {
+    /// ID of the guild in the actual cache
     guild_id: GuildId,
+    /// A copy of the last-known create time for this cache entry. This is NOT the actual cache entry create time, so it may desync!
     create_time: SimpleTime,
 }
 
