@@ -154,12 +154,9 @@ impl ApiCache {
                                 // update the sleep time
                                 let next_queue_entry =
                                     queue.peek().expect("queue should not be empty immediately after push");
-                                // how much time has elapsed since creation (or 0 if creation is in the future)
-                                let elapsed = next_queue_entry.create_time.elapsed();
                                 // remaining time until the entry hits the expiration time, or 0 if it's already expired
-                                let remaining = LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
-                                    .checked_sub(elapsed)
-                                    .unwrap_or_default();
+                                let remaining =
+                                    next_queue_entry.remaining_time_until_low_priority_expiry(SimpleTime::now());
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining != Duration::ZERO {
                                     debug!(
@@ -198,7 +195,7 @@ impl ApiCache {
                             // end of inner loop
                             // the event processing is now done, so process guilds until none are expired in a "work loop"
 
-                            let mut now = SimpleTime::UNIX_EPOCH; // initialize it to some arbitrary default: we set it later.
+                            let mut now = SimpleTime::now(); // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
                             let mut work_counter = 0;
                             let mut touched_guild_set = HashSet::with_hasher(ahash::RandomState::default());
@@ -221,7 +218,7 @@ impl ApiCache {
                                     // record that we've touched this guild ID in the work loop
                                     touched_guild_set.insert(queue_entry.guild_id.get());
 
-                                    // grab the current time: we'll need it a couple of times and I want it to keep the same reading
+                                    // update the current time: we'll need it a couple of times and I want it to keep the same reading
                                     now = SimpleTime::now();
 
                                     // figure out what state this entry is in
@@ -401,22 +398,24 @@ impl ApiCache {
 
                             // update the sleep time
                             if let Some(next_queue_entry) = queue.peek() {
-                                // how much time has elapsed since creation (or 0 if creation is in the future)
-                                let elapsed = now.duration_since(next_queue_entry.create_time);
-
                                 // remaining time until the entry hits the expiration time, or 0 if it's already expired
-                                let remaining = LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
-                                    .checked_sub(elapsed)
-                                    .unwrap_or_default();
+                                let remaining = next_queue_entry.remaining_time_until_low_priority_expiry(now);
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining == Duration::ZERO {
-                                    debug!("low-priority worker caught up; sleeping for 0");
+                                    debug!(
+                                        "low-priority worker caught up; sleeping for 0. Next up is {}",
+                                        next_queue_entry.guild_id.get()
+                                    );
                                     // force this to 5s
                                     //TODO: remove this special case: it's a dirty hack to work around the spinning bug
                                     sleep_duration = Some(Duration::from_secs(5));
                                 } else {
-                                    debug!("low-priority worker caught up; sleeping for {}s", remaining.as_secs());
+                                    debug!(
+                                        "low-priority worker caught up; sleeping for {}s. Next up is {}",
+                                        remaining.as_secs(),
+                                        next_queue_entry.guild_id.get()
+                                    );
 
                                     // this is the normal case for setting `sleep_duration`
                                     sleep_duration = Some(remaining);
@@ -610,6 +609,16 @@ impl PartialEq<Self> for GuildQueueRef {
 }
 
 impl Eq for GuildQueueRef {}
+
+impl GuildQueueRef {
+    /// remaining time until the entry hits the expiration time, or 0 if it's already expired
+    fn remaining_time_until_low_priority_expiry(&self, now: SimpleTime) -> Duration {
+        let elapsed = now.duration_since(self.create_time);
+        LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
+            .checked_sub(elapsed)
+            .unwrap_or_default()
+    }
+}
 
 pub struct GuildCache {
     /// id to name
