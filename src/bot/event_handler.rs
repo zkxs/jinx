@@ -554,7 +554,15 @@ async fn event_handler_inner<'a>(
                                                     .color(Colour::GOLD)
                                                     .description(owner_message);
                                                 let bot_log_message = CreateMessage::default().embed(embed);
-                                                log_channel.send_message(context, bot_log_message).await?;
+                                                let bot_log_result =
+                                                    log_channel.send_message(context, bot_log_message).await;
+                                                if let Err(e) = bot_log_result {
+                                                    warn!(
+                                                        "Error logging to log channel in {}: {:?}",
+                                                        guild_id.get(),
+                                                        e
+                                                    );
+                                                }
                                             }
                                         } else {
                                             let mut client_message = format!(
@@ -624,7 +632,15 @@ async fn event_handler_inner<'a>(
                                                         .color(Colour::RED);
                                                     bot_log_message.embed(error_embed)
                                                 };
-                                                log_channel.send_message(context, bot_log_message).await?;
+                                                let bot_log_result =
+                                                    log_channel.send_message(context, bot_log_message).await;
+                                                if let Err(e) = bot_log_result {
+                                                    warn!(
+                                                        "Error logging to log channel in {}: {:?}",
+                                                        guild_id.get(),
+                                                        e
+                                                    );
+                                                }
                                             }
                                         }
                                     } else {
