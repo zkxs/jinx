@@ -527,7 +527,7 @@ pub async fn lock_license(
             context
                 .data()
                 .db
-                .activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID)
+                .activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID, None, None)
                 .await?;
             success_reply(
                 "Success",

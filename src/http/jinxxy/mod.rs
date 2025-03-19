@@ -412,6 +412,13 @@ impl LicenseInfo {
                 .map(|info| info.product_version_id.clone()),
         }
     }
+
+    /// get a reference to the product version ID, if it exists
+    pub fn version_id(&self) -> Option<&str> {
+        self.product_version_info
+            .as_ref()
+            .map(|info| info.product_version_id.as_str())
+    }
 }
 
 /// Not part of the Jinxxy API: this is an internal DTO

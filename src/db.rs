@@ -12,7 +12,7 @@ use tokio_rusqlite::{Connection, OptionalExtension, Result, named_params};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 7;
+const SCHEMA_VERSION_VALUE: i32 = 8;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 
 pub struct JinxDb {
@@ -145,6 +145,8 @@ impl JinxDb {
                              license_id             TEXT NOT NULL, \
                              license_activation_id  TEXT NOT NULL, \
                              user_id                INTEGER NOT NULL, \
+                             product_id             TEXT, \
+                             version_id             TEXT, \
                              PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id) \
                          ) STRICT",
                     (),
@@ -228,6 +230,19 @@ impl JinxDb {
                     // "cache_time_unix_ms" needs to be added to "guild"
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN cache_time_unix_ms INTEGER NOT NULL DEFAULT 0",
+                        (),
+                    )?;
+                }
+
+                // handle schema v7 -> v8 migration
+                if schema_version < 8 {
+                    // "product_id" and "version_id" need to be added to "license_activation"
+                    connection.execute(
+                        "ALTER TABLE license_activation ADD COLUMN product_id TEXT",
+                        (),
+                    )?;
+                    connection.execute(
+                        "ALTER TABLE license_activation ADD COLUMN version_id TEXT",
                         (),
                     )?;
                 }
@@ -353,10 +368,12 @@ impl JinxDb {
         license_id: String,
         license_activation_id: String,
         user_id: u64,
+        product_id: Option<String>,
+        version_id: Option<String>,
     ) -> Result<()> {
         self.connection.call(move |connection| {
-            let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id) VALUES (:guild, :license, :activation, :user)")?;
-            statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id})?;
+            let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id, product_id, version_id) VALUES (:guild, :license, :activation, :user, :product_id, :version_id)")?;
+            statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
             Ok(())
         }).await
     }

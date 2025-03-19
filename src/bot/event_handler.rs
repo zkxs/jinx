@@ -432,6 +432,8 @@ async fn event_handler_inner<'a>(
                                                         license_info.license_id.clone(),
                                                         activation.id.clone(),
                                                         user_id.get(),
+                                                        Some(license_info.product_id.clone()),
+                                                        license_info.version_id().map(|str| str.to_string()),
                                                     )
                                                     .await?;
                                                 warn!(
@@ -462,6 +464,8 @@ async fn event_handler_inner<'a>(
                                                 license_info.license_id.clone(),
                                                 new_activation_id.clone(),
                                                 user_id.get(),
+                                                Some(license_info.product_id.clone()),
+                                                license_info.version_id().map(|str| str.to_string()),
                                             )
                                             .await?;
                                         let activations =
