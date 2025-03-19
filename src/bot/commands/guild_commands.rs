@@ -1101,3 +1101,63 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
     context.send(reply).await?;
     Ok(())
 }
+
+/// Grant a role to any users who have a license but are missing the linked role.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn grant_missing_roles(
+    context: Context<'_>,
+    #[description = "Role to grant"] role: RoleId,
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+    let users = context.data().db.get_users_for_role(guild_id, role).await?;
+    let total_users = users.len();
+    let mut missing_users: usize = 0;
+    let mut message_postfix = String::new();
+    for user in users {
+        let member = guild_id.member(context, user).await?;
+        if !member.roles.contains(&role) {
+            message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
+            missing_users += 1;
+            member.add_role(context, role).await?;
+        }
+    }
+    let message = format!(
+        "{}/{} users were missing <@&{}>:{}",
+        missing_users,
+        total_users,
+        role.get(),
+        message_postfix
+    );
+    context.send(success_reply("Missing Roles Granted", message)).await?;
+
+    // also send a notification to the guild owner bot log if it's set up for this guild
+    if let Some(log_channel) = context.data().db.get_log_channel(guild_id).await? {
+        let message = format!(
+            "<@{}> granted <@&{}> to {}/{} users who were missing it:{}",
+            context.author().id.get(),
+            role.get(),
+            missing_users,
+            total_users,
+            message_postfix
+        );
+        let embed = CreateEmbed::default()
+            .title("Missing Roles Granted")
+            .description(message);
+        let bot_log_message = CreateMessage::default().embed(embed);
+        let bot_log_result = log_channel.send_message(context, bot_log_message).await;
+        if let Err(e) = bot_log_result {
+            warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e);
+        }
+    }
+
+    Ok(())
+}

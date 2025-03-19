@@ -394,7 +394,10 @@ async fn event_handler_inner<'a>(
                                             .description(message)
                                             .color(Colour::ORANGE);
                                         let bot_log_message = CreateMessage::default().embed(embed);
-                                        log_channel.send_message(context, bot_log_message).await?;
+                                        let bot_log_result = log_channel.send_message(context, bot_log_message).await;
+                                        if let Err(e) = bot_log_result {
+                                            warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e);
+                                        }
                                     }
 
                                     send_fail_message().await?;

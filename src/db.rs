@@ -5,7 +5,7 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
-use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
+use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
@@ -401,7 +401,7 @@ impl JinxDb {
 
     pub async fn backfill_license_info(&self) -> std::result::Result<usize, Error> {
         let license_records = self.connection.call(move |connection| {
-            let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE product_id IS NULL and user_id != 0")?;
+            let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0")?;
             let license_rows = license_query.query_map((), |row| {
                 let guild_id: GuildId = GuildId::new(row.get(0)?);
                 let license_id: String = row.get(1)?;
@@ -422,7 +422,7 @@ impl JinxDb {
                 if let Some(license_info) =
                     jinxxy::check_license_id(&api_key, &license_record.license_id, false).await?
                 {
-                    let version_id = license_info.version_id().map(|str| str.to_string());
+                    let version_id = license_info.version_id().map(|str| str.to_string()).unwrap_or_default();
                     if self
                         .update_license(
                             license_record.guild_id,
@@ -430,7 +430,7 @@ impl JinxDb {
                             license_record.license_activation_id,
                             license_record.user_id,
                             Some(license_info.product_id),
-                            version_id,
+                            Some(version_id),
                         )
                         .await?
                     {
@@ -439,7 +439,7 @@ impl JinxDb {
                 }
 
                 // delay a little bit before hitting Jinxxy again to avoid just completely spamming the hell out of it
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_millis(20)).await;
             }
         }
 
@@ -580,7 +580,10 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` and `version_role_lookup` indices
-                let mut statement = connection.prepare_cached("SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL UNION SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version")?;
+                let mut statement = connection.prepare_cached(
+                    "SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL \
+                    UNION SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product \
+                    UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version")?;
                 let (product_id, version_id) = product_version_id.into_db_values();
                 let result = statement.query_map(
                     named_params! {":guild": guild.get(), ":product": product_id, ":version": version_id},
@@ -638,6 +641,28 @@ impl JinxDb {
                         Ok(RoleId::new(role_id))
                     },
                 )?;
+                let mut vec = Vec::with_capacity(result.size_hint().0);
+                for row in result {
+                    vec.push(row?);
+                }
+                Ok(vec)
+            })
+            .await
+    }
+
+    pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> Result<Vec<UserId>> {
+        self.connection
+            .call(move |connection| {
+                //TODO: this could use an index, or even several indices
+                let mut statement = connection.prepare(
+                    "SELECT user_id FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild_id = :guild AND blanket_role_id = :role \
+                     UNION SELECT user_id FROM license_activation LEFT JOIN product_role USING (guild_id, product_id) WHERE guild_id = :guild AND role_id = :role \
+                     UNION SELECT user_id FROM license_activation LEFT JOIN product_version_role USING (guild_id, product_id, version_id) WHERE guild_id = :guild AND role_id = :role")?;
+                let result =
+                    statement.query_map(named_params! {":guild": guild.get(), ":role": role.get() }, |row| {
+                        let user_id: UserId = UserId::new(row.get(0)?);
+                        Ok(user_id)
+                    })?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
                     vec.push(row?);
