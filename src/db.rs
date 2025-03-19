@@ -404,7 +404,7 @@ impl JinxDb {
             let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE product_id IS NULL and user_id != 0")?;
             let license_rows = license_query.query_map((), |row| {
                 let guild_id: GuildId = GuildId::new(row.get(0)?);
-                let license_id: String = row.get(10)?;
+                let license_id: String = row.get(1)?;
                 let license_activation_id: String = row.get(2)?;
                 let user_id: u64 = row.get(3)?;
                 Ok(LicenseRecord { guild_id, license_id, license_activation_id, user_id })
