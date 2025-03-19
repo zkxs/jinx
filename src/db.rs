@@ -2,11 +2,13 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::error::JinxError;
+use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::time::Duration;
 use tokio::time::Instant;
 use tokio_rusqlite::{Connection, OptionalExtension, Result, named_params};
 use tracing::debug;
@@ -14,6 +16,8 @@ use tracing::debug;
 const SCHEMA_VERSION_KEY: &str = "schema_version";
 const SCHEMA_VERSION_VALUE: i32 = 8;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
+
+type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub struct JinxDb {
     connection: Connection,
@@ -376,6 +380,70 @@ impl JinxDb {
             statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
             Ok(())
         }).await
+    }
+
+    /// Update product_id and version_id for an existing license. Returns `true` if a row was updated, or `false` if no matching row was found.
+    async fn update_license(
+        &self,
+        guild: GuildId,
+        license_id: String,
+        license_activation_id: String,
+        user_id: u64,
+        product_id: Option<String>,
+        version_id: Option<String>,
+    ) -> Result<bool> {
+        self.connection.call(move |connection| {
+            let mut statement = connection.prepare_cached("UPDATE license_activation SET product_id = :product_id, version_id = :version_id WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user")?;
+            let update_count = statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
+            Ok(update_count != 0)
+        }).await
+    }
+
+    pub async fn backfill_license_info(&self) -> std::result::Result<usize, Error> {
+        let license_records = self.connection.call(move |connection| {
+            let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE product_id IS NULL and user_id != 0")?;
+            let license_rows = license_query.query_map((), |row| {
+                let guild_id: GuildId = GuildId::new(row.get(0)?);
+                let license_id: String = row.get(10)?;
+                let license_activation_id: String = row.get(2)?;
+                let user_id: u64 = row.get(3)?;
+                Ok(LicenseRecord { guild_id, license_id, license_activation_id, user_id })
+            })?;
+            let mut vec = Vec::with_capacity(license_rows.size_hint().0);
+            for row in license_rows {
+                vec.push(row?);
+            }
+            Ok(vec)
+        }).await?;
+
+        let mut updated: usize = 0;
+        for license_record in license_records {
+            if let Some(api_key) = self.get_jinxxy_api_key(license_record.guild_id).await? {
+                if let Some(license_info) =
+                    jinxxy::check_license_id(&api_key, &license_record.license_id, false).await?
+                {
+                    let version_id = license_info.version_id().map(|str| str.to_string());
+                    if self
+                        .update_license(
+                            license_record.guild_id,
+                            license_record.license_id,
+                            license_record.license_activation_id,
+                            license_record.user_id,
+                            Some(license_info.product_id),
+                            version_id,
+                        )
+                        .await?
+                    {
+                        updated += 1;
+                    }
+                }
+
+                // delay a little bit before hitting Jinxxy again to avoid just completely spamming the hell out of it
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        }
+
+        Ok(updated)
     }
 
     /// Locally record that we've deactivated a license for a user. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
@@ -1219,4 +1287,12 @@ impl ProductVersionId {
             product_version_id,
         }
     }
+}
+
+/// Used internally in [`JinxDb::backfill_license_info`]
+struct LicenseRecord {
+    guild_id: GuildId,
+    license_id: String,
+    license_activation_id: String,
+    user_id: u64,
 }

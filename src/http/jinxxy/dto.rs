@@ -370,7 +370,6 @@ mod test {
     }
 
     #[test]
-    #[traced_test]
     fn test_description_parse_fail_too_long() {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
@@ -382,7 +381,6 @@ mod test {
     }
 
     #[test]
-    #[traced_test]
     fn test_description_parse_fail_nan() {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
@@ -394,7 +392,6 @@ mod test {
     }
 
     #[test]
-    #[traced_test]
     fn test_description_parse_fail_no_match() {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
