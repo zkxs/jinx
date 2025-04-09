@@ -339,7 +339,7 @@ async fn event_handler_inner<'a>(
                         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id).await? {
                             let license = license_type.create_untrusted_jinxxy_license(license_key);
                             let license_response = if let Some(license) = license {
-                                jinxxy::check_license(&api_key, license, true).await?
+                                util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?
                             } else {
                                 // if the user has given us something that is very clearly not a Jinxxy license then don't even try hitting the API
                                 None
@@ -354,8 +354,10 @@ async fn event_handler_inner<'a>(
                                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
                                     (None, Default::default())
                                 } else {
-                                    let activations =
-                                        jinxxy::get_license_activations(&api_key, &license_info.license_id).await?;
+                                    let activations = util::retry_thrice(|| {
+                                        jinxxy::get_license_activations(&api_key, &license_info.license_id)
+                                    })
+                                    .await?;
                                     let validation = license::validate_jinxxy_license_activation(user_id, &activations);
                                     (Some(activations), validation)
                                 };
@@ -455,11 +457,13 @@ async fn event_handler_inner<'a>(
                                         true
                                     } else {
                                         // we aren't activated, so we need to create the activation... and then check again to prevent race conditions
-                                        let new_activation_id = jinxxy::create_license_activation(
-                                            &api_key,
-                                            &license_info.license_id,
-                                            user_id.get(),
-                                        )
+                                        let new_activation_id = util::retry_thrice(|| {
+                                            jinxxy::create_license_activation(
+                                                &api_key,
+                                                &license_info.license_id,
+                                                user_id.get(),
+                                            )
+                                        })
                                         .await?;
                                         data.db
                                             .activate_license(
@@ -471,8 +475,10 @@ async fn event_handler_inner<'a>(
                                                 license_info.version_id().map(|str| str.to_string()),
                                             )
                                             .await?;
-                                        let activations =
-                                            jinxxy::get_license_activations(&api_key, &license_info.license_id).await?;
+                                        let activations = util::retry_thrice(|| {
+                                            jinxxy::get_license_activations(&api_key, &license_info.license_id)
+                                        })
+                                        .await?;
                                         validation = license::validate_jinxxy_license_activation(user_id, &activations);
 
                                         // log if multiple activations for different users

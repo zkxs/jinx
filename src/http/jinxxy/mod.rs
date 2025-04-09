@@ -67,6 +67,7 @@ pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
 }
 
 /// Represents all allowed license formats
+#[derive(Clone)]
 pub enum LicenseKey<'a> {
     Id(&'a str),
     Short(&'a str),
