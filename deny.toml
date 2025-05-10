@@ -102,6 +102,7 @@ allow = [
     "0BSD", # used by adler
     "Apache-2.0 WITH LLVM-exception", # used by wasi
     "BSL-1.0", # used by ryu
+    'CDLA-Permissive-2.0', # neither FSF nor OSI approved, but this is not really software. Needed by webpki-roots
     "MPL-2.0", # used by webpki-roots
     "Unicode-3.0", # used by unicode-ident
     "Zlib", # used by miniz_oide, tinyvecs
@@ -233,12 +234,12 @@ skip = [
     { crate = "webpki-roots@0.25.4", reason = "reqwest@0.11.27 uses old version" },
     { crate = "thiserror@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
     { crate = "thiserror-impl@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
-    { crate = "getrandom@0.2.15", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand@0.8.5", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand_chacha@0.3.1", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand_core@0.6.4", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "getrandom@0.2", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "rand@0.8", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "rand_chacha@0.3", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "rand_core@0.6", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "wasi@0.11.0+wasi-snapshot-preview1", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "zerocopy@0.7.35", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "webpki-roots@0.26.11", reason = "webpki-roots@0.26.11 fucking depends on webpki-roots@1.0.0 what the fuck" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
