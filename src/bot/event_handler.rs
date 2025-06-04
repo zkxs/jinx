@@ -27,7 +27,7 @@ static GLOBAL_EASTER_EGG_1_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 static GLOBAL_EASTER_EGG_2_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(?:who|who's|whos|who is) +(?:your|ur) +(?:dad|daddie|father|creator)\b", // I'm adding more easter eggs and no one can stop me
+        r"(?i)\b(?:who|who's|whos|who is) +(?:your|ur) +(?:dad|daddy|father|creator)\b", // I'm adding more easter eggs and no one can stop me
     )
     .expect("Failed to compile GLOBAL_EASTER_EGG_2_REGEX")
 });
@@ -201,11 +201,11 @@ async fn event_handler_inner<'a>(
                     // Easter egg 2: when the owner says something matching a specific regex, try to reply
                     if let Err(e) = new_message.reply_ping(context, "…you are… 😩").await {
                         warn!(
-                            "Unable to reply to owner easter-egg 1 prompt. Falling back to reaction. Error: {:?}",
+                            "Unable to reply to owner easter-egg 2 prompt. Falling back to reaction. Error: {:?}",
                             e
                         );
                         if let Err(e) = new_message.react(context, '😩').await {
-                            warn!("Unable to react to owner easter-egg 1 prompt: {:?}", e);
+                            warn!("Unable to react to owner easter-egg 2 prompt: {:?}", e);
                         }
                     }
                 } else {
