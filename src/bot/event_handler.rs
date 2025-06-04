@@ -18,16 +18,24 @@ use regex::Regex;
 use std::sync::LazyLock;
 use tracing::{debug, error, info, warn};
 
-static GLOBAL_EASTER_EGG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+static GLOBAL_EASTER_EGG_1_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)\b(?:you'?re|ur) +(?:cute|a +cutie)\b", // uh, let me explain: I'm really bored right now and I thought it'd be funny if the bot did something silly if you call it cute.
     )
-    .expect("Failed to compile GLOBAL_EASTER_EGG_REGEX")
+    .expect("Failed to compile GLOBAL_EASTER_EGG_1_REGEX")
+});
+
+static GLOBAL_EASTER_EGG_2_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(?:who|who's|whos|who is) +(?:your|ur) +(?:dad|daddie|father|creator)\b", // I'm adding more easter eggs and no one can stop me
+    )
+    .expect("Failed to compile GLOBAL_EASTER_EGG_2_REGEX")
 });
 
 thread_local! {
     // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
-    static EASTER_EGG_REGEX: Regex = GLOBAL_EASTER_EGG_REGEX.clone();
+    static EASTER_EGG_1_REGEX: Regex = GLOBAL_EASTER_EGG_1_REGEX.clone();
+    static EASTER_EGG_2_REGEX: Regex = GLOBAL_EASTER_EGG_2_REGEX.clone();
 }
 
 /// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.
@@ -171,19 +179,33 @@ async fn event_handler_inner<'a>(
                     );
                 }
 
+                // only enable easter eggs if the mentioning user is an owner
+                let can_easter_egg =
+                    !new_message.author.bot && data.db.is_user_owner(new_message.author.id.get()).await?;
+
                 // since we got mentioned we might as well do something funny here
-                if !new_message.author.bot
-                    && data.db.is_user_owner(new_message.author.id.get()).await?
-                    && EASTER_EGG_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
-                {
-                    // Easter egg: when the owner says something matching a specific regex, try to reply
+                if can_easter_egg && EASTER_EGG_1_REGEX.with(|regex| regex.is_match(new_message.content.as_str())) {
+                    // Easter egg 1: when the owner says something matching a specific regex, try to reply
                     if let Err(e) = new_message.reply_ping(context, "no, you! 😳").await {
                         warn!(
-                            "Unable to reply to owner easter-egg prompt. Falling back to reaction. Error: {:?}",
+                            "Unable to reply to owner easter-egg 1 prompt. Falling back to reaction. Error: {:?}",
                             e
                         );
                         if let Err(e) = new_message.react(context, '😳').await {
-                            warn!("Unable to react to owner easter-egg prompt: {:?}", e);
+                            warn!("Unable to react to owner easter-egg 1 prompt: {:?}", e);
+                        }
+                    }
+                } else if can_easter_egg
+                    && EASTER_EGG_2_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
+                {
+                    // Easter egg 2: when the owner says something matching a specific regex, try to reply
+                    if let Err(e) = new_message.reply_ping(context, "…you are… 😩").await {
+                        warn!(
+                            "Unable to reply to owner easter-egg 1 prompt. Falling back to reaction. Error: {:?}",
+                            e
+                        );
+                        if let Err(e) = new_message.react(context, '😩').await {
+                            warn!("Unable to react to owner easter-egg 1 prompt: {:?}", e);
                         }
                     }
                 } else {
