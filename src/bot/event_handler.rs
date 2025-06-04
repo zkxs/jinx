@@ -38,22 +38,9 @@ thread_local! {
     static EASTER_EGG_2_REGEX: Regex = GLOBAL_EASTER_EGG_2_REGEX.clone();
 }
 
-/// Outer event handler layer for error handling. See [`event_handler_inner`] for the actual event handler implementation.
+/// Event handler implementation. Errors are handled in [`error_handler`](crate::bot::error_handler::error_handler)
+/// under the `FrameworkError::EventHandler` match.
 pub async fn event_handler<'a>(
-    context: &'a serenity::Context,
-    event: &'a FullEvent,
-    framework_context: FrameworkContext<'a, Data, Error>,
-    data: &'a Data,
-) -> Result<(), Error> {
-    let result = event_handler_inner(context, event, framework_context, data).await;
-    if let Err(e) = &result {
-        error!("Unhandled error in event handler: {:?}", e)
-    }
-    result
-}
-
-/// Inner event handler layer. See [`event_handler`] for the error handling layer.
-async fn event_handler_inner<'a>(
     context: &'a serenity::Context,
     event: &'a FullEvent,
     _framework_context: FrameworkContext<'a, Data, Error>,
