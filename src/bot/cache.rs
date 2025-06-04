@@ -405,24 +405,14 @@ impl ApiCache {
                                 let remaining = next_queue_entry.remaining_time_until_low_priority_expiry(now);
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                if remaining == Duration::ZERO {
-                                    debug!(
-                                        "low-priority worker caught up; sleeping for 0. Next up is {}",
-                                        next_queue_entry.guild_id.get()
-                                    );
-                                    // force this to 5s
-                                    //TODO: remove this special case: it's a dirty hack to work around the spinning bug
-                                    sleep_duration = Some(Duration::from_secs(5));
-                                } else {
-                                    debug!(
-                                        "low-priority worker caught up; sleeping for {}s. Next up is {}",
-                                        remaining.as_secs(),
-                                        next_queue_entry.guild_id.get()
-                                    );
+                                debug!(
+                                    "low-priority worker caught up; sleeping for {}s. Next up is {}",
+                                    remaining.as_secs(),
+                                    next_queue_entry.guild_id.get()
+                                );
 
-                                    // this is the normal case for setting `sleep_duration`
-                                    sleep_duration = Some(remaining);
-                                }
+                                // this is the normal case for setting `sleep_duration`
+                                sleep_duration = Some(remaining);
                             } else {
                                 // the queue was empty, so we can actually sleep forever (or rather until the rx triggers) as there is no work to do
                                 debug!("low-priority worker has ran out of work!");
