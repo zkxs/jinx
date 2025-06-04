@@ -9,12 +9,12 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
-use poise::serenity_prelude::{
-    ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
-    CreateMessage, CreateModal, EditInteractionResponse, FullEvent, InputTextStyle, Interaction,
-};
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
+use serenity::{
+    ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
+    CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
+};
 use std::sync::LazyLock;
 use tracing::{debug, error, info, warn};
 
@@ -405,10 +405,10 @@ pub async fn event_handler<'a>(
                                             .description(message)
                                             .color(Colour::ORANGE);
                                         let bot_log_message = CreateMessage::default().embed(embed);
-                                        let bot_log_result = log_channel.send_message(context, bot_log_message).await;
-                                        if let Err(e) = bot_log_result {
-                                            warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e);
-                                        }
+                                        handle_message_send_error(
+                                            log_channel.send_message(context, bot_log_message).await,
+                                            guild_id,
+                                        );
                                     }
 
                                     send_fail_message().await?;
@@ -525,7 +525,10 @@ pub async fn event_handler<'a>(
                                                 .description(message)
                                                 .color(Colour::RED);
                                             let bot_log_message = CreateMessage::default().embed(embed);
-                                            log_channel.send_message(context, bot_log_message).await?;
+                                            handle_message_send_error(
+                                                log_channel.send_message(context, bot_log_message).await,
+                                                guild_id,
+                                            );
                                         }
                                     }
 
@@ -576,15 +579,10 @@ pub async fn event_handler<'a>(
                                                     .color(Colour::GOLD)
                                                     .description(owner_message);
                                                 let bot_log_message = CreateMessage::default().embed(embed);
-                                                let bot_log_result =
-                                                    log_channel.send_message(context, bot_log_message).await;
-                                                if let Err(e) = bot_log_result {
-                                                    warn!(
-                                                        "Error logging to log channel in {}: {:?}",
-                                                        guild_id.get(),
-                                                        e
-                                                    );
-                                                }
+                                                handle_message_send_error(
+                                                    log_channel.send_message(context, bot_log_message).await,
+                                                    guild_id,
+                                                );
                                             }
                                         } else {
                                             let mut client_message = format!(
@@ -654,15 +652,10 @@ pub async fn event_handler<'a>(
                                                         .color(Colour::RED);
                                                     bot_log_message.embed(error_embed)
                                                 };
-                                                let bot_log_result =
-                                                    log_channel.send_message(context, bot_log_message).await;
-                                                if let Err(e) = bot_log_result {
-                                                    warn!(
-                                                        "Error logging to log channel in {}: {:?}",
-                                                        guild_id.get(),
-                                                        e
-                                                    );
-                                                }
+                                                handle_message_send_error(
+                                                    log_channel.send_message(context, bot_log_message).await,
+                                                    guild_id,
+                                                );
                                             }
                                         }
                                     } else {
@@ -717,4 +710,21 @@ pub async fn event_handler<'a>(
     }
 
     Ok(())
+}
+
+/// Handle any recoverable errors in sending a message to a channel. Presently this only performs logging.
+fn handle_message_send_error(result: serenity::Result<serenity::Message>, guild_id: GuildId) {
+    if let Err(e) = result {
+        match e {
+            serenity::Error::Http(serenity::HttpError::UnsuccessfulRequest(error)) if error.status_code == 403 => {
+                // Handle the case where we have missing access. This happens sometimes if a guild owner screw up their
+                // log channel, for example by deleting it or fucking up the permissions.
+                info!("Error logging to log channel in {}: {:?}", guild_id.get(), error)
+            }
+            _ => {
+                // In all other cases log this as a warning
+                warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e)
+            }
+        }
+    }
 }
