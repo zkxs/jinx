@@ -695,7 +695,10 @@ async fn event_handler_inner<'a>(
                                 )
                                 .color(Colour::RED);
                             let edit = EditInteractionResponse::default().embed(embed);
-                            modal_interaction.edit_response(context, edit).await?;
+                            let user_notification_result = modal_interaction.edit_response(context, edit).await;
+                            if let Err(error) = user_notification_result {
+                                error!("Error notifying user of unset API key: {:?}", error);
+                            }
                         }
                     } else {
                         // User did not provide a license string, or provided all whitespace or something weird like that.
@@ -704,7 +707,10 @@ async fn event_handler_inner<'a>(
                             .description("You must provide a license key")
                             .color(Colour::RED);
                         let edit = EditInteractionResponse::default().embed(embed);
-                        modal_interaction.edit_response(context, edit).await?;
+                        let user_notification_result = modal_interaction.edit_response(context, edit).await;
+                        if let Err(error) = user_notification_result {
+                            error!("Error notifying user of missing license key: {:?}", error);
+                        }
                     }
                 }
                 _ => {}
