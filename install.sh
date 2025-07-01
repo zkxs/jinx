@@ -1,2 +1,4 @@
 #!/bin/bash
-RUSTFLAGS='-C target-cpu=native' cargo install --locked --path . --profile release-optimized-debug
+export RUSTFLAGS='-C target-cpu=native'
+cp -a ~/.cargo/bin/{jinx,previous-jinx}
+cargo auditable install --locked --path . --profile release-optimized-debug
