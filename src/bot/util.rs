@@ -8,6 +8,7 @@ use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
+use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use poise::{CreateReply, serenity_prelude as serenity};
 use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
@@ -79,7 +80,7 @@ pub(super) async fn assignable_roles(
     context: &Context<'_>,
     guild_id: GuildId,
 ) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
-    let bot_id = context.framework().bot_id;
+    let bot_id = context.framework().bot_id();
     let bot_member = guild_id.member(context, bot_id).await?;
 
     // Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
@@ -120,7 +121,7 @@ pub(super) async fn assignable_roles(
 }
 
 pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -> Result<bool, Error> {
-    let bot_id = context.framework().bot_id;
+    let bot_id = context.framework().bot_id();
     let bot_member = guild_id.member(context, bot_id).await?;
 
     // same deprecation warning as above in `assignable_roles`
@@ -459,6 +460,15 @@ where
         }
     })
     .await
+}
+
+/// Create an autocomplete response from strings
+pub fn create_autocomplete_response<T: Into<String>>(choices: impl Iterator<Item = T>) -> CreateAutocompleteResponse {
+    let choice_vec = choices
+        .into_iter()
+        .map(|choice| AutocompleteChoice::from(choice))
+        .collect();
+    CreateAutocompleteResponse::new().set_choices(choice_vec)
 }
 
 #[cfg(test)]

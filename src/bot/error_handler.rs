@@ -57,7 +57,9 @@ impl<'a> PoiseError<'a> {
 pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
     let error: Option<PoiseError> = match error {
         FrameworkError::Setup { ctx, error, .. } => PoiseError::debug("Setup", ctx, error),
-        FrameworkError::EventHandler { ctx, error, .. } => PoiseError::debug("Event handler", ctx, error),
+        FrameworkError::EventHandler { framework, error, .. } => {
+            PoiseError::debug("Event handler", framework.serenity_context, error)
+        }
         FrameworkError::Command { ctx, error, .. } => PoiseError::debug_cmd("Command", ctx, error),
         FrameworkError::SubcommandRequired { ctx, .. } => PoiseError::new_cmd("Subcommand required", ctx),
         FrameworkError::CommandPanic { ctx, payload, .. } => {
@@ -88,17 +90,20 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
             error!("Dynamic prefix error: {:?}", error);
             None
         }
-        FrameworkError::UnknownCommand { ctx, trigger, .. } => {
-            PoiseError::debug("Unknown prefix command", ctx, trigger)
+        FrameworkError::UnknownCommand { framework, trigger, .. } => {
+            PoiseError::debug("Unknown prefix command", framework.serenity_context, trigger)
         }
-        FrameworkError::UnknownInteraction { ctx, interaction, .. } => {
-            PoiseError::debug("Unknown interaction", ctx, interaction)
+        FrameworkError::UnknownInteraction {
+            framework, interaction, ..
+        } => PoiseError::debug("Unknown interaction", framework.serenity_context, interaction),
+        FrameworkError::NonCommandMessage { framework, error, .. } => {
+            PoiseError::debug("Non-command message", framework.serenity_context, error)
         }
-        FrameworkError::NonCommandMessage { ctx, error, .. } => PoiseError::debug("Non-command message", ctx, error),
         FrameworkError::__NonExhaustive(_) => {
             error!("poise dev has done something weird and thrown a __NonExhaustive error");
             None
         }
+        FrameworkError::PermissionFetchFailed { ctx, .. } => PoiseError::new_cmd("Permission fetch failed", ctx),
     };
     if let Some(error) = error {
         match error.context {

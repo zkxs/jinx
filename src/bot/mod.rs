@@ -138,7 +138,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 verify_guild(),
                 version(),
             ],
-            event_handler: |ctx, event, framework, data| Box::pin(event_handler(ctx, event, framework, data)),
+            event_handler: |ctx, event| Box::pin(event_handler(ctx, event)),
             on_error: |e| Box::pin(error_handler(e)),
             initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
             prefix_options: PrefixFrameworkOptions {

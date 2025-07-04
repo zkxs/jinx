@@ -12,8 +12,10 @@ use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::GuildId;
-use serenity::{ButtonStyle, ChannelId, Colour, CreateActionRow, CreateButton, CreateEmbed, CreateMessage, RoleId};
+use serenity::{
+    ButtonStyle, ChannelId, Colour, CreateActionRow, CreateAutocompleteResponse, CreateButton, CreateEmbed,
+    CreateMessage, GuildId, RoleId,
+};
 use std::collections::HashMap;
 use tokio::join;
 use tokio::task::JoinSet;
@@ -610,7 +612,7 @@ pub async fn unlock_license(
 }
 
 /// Initializes autocomplete data, and then does the product autocomplete
-async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
+async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> CreateAutocompleteResponse {
     match context.guild_id() {
         Some(guild_id) => {
             match context
@@ -619,22 +621,22 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> imp
                 .product_names_with_prefix(&context.data().db, guild_id, product_prefix)
                 .await
             {
-                Ok(result) => result.into_iter(),
+                Ok(result) => util::create_autocomplete_response(result.into_iter()),
                 Err(e) => {
                     warn!("Failed to read API cache: {:?}", e);
-                    Vec::new().into_iter()
+                    CreateAutocompleteResponse::new()
                 }
             }
         }
         None => {
             error!("someone is somehow doing product autocomplete without being in a guild");
-            Vec::new().into_iter()
+            CreateAutocompleteResponse::new()
         }
     }
 }
 
 /// Initializes autocomplete data, and then does the product version autocomplete
-async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str) -> impl Iterator<Item = String> {
+async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str) -> CreateAutocompleteResponse {
     match context.guild_id() {
         Some(guild_id) => {
             match context
@@ -643,16 +645,16 @@ async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str
                 .product_version_names_with_prefix(&context.data().db, guild_id, product_prefix)
                 .await
             {
-                Ok(result) => result.into_iter(),
+                Ok(result) => util::create_autocomplete_response(result.into_iter()),
                 Err(e) => {
                     warn!("Failed to read API cache: {:?}", e);
-                    Vec::new().into_iter()
+                    CreateAutocompleteResponse::new()
                 }
             }
         }
         None => {
             error!("someone is somehow doing product version autocomplete without being in a guild");
-            Vec::new().into_iter()
+            CreateAutocompleteResponse::new()
         }
     }
 }
