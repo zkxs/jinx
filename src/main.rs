@@ -43,7 +43,7 @@ async fn main() -> ExitCode {
             if let Some(discord_token) = discord_token {
                 let db = db::JinxDb::open()
                     .await
-                    .unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
+                    .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
                 db.set_discord_token(discord_token)
                     .await
                     .expect("Failed to set discord token");
@@ -62,30 +62,30 @@ async fn main() -> ExitCode {
         Some(cli_args::Command::Owner(cli_args::OwnerArgs { command })) => {
             let db = db::JinxDb::open()
                 .await
-                .unwrap_or_else(|e| panic!("{}: {:?}", DB_OPEN_ERROR_MESSAGE, e));
+                .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
             match command {
                 OwnerCommand::Add { discord_id } => {
                     let discord_id = discord_id
                         .parse()
-                        .unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
+                        .unwrap_or_else(|e| panic!("{DISCORD_ID_PARSE_ERROR_MESSAGE}: {e:?}"));
                     db.add_owner(discord_id)
                         .await
-                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
+                        .unwrap_or_else(|e| panic!("{DB_WRITE_ERROR_MESSAGE}: {e:?}"));
                 }
                 OwnerCommand::Rm { discord_id } => {
                     let discord_id = discord_id
                         .parse()
-                        .unwrap_or_else(|e| panic!("{}: {:?}", DISCORD_ID_PARSE_ERROR_MESSAGE, e));
+                        .unwrap_or_else(|e| panic!("{DISCORD_ID_PARSE_ERROR_MESSAGE}: {e:?}"));
                     db.delete_owner(discord_id)
                         .await
-                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_WRITE_ERROR_MESSAGE, e));
+                        .unwrap_or_else(|e| panic!("{DB_WRITE_ERROR_MESSAGE}: {e:?}"));
                 }
                 OwnerCommand::Ls => {
                     let owners = db
                         .get_owners()
                         .await
-                        .unwrap_or_else(|e| panic!("{}: {:?}", DB_READ_ERROR_MESSAGE, e));
-                    owners.into_iter().for_each(|id| println!("{}", id));
+                        .unwrap_or_else(|e| panic!("{DB_READ_ERROR_MESSAGE}: {e:?}"));
+                    owners.into_iter().for_each(|id| println!("{id}"));
                 }
             }
             ExitCode::SUCCESS

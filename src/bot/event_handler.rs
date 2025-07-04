@@ -399,7 +399,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                                                 .flat_map(|vec| vec.iter())
                                                 .flat_map(|activation| activation.try_into_user_id())
                                                 .for_each(|user_id| {
-                                                    message.push_str(format!("\n- <@{}>", user_id).as_str())
+                                                    message.push_str(format!("\n- <@{user_id}>").as_str())
                                                 });
                                             message
                                         };
@@ -570,7 +570,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                                         if roles.is_empty() {
                                             let embed = CreateEmbed::default()
                                                 .title("Registration Partial Success")
-                                                .description(format!("You have registered {}, but there are no configured role links. Please notify the server owner and then try again after role links have been configured.", product_display_name))
+                                                .description(format!("You have registered {product_display_name}, but there are no configured role links. Please notify the server owner and then try again after role links have been configured."))
                                                 .color(Colour::GOLD);
 
                                             /*
@@ -609,8 +609,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                                             }
                                         } else {
                                             let mut client_message = format!(
-                                                "Congratulations, you are now registered as an owner of the {} product and have been granted the following roles:",
-                                                product_display_name
+                                                "Congratulations, you are now registered as an owner of the {product_display_name} product and have been granted the following roles:"
                                             );
                                             let mut owner_message = format!(
                                                 "<@{}> has registered the {} product and has been granted the following roles:",
@@ -638,8 +637,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                                                     .color(Colour::DARK_GREEN)
                                             } else {
                                                 let message = format!(
-                                                    "{}\n\nFailed to grant access to roles:{}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support.",
-                                                    client_message, errors
+                                                    "{client_message}\n\nFailed to grant access to roles:{errors}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support."
                                                 );
                                                 CreateEmbed::default()
                                                     .title("Registration Partial Success")

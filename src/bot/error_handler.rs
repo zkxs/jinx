@@ -31,7 +31,7 @@ impl<'a> PoiseError<'a> {
     fn debug<T: Debug>(title: &'static str, context: &'a serenity::client::Context, diagnostic: T) -> Option<Self> {
         Some(Self {
             title,
-            diagnostic: Some(format!("{:?}", diagnostic)),
+            diagnostic: Some(format!("{diagnostic:?}")),
             context: SomeContext::Serenity(context),
         })
     }
@@ -39,7 +39,7 @@ impl<'a> PoiseError<'a> {
     fn debug_cmd<T: Debug>(title: &'static str, context: Context<'a>, diagnostic: T) -> Option<Self> {
         Some(Self {
             title,
-            diagnostic: Some(format!("{:?}", diagnostic)),
+            diagnostic: Some(format!("{diagnostic:?}")),
             context: SomeContext::Framework(context),
         })
     }
@@ -68,7 +68,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
             None
         }
         FrameworkError::ArgumentParse { ctx, input, error, .. } => {
-            PoiseError::string_cmd("Argument parse error", ctx, format!("{:?} {:?}", input, error))
+            PoiseError::string_cmd("Argument parse error", ctx, format!("{input:?} {error:?}"))
         }
         FrameworkError::CommandStructureMismatch { description, .. } => {
             // this technically has a context, but it's a weird 1-off type
@@ -116,7 +116,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
             }
             SomeContext::Framework(context) => {
                 let nonce: u64 = util::generate_nonce();
-                let nonce = format!("{:016X}", nonce);
+                let nonce = format!("{nonce:016X}");
                 let user = context.author();
 
                 if let Some(diagnostic) = error.diagnostic {
@@ -138,7 +138,7 @@ pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
                     );
                 }
 
-                let result = context.send(error_reply(format!("{} Error", error.title), format!("An unexpected error has occurred. Please report this to the bot developer with error code `{}`\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>).", nonce))).await;
+                let result = context.send(error_reply(format!("{} Error", error.title), format!("An unexpected error has occurred. Please report this to the bot developer with error code `{nonce}`\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))).await;
                 if let Err(e) = result {
                     error!("Error sending error message: {:?}", e);
                 }

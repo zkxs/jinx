@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use tracing::{error, warn};
 
 static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(format!(r"^{}(\d+)$", DISCORD_PREFIX).as_str())
+    Regex::new(format!(r"^{DISCORD_PREFIX}(\d+)$").as_str())
         .expect("Failed to compile GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX")
 });
 
@@ -311,7 +311,7 @@ pub struct CreateLicenseActivation {
 impl CreateLicenseActivation {
     pub fn from_user_id(user_id: u64) -> Self {
         Self {
-            description: format!("{}{}", DISCORD_PREFIX, user_id),
+            description: format!("{DISCORD_PREFIX}{user_id}"),
         }
     }
 }

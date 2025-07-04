@@ -172,7 +172,7 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
         }
         Err(e) => error_reply(
             "Error Creating Post",
-            format!("Could not get info for your Jinxxy user: {}", e),
+            format!("Could not get info for your Jinxxy user: {e}"),
         ),
     };
 
@@ -307,7 +307,7 @@ pub async fn user_info(
                     }
                     Err(license_id) => {
                         // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
-                        message.push_str(format!("\n- ID=`{}` (no data found)", license_id).as_str());
+                        message.push_str(format!("\n- ID=`{license_id}` (no data found)").as_str());
                     }
                 }
             }
@@ -370,8 +370,7 @@ pub async fn deactivate_license(
             error_reply(
                 "Error Deactivating License",
                 format!(
-                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
-                    license
+                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 ),
             )
         }
@@ -450,7 +449,7 @@ pub async fn license_info(
                         if *user_id == 0 {
                             message.push_str("\n- **LOCKED** (prevents further use)");
                         } else {
-                            message.push_str(format!("\n- <@{}>", user_id).as_str());
+                            message.push_str(format!("\n- <@{user_id}>").as_str());
                         }
                     }
                     message
@@ -470,16 +469,15 @@ pub async fn license_info(
                 // that or an ID was provided directly
                 let message = if local_license_users.is_empty() {
                     format!(
-                        "License `{} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`",
-                        license
+                        "License `{license} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`"
                     )
                 } else {
-                    let mut message = format!("License `{}` not found, but somehow has users:", license);
+                    let mut message = format!("License `{license}` not found, but somehow has users:");
                     for user_id in local_license_users {
                         if user_id == 0 {
                             message.push_str("\n- **LOCKED** (prevents further use)");
                         } else {
-                            message.push_str(format!("\n- <@{}>", user_id).as_str());
+                            message.push_str(format!("\n- <@{user_id}>").as_str());
                         }
                     }
                     message.push_str("\nThis may indicate that the license has been revoked on the Jinxxy side.");
@@ -491,8 +489,7 @@ pub async fn license_info(
             error_reply(
                 "Error Getting License Info",
                 format!(
-                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
-                    license
+                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 ),
             )
         }
@@ -533,14 +530,13 @@ pub async fn lock_license(
                 .await?;
             success_reply(
                 "Success",
-                format!("License `{}` is now locked and cannot be used to grant roles.", license),
+                format!("License `{license}` is now locked and cannot be used to grant roles."),
             )
         } else {
             error_reply(
                 "Error Locking License",
                 format!(
-                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
-                    license
+                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 ),
             )
         }
@@ -586,11 +582,10 @@ pub async fn unlock_license(
                     .db
                     .deactivate_license(guild_id, license_id, lock_activation_id, LOCKING_USER_ID)
                     .await?;
-                format!("License `{}` is now unlocked and may be used to grant roles.", license)
+                format!("License `{license}` is now unlocked and may be used to grant roles.")
             } else {
                 format!(
-                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
-                    license
+                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 )
             };
 
@@ -599,8 +594,7 @@ pub async fn unlock_license(
             error_reply(
                 "Error Unlocking License",
                 format!(
-                    "License `{}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.",
-                    license
+                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 ),
             )
         }
@@ -787,10 +781,7 @@ pub(in crate::bot) async fn link_product(
 
         let embed = CreateEmbed::default()
             .title("Product Link Successful")
-            .description(format!(
-                "{} will now grant the following roles:{}",
-                product, message_lines
-            ))
+            .description(format!("{product} will now grant the following roles:{message_lines}"))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
         if let Some(embed) = util::create_role_warning_from_unassignable(unassignable_roles.into_iter()) {
@@ -859,10 +850,7 @@ pub(in crate::bot) async fn unlink_product(
 
         let embed = CreateEmbed::default()
             .title("Product Unlink Successful")
-            .description(format!(
-                "{} will now grant the following roles:{}",
-                product, message_lines
-            ))
+            .description(format!("{product} will now grant the following roles:{message_lines}"))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
         if let Some(embed) = util::create_role_warning_from_roles(&assignable_roles, roles_set.into_iter()) {
@@ -936,8 +924,7 @@ pub(in crate::bot) async fn link_product_version(
         let embed = CreateEmbed::default()
             .title("Product Version Link Successful")
             .description(format!(
-                "{} will now grant the following roles:{}",
-                product_version, message_lines
+                "{product_version} will now grant the following roles:{message_lines}"
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);
@@ -1008,8 +995,7 @@ pub(in crate::bot) async fn unlink_product_version(
         let embed = CreateEmbed::default()
             .title("Product Version Unlink Successful")
             .description(format!(
-                "{} will now grant the following roles:{}",
-                product_version, message_lines
+                "{product_version} will now grant the following roles:{message_lines}"
             ))
             .color(Colour::DARK_GREEN);
         let reply = CreateReply::default().embed(embed).ephemeral(true);

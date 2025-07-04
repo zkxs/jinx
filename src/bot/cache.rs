@@ -910,8 +910,7 @@ mod test {
             let (_, expected) = tuple;
             assert!(
                 results.iter().any(|actual| actual == expected),
-                "could not find expected value: {}",
-                expected
+                "could not find expected value: {expected}"
             );
         }
     }

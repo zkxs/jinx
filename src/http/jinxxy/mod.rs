@@ -44,10 +44,7 @@ async fn handle_unexpected_status(endpoint: &'static str, response: Response) ->
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
             .unwrap_or_default();
 
-        let message = format!(
-            "{} returned status code {}. Headers={}; Body={}",
-            endpoint, status_code, headers, body,
-        );
+        let message = format!("{endpoint} returned status code {status_code}. Headers={headers}; Body={body}",);
         Err(JinxError::new(message))
     }
 }
@@ -56,7 +53,7 @@ async fn handle_unexpected_status(endpoint: &'static str, response: Response) ->
 pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{}me", JINXXY_BASE_URL))
+        .get(format!("{JINXXY_BASE_URL}me"))
         .headers(get_headers(api_key))
         .send()
         .await?;
@@ -93,7 +90,7 @@ pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Op
             };
             let start_time = Instant::now();
             let response = HTTP_CLIENT
-                .get(format!("{}licenses", JINXXY_BASE_URL)) // this does NOT work with `limit` set.
+                .get(format!("{JINXXY_BASE_URL}licenses")) // this does NOT work with `limit` set.
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
@@ -135,7 +132,7 @@ pub async fn check_license(
             // look up license directly by ID
             let start_time = Instant::now();
             let response = HTTP_CLIENT
-                .get(format!("{}licenses/{}", JINXXY_BASE_URL, license_id))
+                .get(format!("{JINXXY_BASE_URL}licenses/{license_id}"))
                 .headers(get_headers(api_key))
                 .send()
                 .await?;
@@ -172,7 +169,7 @@ pub async fn check_license(
             };
             let start_time = Instant::now();
             let response = HTTP_CLIENT
-                .get(format!("{}licenses", JINXXY_BASE_URL))
+                .get(format!("{JINXXY_BASE_URL}licenses"))
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
@@ -229,8 +226,7 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!(
-            "{}licenses/{}/activations?limit=2147483647",
-            JINXXY_BASE_URL, license_id
+            "{JINXXY_BASE_URL}licenses/{license_id}/activations?limit=2147483647"
         ))
         .headers(get_headers(api_key))
         .send()
@@ -250,7 +246,7 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
     let body = dto::CreateLicenseActivation::from_user_id(user_id);
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .post(format!("{}licenses/{}/activations", JINXXY_BASE_URL, license_id))
+        .post(format!("{JINXXY_BASE_URL}licenses/{license_id}/activations"))
         .headers(get_headers(api_key))
         .header(header::CONTENT_TYPE, "application/json")
         .json(&body)
@@ -270,8 +266,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .delete(format!(
-            "{}licenses/{}/activations/{}",
-            JINXXY_BASE_URL, license_id, activation_id
+            "{JINXXY_BASE_URL}licenses/{license_id}/activations/{activation_id}"
         ))
         .headers(get_headers(api_key))
         .send()
@@ -304,7 +299,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
 pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{}products/{}", JINXXY_BASE_URL, product_id))
+        .get(format!("{JINXXY_BASE_URL}products/{product_id}"))
         .headers(get_headers(api_key))
         .send()
         .await?;
@@ -319,7 +314,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{}products?limit=2147483647", JINXXY_BASE_URL))
+        .get(format!("{JINXXY_BASE_URL}products?limit=2147483647"))
         .headers(get_headers(api_key))
         .send()
         .await?;

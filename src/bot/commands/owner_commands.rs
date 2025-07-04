@@ -96,7 +96,7 @@ pub(in crate::bot) async fn owner_stats(
 pub(in crate::bot) async fn backfill_license_info(context: Context<'_>) -> Result<(), Error> {
     context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
     let updated = context.data().db.backfill_license_info().await?;
-    let reply = success_reply("Success", format!("Updated {} licenses.", updated));
+    let reply = success_reply("Success", format!("Updated {updated} licenses."));
     context.send(reply).await?;
     Ok(())
 }
@@ -405,7 +405,7 @@ pub(in crate::bot) async fn verify_guild(
                             Err(e) => CreateEmbed::default()
                                 .title("API Verification Error")
                                 .color(Colour::RED)
-                                .description(format!("API key invalid: {}", e)),
+                                .description(format!("API key invalid: {e}")),
                         }
                     } else {
                         CreateEmbed::default()
@@ -469,7 +469,7 @@ pub(in crate::bot) async fn verify_guild(
             let embed = CreateEmbed::default()
                 .title("Guild Verification Error")
                 .color(Colour::RED)
-                .description(format!("Guild was invalid (parse error: {})", e));
+                .description(format!("Guild was invalid (parse error: {e})"));
             CreateReply::default().embed(embed)
         }
     };
@@ -552,7 +552,7 @@ pub(in crate::bot) async fn sudo_list_links(
             let embed = CreateEmbed::default()
                 .title("sudo_list_links Error")
                 .color(Colour::RED)
-                .description(format!("Guild was invalid (parse error: {})", e));
+                .description(format!("Guild was invalid (parse error: {e})"));
             let reply = CreateReply::default().embed(embed);
             context.send(reply.ephemeral(true)).await?;
         }
@@ -612,7 +612,7 @@ pub(in crate::bot) async fn debug_product_cache(
             let embed = CreateEmbed::default()
                 .title("debug_product_cache Error")
                 .color(Colour::RED)
-                .description(format!("Guild was invalid (parse error: {})", e));
+                .description(format!("Guild was invalid (parse error: {e})"));
             let reply = CreateReply::default().embed(embed);
             context.send(reply.ephemeral(true)).await?;
         }

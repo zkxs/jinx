@@ -155,13 +155,12 @@ fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmb
 
         let mut warning_lines = String::new();
         for role in unassignable_roles {
-            warning_lines.push_str(format!("\n- <@&{}>", role).as_str());
+            warning_lines.push_str(format!("\n- <@&{role}>").as_str());
         }
         let embed = CreateEmbed::default()
             .title("Warning")
             .description(format!(
-                "I don't currently have access to grant the following roles. Please check bot permissions.{}",
-                warning_lines
+                "I don't currently have access to grant the following roles. Please check bot permissions.{warning_lines}"
             ))
             .color(Colour::ORANGE);
         Some(embed)
