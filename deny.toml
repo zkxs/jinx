@@ -238,7 +238,7 @@ skip = [
     { crate = "rand@0.8", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand_chacha@0.3", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand_core@0.6", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "wasi@0.11.0+wasi-snapshot-preview1", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "wasi@0.11.1+wasi-snapshot-preview1", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "webpki-roots@0.26.11", reason = "webpki-roots@0.26.11 fucking depends on webpki-roots@1.0.0 what the fuck" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
