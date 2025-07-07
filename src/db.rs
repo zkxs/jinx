@@ -286,6 +286,7 @@ impl JinxDb {
     }
 
     pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
+        let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
                 let mut statement =
@@ -297,6 +298,7 @@ impl JinxDb {
     }
 
     pub async fn delete_owner(&self, owner_id: u64) -> Result<()> {
+        let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare_cached("DELETE FROM owner WHERE owner_id = :owner")?;
@@ -322,8 +324,8 @@ impl JinxDb {
             .call(move |connection| {
                 let mut statement = connection.prepare_cached("SELECT owner_id FROM owner")?;
                 let result = statement.query_map((), |row| {
-                    let owner_id: u64 = row.get(0)?;
-                    Ok(owner_id)
+                    let owner_id: i64 = row.get(0)?;
+                    Ok(owner_id as u64)
                 })?;
                 let mut vec = Vec::with_capacity(result.size_hint().0);
                 for row in result {
@@ -335,6 +337,7 @@ impl JinxDb {
     }
 
     pub async fn is_user_owner(&self, owner_id: u64) -> Result<bool> {
+        let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
                 let mut statement =
@@ -375,9 +378,11 @@ impl JinxDb {
         product_id: Option<String>,
         version_id: Option<String>,
     ) -> Result<()> {
+        let guild_id = guild.get() as i64;
+        let user_id = user_id as i64;
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id, product_id, version_id) VALUES (:guild, :license, :activation, :user, :product_id, :version_id)")?;
-            statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
+            statement.execute(named_params! {":guild": guild_id, ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
             Ok(())
         }).await
     }
@@ -392,9 +397,11 @@ impl JinxDb {
         product_id: Option<String>,
         version_id: Option<String>,
     ) -> Result<bool> {
+        let guild_id = guild.get() as i64;
+        let user_id = user_id as i64;
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("UPDATE license_activation SET product_id = :product_id, version_id = :version_id WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user")?;
-            let update_count = statement.execute(named_params! {":guild": guild.get(), ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
+            let update_count = statement.execute(named_params! {":guild": guild_id, ":license": license_id, ":activation": license_activation_id, ":user": user_id, ":product_id": product_id, ":version_id": version_id })?;
             Ok(update_count != 0)
         }).await
     }
@@ -403,10 +410,12 @@ impl JinxDb {
         let license_records = self.connection.call(move |connection| {
             let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0")?;
             let license_rows = license_query.query_map((), |row| {
-                let guild_id: GuildId = GuildId::new(row.get(0)?);
+                let guild_id: i64 = row.get(0)?;
+                let guild_id: GuildId = GuildId::new(guild_id as u64);
                 let license_id: String = row.get(1)?;
                 let license_activation_id: String = row.get(2)?;
-                let user_id: u64 = row.get(3)?;
+                let user_id: i64 = row.get(3)?;
+                let user_id = user_id as u64;
                 Ok(LicenseRecord { guild_id, license_id, license_activation_id, user_id })
             })?;
             let mut vec = Vec::with_capacity(license_rows.size_hint().0);
