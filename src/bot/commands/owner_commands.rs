@@ -4,7 +4,7 @@
 use crate::SHOULD_RESTART;
 use crate::bot::commands::guild_commands;
 use crate::bot::util::{check_owner, error_reply, success_reply};
-use crate::bot::{Context, util};
+use crate::bot::{Context, HOURS_PER_DAY, SECONDS_PER_HOUR, util};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
@@ -618,5 +618,33 @@ pub(in crate::bot) async fn debug_product_cache(
         }
     }
 
+    Ok(())
+}
+
+/// Set the expiry time for the low-priority product cache
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn set_cache_expiry_time(
+    context: Context<'_>,
+    #[description = "expiry time in hours"] expiry_time_hours: u64,
+) -> Result<(), Error> {
+    let days: f64 = expiry_time_hours as f64 / HOURS_PER_DAY as f64;
+    let low_priority_cache_expiry_time = Duration::from_secs(expiry_time_hours * SECONDS_PER_HOUR);
+    context
+        .data()
+        .db
+        .set_low_priority_cache_expiry_time(low_priority_cache_expiry_time)
+        .await?;
+    context
+        .send(success_reply(
+            "Success",
+            format!("Cache will now expire every {days:.2} days"),
+        ))
+        .await?;
     Ok(())
 }

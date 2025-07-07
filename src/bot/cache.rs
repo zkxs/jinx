@@ -33,10 +33,10 @@ type MapType = Arc<papaya::HashMap<GuildId, GuildCache, ahash::RandomState>>;
 /// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
 /// How long before the low priority worker considers a cache entry expired. Currently 24 hours.
-const LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
-/// Same as `LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME`, but with a bit of extra time as wiggle room
-/// to try and avoid waking right before an entry expires. I'd rather wake a bit after.
-const LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME: Duration = Duration::from_secs(SECONDS_PER_DAY + 60);
+const DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SECONDS_PER_DAY);
+/// Some small quantity of time to wait on top of the low priority cache expiry time. This is intended to act as wiggle
+/// room avoid waking right before an entry expires (I'd rather wake a bit after instead).
+const LOW_PRIORITY_CACHE_EXPIRY_TIME_FUDGE_FACTOR: Duration = Duration::from_secs(60);
 /// Minimum time the low priority worker will use as its poll timeout
 const MIN_SLEEP_DURATION: Duration = Duration::from_millis(250);
 
@@ -128,6 +128,20 @@ impl ApiCache {
                 let mut sleep_duration: Option<Duration> = None;
 
                 'outer: loop {
+                    let low_priority_cache_expiry_time = match db.get_low_priority_cache_expiry_time().await {
+                        Ok(Some(expiry_time)) => expiry_time,
+                        Ok(None) => DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME,
+                        Err(e) => {
+                            // this is kind of a big problem, as if the default is lower than what we're SUPPOSED to
+                            // have read from the DB, then we'd spam the heck out of the API if we just fell back to the
+                            // default.
+                            error!(
+                                "Error reading low_priority_cache_expiry_time from DB. Stopping cache refresh task now! {e:?}"
+                            );
+                            break 'outer;
+                        }
+                    };
+
                     let received_event = if let Some(sleep_duration) = sleep_duration {
                         if sleep_duration.is_zero() {
                             // handle an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
@@ -157,8 +171,10 @@ impl ApiCache {
                                 let next_queue_entry =
                                     queue.peek().expect("queue should not be empty immediately after push");
                                 // remaining time until the entry hits the expiration time, or 0 if it's already expired
-                                let remaining =
-                                    next_queue_entry.remaining_time_until_low_priority_expiry(SimpleTime::now());
+                                let remaining = next_queue_entry.remaining_time_until_low_priority_expiry(
+                                    low_priority_cache_expiry_time,
+                                    SimpleTime::now(),
+                                );
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if remaining != Duration::ZERO {
                                     debug!(
@@ -231,7 +247,8 @@ impl ApiCache {
                                             // sync our thread-local copy of the create time with the source of truth (the cache)
                                             queue_entry.create_time = cache_entry.create_time;
 
-                                            if cache_entry.is_expired_low_priority(now) {
+                                            if cache_entry.is_expired_low_priority(low_priority_cache_expiry_time, now)
+                                            {
                                                 // entry exists and was expired
                                                 // no need to do a DB load because we obviously already have data in memory
                                                 (true, false)
@@ -266,7 +283,10 @@ impl ApiCache {
                                                             match db_result {
                                                                 Ok(Some(cache_entry)) => {
                                                                     // DB read worked: just return it
-                                                                    if cache_entry.is_expired_low_priority(now) {
+                                                                    if cache_entry.is_expired_low_priority(
+                                                                        low_priority_cache_expiry_time,
+                                                                        now,
+                                                                    ) {
                                                                         debug!(
                                                                             "DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.",
                                                                             queue_entry.guild_id.get()
@@ -408,7 +428,8 @@ impl ApiCache {
                             // update the sleep time
                             if let Some(next_queue_entry) = queue.peek() {
                                 // remaining time until the entry hits the expiration time, or 0 if it's already expired
-                                let remaining = next_queue_entry.remaining_time_until_low_priority_expiry(now);
+                                let remaining = next_queue_entry
+                                    .remaining_time_until_low_priority_expiry(low_priority_cache_expiry_time, now);
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 if !first_run || !remaining.is_zero() {
@@ -620,9 +641,13 @@ impl Eq for GuildQueueRef {}
 
 impl GuildQueueRef {
     /// remaining time until the entry hits the expiration time, or 0 if it's already expired
-    fn remaining_time_until_low_priority_expiry(&self, now: SimpleTime) -> Duration {
+    fn remaining_time_until_low_priority_expiry(
+        &self,
+        low_priority_cache_expiry_time: Duration,
+        now: SimpleTime,
+    ) -> Duration {
         let elapsed = now.duration_since(self.create_time);
-        LOW_PRIORITY_CACHE_EXPIRY_TIME_PLUS_SOME
+        (low_priority_cache_expiry_time + LOW_PRIORITY_CACHE_EXPIRY_TIME_FUDGE_FACTOR)
             .checked_sub(elapsed)
             .unwrap_or_default()
     }
@@ -871,8 +896,8 @@ impl GuildCache {
     }
 
     /// check if the entry is _very_ expired
-    fn is_expired_low_priority(&self, now: SimpleTime) -> bool {
-        now.duration_since(self.create_time) > LOW_PRIORITY_CACHE_EXPIRY_TIME
+    fn is_expired_low_priority(&self, low_priority_cache_expiry_time: Duration, now: SimpleTime) -> bool {
+        now.duration_since(self.create_time) > low_priority_cache_expiry_time
     }
 
     pub fn product_name_iter(&self) -> impl Iterator<Item = &str> {
