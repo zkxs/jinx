@@ -1,10 +1,12 @@
-// This file is part of jinx. Copyright © 2024 jinx contributors.
+// This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs, io};
+
+const COPYRIGHT_YEAR: u32 = 2025;
 
 fn main() -> io::Result<()> {
     let out_dir: PathBuf = env::var("OUT_DIR").expect("bad out dir?").into();
@@ -40,9 +42,10 @@ fn create_constants<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// override version string displayed by clap
 fn clap_version(git_commit_hash: &str) -> String {
     format!(
-        "{} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\nWritten by: {}",
+        "{} commit {}\\nCopyright {} jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\nWritten by: {}",
         env!("CARGO_PKG_VERSION"),
         git_commit_hash,
+        COPYRIGHT_YEAR,
         env!("CARGO_PKG_AUTHORS"),
     )
 }
@@ -50,10 +53,11 @@ fn clap_version(git_commit_hash: &str) -> String {
 /// String shown when via the Discord bot's `/version` command
 fn discord_bot_version(git_commit_hash: &str) -> String {
     format!(
-        "{} {} commit {}\\nCopyright 2024 jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\n{}",
+        "{} {} commit {}\\nCopyright {} jinx contributors\\nLicense: GNU AGPL v3.0 or any later version\\n{}",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
         git_commit_hash,
+        COPYRIGHT_YEAR,
         env!("CARGO_PKG_REPOSITORY"),
     )
 }
