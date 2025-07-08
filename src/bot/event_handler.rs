@@ -9,6 +9,7 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
+use poise::serenity_prelude::ModalInteraction;
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
@@ -268,456 +269,16 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             match modal_interaction.data.custom_id.as_str() {
                 // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                 REGISTER_MODAL_ID => {
-                    let license_key = modal_interaction
-                        .data
-                        .components
-                        .iter()
-                        .flat_map(|row| row.components.iter())
-                        .find_map(|component| {
-                            if let ActionRowComponent::InputText(input_text) = component {
-                                if input_text.custom_id == LICENSE_KEY_ID {
-                                    input_text
-                                        .value
-                                        .as_deref()
-                                        .map(|value| value.trim())
-                                        .filter(|value| !value.is_empty())
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        });
-                    if let Some(license_key) = license_key {
-                        let guild_id = modal_interaction
-                            .guild_id
-                            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-                        let user_id = modal_interaction.user.id;
-                        let license_type = license::identify_license(license_key);
-
-                        debug!(
-                            "got license in {} from <@{}> which looks like {}",
-                            guild_id.get(),
-                            user_id.get(),
-                            license_type
-                        );
-
-                        /*
-                        Generic fail message. This message is deterministic based solely on the user-provided string,
-                        which prevents leaking information regarding license validity. For example, different messages
-                        for different contexts could let someone distinguish between:
-                        - A valid license that has already been activated by someone else
-                        - A valid, previously unactivated license that was activated by someone else while going through this flow
-                        - An invalid license
-                        */
-                        let send_fail_message = async || {
-                            if license_type.is_license() {
-                                debug!(
-                                    "failed to verify license in {} for <@{}> which looks like {}",
-                                    guild_id.get(),
-                                    user_id.get(),
-                                    license_type
-                                );
-                            } else {
-                                // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
-                                debug!(
-                                    "failed to verify license \"{}\" in {} for <@{}> which looks like {}",
-                                    license_key,
-                                    guild_id.get(),
-                                    user_id.get(),
-                                    license_type
-                                );
-                            }
-
-                            if matches!(license_type, LicenseType::Gumroad) {
-                                context.user_data.db.increment_gumroad_failure_count(guild_id).await?;
-                            }
-
-                            let description = if license_type.is_jinxxy_license() {
-                                "The provided Jinxxy license key was not valid or is already in use".to_string()
-                            } else {
-                                format!(
-                                    "The provided Jinxxy license key was not valid or is already in use.\n\n\
-                                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
-                                    Please confirm you are providing the correct value to the correct bot. \
-                                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
-                                )
-                            };
-                            let embed = CreateEmbed::default()
-                                .title("Jinxxy Product Registration Failed")
-                                .description(description)
-                                .color(Colour::RED);
-                            let edit = EditInteractionResponse::default().embed(embed);
-                            modal_interaction.edit_response(context.serenity_context, edit).await?;
-                            Ok::<(), Error>(())
-                        };
-
-                        if let Some(api_key) = context.user_data.db.get_jinxxy_api_key(guild_id).await? {
-                            let license = license_type.create_untrusted_jinxxy_license(license_key);
-                            let license_response = if let Some(license) = license {
-                                util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?
-                            } else {
-                                // if the user has given us something that is very clearly not a Jinxxy license then don't even try hitting the API
-                                None
-                            };
-                            if let Some(license_info) = license_response {
-                                let member = modal_interaction
-                                    .member
-                                    .as_ref()
-                                    .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-
-                                let (activations, mut validation) = if license_info.activations == 0 {
-                                    // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
-                                    (None, Default::default())
-                                } else {
-                                    let activations = util::retry_thrice(|| {
-                                        jinxxy::get_license_activations(&api_key, &license_info.license_id)
-                                    })
-                                    .await?;
-                                    let validation = license::validate_jinxxy_license_activation(user_id, &activations);
-                                    (Some(activations), validation)
-                                };
-
-                                // verify no activations from unexpected users
-                                if validation.other_user || validation.locked {
-                                    // some other user has already activated this license. This is the NORMAL fail case. The other fail cases are abnormal.
-
-                                    // send a notification to the guild owner bot log if it's set up for this guild
-                                    if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
-                                        let message = if validation.locked {
-                                            format!(
-                                                "<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.",
-                                                user_id.get()
-                                            )
-                                        } else {
-                                            let mut message = format!(
-                                                "<@{}> attempted to activate a license that has already been used by:",
-                                                user_id.get()
-                                            );
-                                            activations
-                                                .iter()
-                                                .flat_map(|vec| vec.iter())
-                                                .flat_map(|activation| activation.try_into_user_id())
-                                                .for_each(|user_id| {
-                                                    message.push_str(format!("\n- <@{user_id}>").as_str())
-                                                });
-                                            message
-                                        };
-                                        info!(
-                                            "in {} for license id {}, {}",
-                                            guild_id, license_info.license_id, message
-                                        );
-                                        let embed = CreateEmbed::default()
-                                            .title("Activation Attempt Failed")
-                                            .description(message)
-                                            .color(Colour::ORANGE);
-                                        let bot_log_message = CreateMessage::default().embed(embed);
-                                        handle_message_send_error(
-                                            log_channel
-                                                .send_message(context.serenity_context, bot_log_message)
-                                                .await,
-                                            guild_id,
-                                        );
-                                    }
-
-                                    send_fail_message().await?;
-                                } else {
-                                    // log if multiple activations for this user
-                                    if validation.multiple {
-                                        warn!(
-                                            "in {} <@{}> is about to activate {}. User already has multiple activations: {:?}",
-                                            guild_id.get(),
-                                            user_id.get(),
-                                            license_info.license_id,
-                                            activations
-                                        );
-                                    }
-
-                                    // check our db to see if we have a record there
-                                    let activation_present_in_db = context
-                                        .user_data
-                                        .db
-                                        .has_user_license_activations(
-                                            guild_id,
-                                            user_id.get(),
-                                            license_info.license_id.clone(),
-                                        )
-                                        .await?;
-
-                                    // calculate if we should grant roles
-                                    let grant_roles = if validation.own_user {
-                                        // if already activated grant roles now and skip next steps
-
-                                        if !activation_present_in_db {
-                                            if let Some(activation) = activations.iter().flatten().next() {
-                                                context
-                                                    .user_data
-                                                    .db
-                                                    .activate_license(
-                                                        guild_id,
-                                                        license_info.license_id.clone(),
-                                                        activation.id.clone(),
-                                                        user_id.get(),
-                                                        Some(license_info.product_id.clone()),
-                                                        license_info.version_id().map(|str| str.to_string()),
-                                                    )
-                                                    .await?;
-                                                warn!(
-                                                    "in {} <@{}> just activated {}, but it was not in the DB! That's weird. Restored via {}",
-                                                    guild_id.get(),
-                                                    user_id.get(),
-                                                    license_info.license_id,
-                                                    activation.id
-                                                );
-                                            } else {
-                                                warn!(
-                                                    "This should be impossible: we JUST validated this activation but now it is empty."
-                                                )
-                                            }
-                                        }
-                                        true
-                                    } else {
-                                        // we aren't activated, so we need to create the activation... and then check again to prevent race conditions
-                                        let new_activation_id = util::retry_thrice(|| {
-                                            jinxxy::create_license_activation(
-                                                &api_key,
-                                                &license_info.license_id,
-                                                user_id.get(),
-                                            )
-                                        })
-                                        .await?;
-                                        context
-                                            .user_data
-                                            .db
-                                            .activate_license(
-                                                guild_id,
-                                                license_info.license_id.clone(),
-                                                new_activation_id.clone(),
-                                                user_id.get(),
-                                                Some(license_info.product_id.clone()),
-                                                license_info.version_id().map(|str| str.to_string()),
-                                            )
-                                            .await?;
-                                        let activations = util::retry_thrice(|| {
-                                            jinxxy::get_license_activations(&api_key, &license_info.license_id)
-                                        })
-                                        .await?;
-                                        validation = license::validate_jinxxy_license_activation(user_id, &activations);
-
-                                        // log if multiple activations for different users
-                                        if validation.multiple {
-                                            warn!(
-                                                "in {} <@{}> just activated {} via {}. User already has multiple activations: {:?}",
-                                                guild_id.get(),
-                                                user_id.get(),
-                                                license_info.license_id,
-                                                new_activation_id,
-                                                activations
-                                            );
-                                        }
-
-                                        // create roles if no non-us activations
-                                        !(validation.other_user || validation.locked)
-                                    };
-                                    if validation.deadlocked() {
-                                        // Two different people just race-conditioned their way to multiple activations so this license is now rendered unusable ever again.
-                                        // A moderator can use `/deactivate_license` to fix this manually.
-                                        warn!(
-                                            "in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable",
-                                            guild_id.get(),
-                                            license_info.license_id
-                                        );
-
-                                        // also send a notification to the guild owner bot log if it's set up for this guild
-                                        if let Some(log_channel) =
-                                            context.user_data.db.get_log_channel(guild_id).await?
-                                        {
-                                            let message = format!(
-                                                "<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
-                                                user_id.get()
-                                            );
-                                            let embed = CreateEmbed::default()
-                                                .title("Activation Error")
-                                                .description(message)
-                                                .color(Colour::RED);
-                                            let bot_log_message = CreateMessage::default().embed(embed);
-                                            handle_message_send_error(
-                                                log_channel
-                                                    .send_message(context.serenity_context, bot_log_message)
-                                                    .await,
-                                                guild_id,
-                                            );
-                                        }
-                                    }
-
-                                    if grant_roles {
-                                        let roles = context
-                                            .user_data
-                                            .db
-                                            .get_role_grants(guild_id, license_info.new_product_version_id())
-                                            .await?;
-
-                                        let product_display_name = if let Some(product_version_info) =
-                                            license_info.product_version_info
-                                        {
-                                            format!(
-                                                "{} (version {})",
-                                                license_info.product_name, product_version_info.product_version_name
-                                            )
-                                        } else {
-                                            license_info.product_name
-                                        };
-                                        if roles.is_empty() {
-                                            let embed = CreateEmbed::default()
-                                                .title("Registration Partial Success")
-                                                .description(format!("You have registered {product_display_name}, but there are no configured role links. Please notify the server owner and then try again after role links have been configured."))
-                                                .color(Colour::GOLD);
-
-                                            /*
-                                            Let the user know what happened.
-                                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
-                                            - 3s after a non-acked interaction
-                                            - 15m after an acked interaction
-                                             */
-                                            let edit = EditInteractionResponse::default().embed(embed);
-                                            let user_notification_result =
-                                                modal_interaction.edit_response(context.serenity_context, edit).await;
-                                            if let Err(error) = user_notification_result {
-                                                error!("Error notifying user of license activation: {:?}", error);
-                                            }
-
-                                            // also send a notification to the guild owner bot log if it's set up for this guild
-                                            if let Some(log_channel) =
-                                                context.user_data.db.get_log_channel(guild_id).await?
-                                            {
-                                                let owner_message = format!(
-                                                    "<@{}> has registered the {} product, which has no configured roles!",
-                                                    user_id.get(),
-                                                    product_display_name
-                                                );
-                                                let embed = CreateEmbed::default()
-                                                    .title("License Activation")
-                                                    .color(Colour::GOLD)
-                                                    .description(owner_message);
-                                                let bot_log_message = CreateMessage::default().embed(embed);
-                                                handle_message_send_error(
-                                                    log_channel
-                                                        .send_message(context.serenity_context, bot_log_message)
-                                                        .await,
-                                                    guild_id,
-                                                );
-                                            }
-                                        } else {
-                                            let mut client_message = format!(
-                                                "Congratulations, you are now registered as an owner of the {product_display_name} product and have been granted the following roles:"
-                                            );
-                                            let mut owner_message = format!(
-                                                "<@{}> has registered the {} product and has been granted the following roles:",
-                                                user_id.get(),
-                                                product_display_name
-                                            );
-                                            let mut errors: String = String::new();
-                                            for role in roles {
-                                                match member.add_role(context.serenity_context, role).await {
-                                                    Ok(()) => {
-                                                        let bullet_point = format!("\n- <@&{}>", role.get());
-                                                        client_message.push_str(bullet_point.as_str());
-                                                        owner_message.push_str(bullet_point.as_str());
-                                                    }
-                                                    Err(e) => {
-                                                        errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
-                                                        warn!("in {} error granting role: {:?}", guild_id.get(), e);
-                                                    }
-                                                }
-                                            }
-                                            let embed = if errors.is_empty() {
-                                                CreateEmbed::default()
-                                                    .title("Registration Success")
-                                                    .description(client_message)
-                                                    .color(Colour::DARK_GREEN)
-                                            } else {
-                                                let message = format!(
-                                                    "{client_message}\n\nFailed to grant access to roles:{errors}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support."
-                                                );
-                                                CreateEmbed::default()
-                                                    .title("Registration Partial Success")
-                                                    .description(message)
-                                                    .color(Colour::ORANGE)
-                                            };
-
-                                            /*
-                                            Let the user know what happened.
-                                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
-                                            - 3s after a non-acked interaction
-                                            - 15m after an acked interaction
-                                             */
-                                            let edit = EditInteractionResponse::default().embed(embed);
-                                            let user_notification_result =
-                                                modal_interaction.edit_response(context.serenity_context, edit).await;
-                                            if let Err(error) = user_notification_result {
-                                                error!("Error notifying user of license activation: {:?}", error);
-                                            }
-
-                                            // also send a notification to the guild owner bot log if it's set up for this guild
-                                            if let Some(log_channel) =
-                                                context.user_data.db.get_log_channel(guild_id).await?
-                                            {
-                                                let embed = CreateEmbed::default()
-                                                    .title("License Activation")
-                                                    .description(owner_message);
-                                                let bot_log_message = CreateMessage::default().embed(embed);
-                                                let bot_log_message = if errors.is_empty() {
-                                                    bot_log_message
-                                                } else {
-                                                    let error_embed = CreateEmbed::default()
-                                                        .title("Role Grant Error")
-                                                        .description(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors))
-                                                        .color(Colour::RED);
-                                                    bot_log_message.embed(error_embed)
-                                                };
-                                                handle_message_send_error(
-                                                    log_channel
-                                                        .send_message(context.serenity_context, bot_log_message)
-                                                        .await,
-                                                    guild_id,
-                                                );
-                                            }
-                                        }
-                                    } else {
-                                        // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
-                                        send_fail_message().await?;
-                                    }
-                                }
-                            } else {
-                                // could not find a matching license in Jinxxy
-                                send_fail_message().await?;
-                            }
-                        } else {
-                            let embed = CreateEmbed::default()
-                                .title("Jinx Misconfiguration")
-                                .description(
-                                    "Jinxxy API key is not set: please contact the server administrator for support.",
-                                )
-                                .color(Colour::RED);
-                            let edit = EditInteractionResponse::default().embed(embed);
-                            let user_notification_result =
-                                modal_interaction.edit_response(context.serenity_context, edit).await;
-                            if let Err(error) = user_notification_result {
-                                error!("Error notifying user of unset API key: {:?}", error);
-                            }
-                        }
-                    } else {
-                        // User did not provide a license string, or provided all whitespace or something weird like that.
+                    if let Err(e) = handle_license_registration(context, modal_interaction).await {
+                        let nonce: u64 = util::generate_nonce();
+                        let nonce = format!("{nonce:016X}");
+                        error!("NONCE[{nonce}] Error registering license: {e:?}");
                         let embed = CreateEmbed::default()
                             .title("Registration Failure")
-                            .description("You must provide a license key")
+                            .description(format!("An unexpected error has occurred. Please report this to the bot developer with error code `{nonce}`\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
                             .color(Colour::RED);
                         let edit = EditInteractionResponse::default().embed(embed);
-                        let user_notification_result =
-                            modal_interaction.edit_response(context.serenity_context, edit).await;
-                        if let Err(error) = user_notification_result {
-                            error!("Error notifying user of missing license key: {:?}", error);
-                        }
+                        modal_interaction.edit_response(context.serenity_context, edit).await?;
                     }
                 }
                 _ => {}
@@ -734,6 +295,442 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             );
         }
         _ => {}
+    }
+
+    Ok(())
+}
+
+async fn handle_license_registration<'a>(
+    context: FrameworkContext<'a, Data, Error>,
+    modal_interaction: &ModalInteraction,
+) -> Result<(), Error> {
+    let license_key = modal_interaction
+        .data
+        .components
+        .iter()
+        .flat_map(|row| row.components.iter())
+        .find_map(|component| {
+            if let ActionRowComponent::InputText(input_text) = component {
+                if input_text.custom_id == LICENSE_KEY_ID {
+                    input_text
+                        .value
+                        .as_deref()
+                        .map(|value| value.trim())
+                        .filter(|value| !value.is_empty())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+    if let Some(license_key) = license_key {
+        let guild_id = modal_interaction
+            .guild_id
+            .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+        let user_id = modal_interaction.user.id;
+        let license_type = license::identify_license(license_key);
+
+        debug!(
+            "got license in {} from <@{}> which looks like {}",
+            guild_id.get(),
+            user_id.get(),
+            license_type
+        );
+
+        /*
+        Generic fail message. This message is deterministic based solely on the user-provided string,
+        which prevents leaking information regarding license validity. For example, different messages
+        for different contexts could let someone distinguish between:
+        - A valid license that has already been activated by someone else
+        - A valid, previously unactivated license that was activated by someone else while going through this flow
+        - An invalid license
+        */
+        let send_fail_message = async || {
+            if license_type.is_license() {
+                debug!(
+                    "failed to verify license in {} for <@{}> which looks like {}",
+                    guild_id.get(),
+                    user_id.get(),
+                    license_type
+                );
+            } else {
+                // if the user gave me something that I don't believe is a license, debug print it so I can learn if there's some weird case I need to handle
+                debug!(
+                    "failed to verify license \"{}\" in {} for <@{}> which looks like {}",
+                    license_key,
+                    guild_id.get(),
+                    user_id.get(),
+                    license_type
+                );
+            }
+
+            if matches!(license_type, LicenseType::Gumroad) {
+                context.user_data.db.increment_gumroad_failure_count(guild_id).await?;
+            }
+
+            let description = if license_type.is_jinxxy_license() {
+                "The provided Jinxxy license key was not valid or is already in use".to_string()
+            } else {
+                format!(
+                    "The provided Jinxxy license key was not valid or is already in use.\n\n\
+                                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
+                                    Please confirm you are providing the correct value to the correct bot. \
+                                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
+                )
+            };
+            let embed = CreateEmbed::default()
+                .title("Jinxxy Product Registration Failed")
+                .description(description)
+                .color(Colour::RED);
+            let edit = EditInteractionResponse::default().embed(embed);
+            modal_interaction.edit_response(context.serenity_context, edit).await?;
+            Ok::<(), Error>(())
+        };
+
+        if let Some(api_key) = context.user_data.db.get_jinxxy_api_key(guild_id).await? {
+            let license = license_type.create_untrusted_jinxxy_license(license_key);
+            let license_response = if let Some(license) = license {
+                util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?
+            } else {
+                // if the user has given us something that is very clearly not a Jinxxy license then don't even try hitting the API
+                None
+            };
+            if let Some(license_info) = license_response {
+                let member = modal_interaction
+                    .member
+                    .as_ref()
+                    .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+                let (activations, mut validation) = if license_info.activations == 0 {
+                    // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
+                    (None, Default::default())
+                } else {
+                    let activations =
+                        util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
+                            .await?;
+                    let validation = license::validate_jinxxy_license_activation(user_id, &activations);
+                    (Some(activations), validation)
+                };
+
+                // verify no activations from unexpected users
+                if validation.other_user || validation.locked {
+                    // some other user has already activated this license. This is the NORMAL fail case. The other fail cases are abnormal.
+
+                    // send a notification to the guild owner bot log if it's set up for this guild
+                    if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                        let message = if validation.locked {
+                            format!(
+                                "<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.",
+                                user_id.get()
+                            )
+                        } else {
+                            let mut message = format!(
+                                "<@{}> attempted to activate a license that has already been used by:",
+                                user_id.get()
+                            );
+                            activations
+                                .iter()
+                                .flat_map(|vec| vec.iter())
+                                .flat_map(|activation| activation.try_into_user_id())
+                                .for_each(|user_id| message.push_str(format!("\n- <@{user_id}>").as_str()));
+                            message
+                        };
+                        info!(
+                            "in {} for license id {}, {}",
+                            guild_id, license_info.license_id, message
+                        );
+                        let embed = CreateEmbed::default()
+                            .title("Activation Attempt Failed")
+                            .description(message)
+                            .color(Colour::ORANGE);
+                        let bot_log_message = CreateMessage::default().embed(embed);
+                        handle_message_send_error(
+                            log_channel
+                                .send_message(context.serenity_context, bot_log_message)
+                                .await,
+                            guild_id,
+                        );
+                    }
+
+                    send_fail_message().await?;
+                } else {
+                    // log if multiple activations for this user
+                    if validation.multiple {
+                        warn!(
+                            "in {} <@{}> is about to activate {}. User already has multiple activations: {:?}",
+                            guild_id.get(),
+                            user_id.get(),
+                            license_info.license_id,
+                            activations
+                        );
+                    }
+
+                    // check our db to see if we have a record there
+                    let activation_present_in_db = context
+                        .user_data
+                        .db
+                        .has_user_license_activations(guild_id, user_id.get(), license_info.license_id.clone())
+                        .await?;
+
+                    // calculate if we should grant roles
+                    let grant_roles = if validation.own_user {
+                        // if already activated grant roles now and skip next steps
+
+                        if !activation_present_in_db {
+                            if let Some(activation) = activations.iter().flatten().next() {
+                                context
+                                    .user_data
+                                    .db
+                                    .activate_license(
+                                        guild_id,
+                                        license_info.license_id.clone(),
+                                        activation.id.clone(),
+                                        user_id.get(),
+                                        Some(license_info.product_id.clone()),
+                                        license_info.version_id().map(|str| str.to_string()),
+                                    )
+                                    .await?;
+                                warn!(
+                                    "in {} <@{}> just activated {}, but it was not in the DB! That's weird. Restored via {}",
+                                    guild_id.get(),
+                                    user_id.get(),
+                                    license_info.license_id,
+                                    activation.id
+                                );
+                            } else {
+                                warn!(
+                                    "This should be impossible: we JUST validated this activation but now it is empty."
+                                )
+                            }
+                        }
+                        true
+                    } else {
+                        // we aren't activated, so we need to create the activation... and then check again to prevent race conditions
+                        let new_activation_id = util::retry_thrice(|| {
+                            jinxxy::create_license_activation(&api_key, &license_info.license_id, user_id.get())
+                        })
+                        .await?;
+                        context
+                            .user_data
+                            .db
+                            .activate_license(
+                                guild_id,
+                                license_info.license_id.clone(),
+                                new_activation_id.clone(),
+                                user_id.get(),
+                                Some(license_info.product_id.clone()),
+                                license_info.version_id().map(|str| str.to_string()),
+                            )
+                            .await?;
+                        let activations =
+                            util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
+                                .await?;
+                        validation = license::validate_jinxxy_license_activation(user_id, &activations);
+
+                        // log if multiple activations for different users
+                        if validation.multiple {
+                            warn!(
+                                "in {} <@{}> just activated {} via {}. User already has multiple activations: {:?}",
+                                guild_id.get(),
+                                user_id.get(),
+                                license_info.license_id,
+                                new_activation_id,
+                                activations
+                            );
+                        }
+
+                        // create roles if no non-us activations
+                        !(validation.other_user || validation.locked)
+                    };
+                    if validation.deadlocked() {
+                        // Two different people just race-conditioned their way to multiple activations so this license is now rendered unusable ever again.
+                        // A moderator can use `/deactivate_license` to fix this manually.
+                        warn!(
+                            "in {} license {} is deadlocked: multiple different users have somehow managed to activate it, rendering it unusable",
+                            guild_id.get(),
+                            license_info.license_id
+                        );
+
+                        // also send a notification to the guild owner bot log if it's set up for this guild
+                        if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                            let message = format!(
+                                "<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
+                                user_id.get()
+                            );
+                            let embed = CreateEmbed::default()
+                                .title("Activation Error")
+                                .description(message)
+                                .color(Colour::RED);
+                            let bot_log_message = CreateMessage::default().embed(embed);
+                            handle_message_send_error(
+                                log_channel
+                                    .send_message(context.serenity_context, bot_log_message)
+                                    .await,
+                                guild_id,
+                            );
+                        }
+                    }
+
+                    if grant_roles {
+                        let roles = context
+                            .user_data
+                            .db
+                            .get_role_grants(guild_id, license_info.new_product_version_id())
+                            .await?;
+
+                        let product_display_name = if let Some(product_version_info) = license_info.product_version_info
+                        {
+                            format!(
+                                "{} (version {})",
+                                license_info.product_name, product_version_info.product_version_name
+                            )
+                        } else {
+                            license_info.product_name
+                        };
+                        if roles.is_empty() {
+                            let embed = CreateEmbed::default()
+                                .title("Registration Partial Success")
+                                .description(format!("You have registered {product_display_name}, but there are no configured role links. Please notify the server owner and then try again after role links have been configured."))
+                                .color(Colour::GOLD);
+
+                            /*
+                            Let the user know what happened.
+                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
+                            - 3s after a non-acked interaction
+                            - 15m after an acked interaction
+                             */
+                            let edit = EditInteractionResponse::default().embed(embed);
+                            let user_notification_result =
+                                modal_interaction.edit_response(context.serenity_context, edit).await;
+                            if let Err(error) = user_notification_result {
+                                error!("Error notifying user of license activation: {:?}", error);
+                            }
+
+                            // also send a notification to the guild owner bot log if it's set up for this guild
+                            if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                                let owner_message = format!(
+                                    "<@{}> has registered the {} product, which has no configured roles!",
+                                    user_id.get(),
+                                    product_display_name
+                                );
+                                let embed = CreateEmbed::default()
+                                    .title("License Activation")
+                                    .color(Colour::GOLD)
+                                    .description(owner_message);
+                                let bot_log_message = CreateMessage::default().embed(embed);
+                                handle_message_send_error(
+                                    log_channel
+                                        .send_message(context.serenity_context, bot_log_message)
+                                        .await,
+                                    guild_id,
+                                );
+                            }
+                        } else {
+                            let mut client_message = format!(
+                                "Congratulations, you are now registered as an owner of the {product_display_name} product and have been granted the following roles:"
+                            );
+                            let mut owner_message = format!(
+                                "<@{}> has registered the {} product and has been granted the following roles:",
+                                user_id.get(),
+                                product_display_name
+                            );
+                            let mut errors: String = String::new();
+                            for role in roles {
+                                match member.add_role(context.serenity_context, role).await {
+                                    Ok(()) => {
+                                        let bullet_point = format!("\n- <@&{}>", role.get());
+                                        client_message.push_str(bullet_point.as_str());
+                                        owner_message.push_str(bullet_point.as_str());
+                                    }
+                                    Err(e) => {
+                                        errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                                        warn!("in {} error granting role: {:?}", guild_id.get(), e);
+                                    }
+                                }
+                            }
+                            let embed = if errors.is_empty() {
+                                CreateEmbed::default()
+                                    .title("Registration Success")
+                                    .description(client_message)
+                                    .color(Colour::DARK_GREEN)
+                            } else {
+                                let message = format!(
+                                    "{client_message}\n\nFailed to grant access to roles:{errors}\nThe bot may lack permission to grant the above roles. Contact your server administrator for support."
+                                );
+                                CreateEmbed::default()
+                                    .title("Registration Partial Success")
+                                    .description(message)
+                                    .color(Colour::ORANGE)
+                            };
+
+                            /*
+                            Let the user know what happened.
+                            Note that this can fail if the interaction has been invalidated, which happens in some cases:
+                            - 3s after a non-acked interaction
+                            - 15m after an acked interaction
+                             */
+                            let edit = EditInteractionResponse::default().embed(embed);
+                            let user_notification_result =
+                                modal_interaction.edit_response(context.serenity_context, edit).await;
+                            if let Err(error) = user_notification_result {
+                                error!("Error notifying user of license activation: {:?}", error);
+                            }
+
+                            // also send a notification to the guild owner bot log if it's set up for this guild
+                            if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                                let embed = CreateEmbed::default()
+                                    .title("License Activation")
+                                    .description(owner_message);
+                                let bot_log_message = CreateMessage::default().embed(embed);
+                                let bot_log_message = if errors.is_empty() {
+                                    bot_log_message
+                                } else {
+                                    let error_embed = CreateEmbed::default()
+                                        .title("Role Grant Error")
+                                        .description(format!("Failed to grant <@{}> access to the following roles:{}\nPlease check bot permissions.", user_id.get(), errors))
+                                        .color(Colour::RED);
+                                    bot_log_message.embed(error_embed)
+                                };
+                                handle_message_send_error(
+                                    log_channel
+                                        .send_message(context.serenity_context, bot_log_message)
+                                        .await,
+                                    guild_id,
+                                );
+                            }
+                        }
+                    } else {
+                        // license activation check failed. This happens if we created an activation but the double check failed due to finding a second user's activation.
+                        send_fail_message().await?;
+                    }
+                }
+            } else {
+                // could not find a matching license in Jinxxy
+                send_fail_message().await?;
+            }
+        } else {
+            let embed = CreateEmbed::default()
+                .title("Jinx Misconfiguration")
+                .description("Jinxxy API key is not set: please contact the server administrator for support.")
+                .color(Colour::RED);
+            let edit = EditInteractionResponse::default().embed(embed);
+            let user_notification_result = modal_interaction.edit_response(context.serenity_context, edit).await;
+            if let Err(error) = user_notification_result {
+                error!("Error notifying user of unset API key: {:?}", error);
+            }
+        }
+    } else {
+        // User did not provide a license string, or provided all whitespace or something weird like that.
+        let embed = CreateEmbed::default()
+            .title("Registration Failure")
+            .description("You must provide a license key")
+            .color(Colour::RED);
+        let edit = EditInteractionResponse::default().embed(embed);
+        let user_notification_result = modal_interaction.edit_response(context.serenity_context, edit).await;
+        if let Err(error) = user_notification_result {
+            error!("Error notifying user of missing license key: {:?}", error);
+        }
     }
 
     Ok(())
