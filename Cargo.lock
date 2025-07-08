@@ -1070,6 +1070,7 @@ dependencies = [
  "rusqlite",
  "semver",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-graceful-shutdown",
  "tokio-rusqlite",

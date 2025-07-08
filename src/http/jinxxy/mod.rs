@@ -148,7 +148,7 @@ pub async fn check_license(
                 debug!("could not look up user-provided license id");
                 // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
                 let status_code = response.status();
-                let response: dto::JinxxyError = response.json().await?;
+                let response = dto::JinxxyError::from_slice(&response.bytes().await?)?;
                 if response.looks_like_403() || response.looks_like_404() {
                     Ok(None)
                 } else {
@@ -281,7 +281,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
         // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
         let status_code = response.status();
-        let response: dto::JinxxyError = response.json().await?;
+        let response = dto::JinxxyError::from_slice(&response.bytes().await?)?;
         if response.looks_like_404() {
             // license was not found
             Ok(false)

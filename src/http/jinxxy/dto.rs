@@ -9,7 +9,7 @@ use ahash::HashSet;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(format!(r"^{DISCORD_PREFIX}(\d+)$").as_str())
@@ -333,6 +333,12 @@ pub struct JinxxyError {
 }
 
 impl JinxxyError {
+    /// Create a JinxxyError from raw json bytes
+    pub fn from_slice(bytes: &[u8]) -> serde_json::Result<Self> {
+        debug!("Raw JinxxyError JSON: {}", String::from_utf8_lossy(bytes));
+        serde_json::from_slice(bytes)
+    }
+
     /// Check if an error looks like a 403.
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
