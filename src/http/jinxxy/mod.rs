@@ -311,22 +311,59 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
     Ok(response)
 }
 
-/// Get all products on this account. This does NOT include product version information.
-pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
+/// Get a single page of products.
+async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::ProductList, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{JINXXY_BASE_URL}products?limit=100"))
+        .get(format!("{JINXXY_BASE_URL}products?limit=100&page={page_number}"))
         .headers(get_headers(api_key))
         .send()
         .await?;
     debug!("GET /products took {}ms", start_time.elapsed().as_millis());
     let response = handle_unexpected_status("GET /products", response).await?;
-
     let response: dto::ProductList = response.json().await?;
-    if response.len() == 100 {
-        warn!("GET /products returned exactly 100 items, which is the pagination limit");
+    Ok(response)
+}
+
+/// Get all products on this account by performing a paginated request. This does NOT include product version information.
+///
+/// You should not wrap this in retry logic, as the retry logic is already built in to each paged request, as should be
+/// done for dependent serial results (e.g. if page 5 fails don't retry the entire paginated request: just retry page 5.)
+pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
+    let mut products = Vec::new();
+    let mut page_number: u32 = 1;
+    let mut should_be_empty = false;
+    loop {
+        let response = util::retry_thrice(|| get_products_page(api_key, page_number)).await?;
+        let response = response.products();
+
+        if response.is_empty() {
+            // we are on the last page and should stop iterating
+            if !should_be_empty {
+                warn!(
+                    "GET /products returned <100 items on the previous page and >0 items on this page. This implies the data mutated during iteration."
+                );
+            }
+            // `products` vec already contains everything we need to return
+            break;
+        } else {
+            if response.len() < 100 {
+                // if we got less than the limit, we expect the next page to be empty
+                should_be_empty = true;
+            }
+
+            // add this page of products to the `products` vec we will eventually return
+            if products.is_empty() {
+                // don't do an allocation + copy for the first page: just steal the vec
+                products = response;
+            } else {
+                products.extend(response);
+            }
+        }
+        page_number += 1;
     }
-    Ok(response.into())
+
+    Ok(products)
 }
 
 /// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.

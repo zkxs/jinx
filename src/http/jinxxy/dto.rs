@@ -189,10 +189,13 @@ struct ProfileImage {
 }
 
 /// While part of the Jinxxy API this is also very useful as an external DTO
+#[derive(Debug, Deserialize)]
 pub struct PartialProduct {
     /// Product ID
     pub id: String,
+
     /// Product Name
+    #[allow(unused)]
     pub name: String,
 }
 
@@ -228,35 +231,12 @@ pub struct ProductVersion {
 
 #[derive(Debug, Deserialize)]
 pub struct ProductList {
-    results: Vec<ProductListResult>,
+    results: Vec<PartialProduct>,
 }
 
 impl ProductList {
-    pub fn len(&self) -> usize {
-        self.results.len()
-    }
-}
-
-impl From<ProductList> for Vec<PartialProduct> {
-    fn from(product_list: ProductList) -> Self {
-        product_list.results.into_iter().map(|item| item.into()).collect()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ProductListResult {
-    /// Product ID
-    id: String,
-    /// Product Name
-    name: String,
-}
-
-impl From<ProductListResult> for PartialProduct {
-    fn from(product: ProductListResult) -> Self {
-        Self {
-            id: product.id,
-            name: product.name,
-        }
+    pub fn products(self) -> Vec<PartialProduct> {
+        self.results
     }
 }
 
