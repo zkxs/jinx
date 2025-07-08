@@ -14,7 +14,7 @@ use reqwest::{Response, header};
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -225,9 +225,7 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
     //TODO: `search_query` field "A search query to filter results"
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!(
-            "{JINXXY_BASE_URL}licenses/{license_id}/activations?limit=2147483647"
-        ))
+        .get(format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit=100"))
         .headers(get_headers(api_key))
         .send()
         .await?;
@@ -238,6 +236,9 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
     let response = handle_unexpected_status("GET /licenses/<id>/activations", response).await?;
 
     let response: dto::LicenseActivationList = response.json().await?;
+    if response.len() == 100 {
+        warn!("GET /licenses/<id>/activations returned exactly 100 items, which is the pagination limit");
+    }
     Ok(response.results)
 }
 
@@ -314,7 +315,7 @@ pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct,
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{JINXXY_BASE_URL}products?limit=2147483647"))
+        .get(format!("{JINXXY_BASE_URL}products?limit=100"))
         .headers(get_headers(api_key))
         .send()
         .await?;
@@ -322,6 +323,9 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
     let response = handle_unexpected_status("GET /products", response).await?;
 
     let response: dto::ProductList = response.json().await?;
+    if response.len() == 100 {
+        warn!("GET /products returned exactly 100 items, which is the pagination limit");
+    }
     Ok(response.into())
 }
 

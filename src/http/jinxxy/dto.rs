@@ -231,6 +231,12 @@ pub struct ProductList {
     results: Vec<ProductListResult>,
 }
 
+impl ProductList {
+    pub fn len(&self) -> usize {
+        self.results.len()
+    }
+}
+
 impl From<ProductList> for Vec<PartialProduct> {
     fn from(product_list: ProductList) -> Self {
         product_list.results.into_iter().map(|item| item.into()).collect()
@@ -257,6 +263,12 @@ impl From<ProductListResult> for PartialProduct {
 #[derive(Debug, Deserialize)]
 pub struct LicenseActivationList {
     pub results: Vec<LicenseActivation>,
+}
+
+impl LicenseActivationList {
+    pub fn len(&self) -> usize {
+        self.results.len()
+    }
 }
 
 /// While part of the Jinxxy API this is also very useful as an external DTO
