@@ -10,10 +10,12 @@ use std::time::Duration;
 pub mod jinxxy;
 pub mod update_checker;
 
+/// This client allows both HTTP1 and HTTP2
 static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent(constants::USER_AGENT)
         .brotli(true)
+        .zstd(true)
         .gzip(true)
         .deflate(true)
         .https_only(true)
@@ -24,6 +26,7 @@ static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .expect("Failed to build HTTP1 client")
 });
 
+/// This client exclusively allows HTTP2
 static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent(constants::USER_AGENT)
@@ -32,6 +35,7 @@ static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         // .http2_keep_alive_interval(Duration::from_secs(5)) // sets an interval for HTTP2 Ping frames should be sent to keep a connection alive
         // .http2_keep_alive_timeout(Duration::from_secs(10)) // if the ping is not acknowledged within the timeout, the connection will be closed
         .brotli(true)
+        .zstd(true)
         .gzip(true)
         .deflate(true)
         .https_only(true)

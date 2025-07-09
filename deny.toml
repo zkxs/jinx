@@ -239,6 +239,16 @@ skip = [
     { crate = "rand_chacha@0.3", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand_core@0.6", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "wasi@0.11.1+wasi-snapshot-preview1", reason = "rand@0.9 upgrade in progress for many crates"},
+    { crate = "reqwest@0.11", reason = "used by serenity"},
+    { crate = "h2@0.3", reason = "used by reqwest@0.11.27"},
+    { crate = "http-body@0.4", reason = "used by reqwest@0.11.27"},
+    { crate = "hyper@0.14", reason = "used by reqwest@0.11.27"},
+    { crate = "hyper-rustls@0.24", reason = "used by reqwest@0.11.27"},
+    { crate = "rustls@0.22", reason = "used by reqwest@0.11.27"},
+    { crate = "rustls-webpki@0.102", reason = "used by reqwest@0.11.27"},
+    { crate = "sync_wrapper@0.1", reason = "used by reqwest@0.11.27"},
+    { crate = "tokio-rustls@0.25", reason = "used by reqwest@0.11.27"},
+    { crate = "webpki-roots@0.26", reason = "used by reqwest@0.11.27"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive

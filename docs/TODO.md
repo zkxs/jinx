@@ -13,6 +13,11 @@
 
 - Caching? API gives etags... do they work for paginated responses?
   - if caching doesn't work out, then every time we receive activation data we should sync it back to the `license_activation` table
+  - I've confirmed that provided `Cache-Control: max-age=0` is used instead of `Cache-Control: no-cache`, `ETag`/`If-None-Match` work as expected.
+  - Etags are set by the API and even "work" on paginated responses, but each page has its own etag which is rather suspicious
+  - Etags are probably worth not worth doing for anything paginated, because the lack of consistency or documented result ordering makes the whole
+    response suspect even before layering on the added complexity of caching.
+  - Etags are probably worth it for the individual `GET /products/<id>` requests I have to spam to keep my cache warm.
 - Evaluate if a single thread can handle load or if this needs the full tokio multithreaded executor
 - indices on the sqlite tables
 - foreign keys on the sqlite tables

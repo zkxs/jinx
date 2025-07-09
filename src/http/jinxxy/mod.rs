@@ -28,10 +28,21 @@ const ACTIVATION_PAGINATION_LIMIT: usize = PAGINATION_LIMIT;
 
 /// Get extra headers needed for Jinxxy API calls
 fn get_headers(api_key: &str) -> header::HeaderMap {
+    let mut header_map = header::HeaderMap::with_capacity(3);
     let mut api_key = header::HeaderValue::try_from(api_key).expect("Failed to construct Jinxxy x-api-key header");
     api_key.set_sensitive(true);
-    let mut header_map = header::HeaderMap::new();
+
+    // required for Jinxxy API to work
     header_map.insert("x-api-key", api_key);
+
+    // as far as I can tell completely ignored by the API, but still good practice to set
+    header_map.insert(header::ACCEPT, header::HeaderValue::from_static("application/json"));
+
+    // "no-cache" is SUPPOSED to instruct the server to validate the cache, which does not actually exclude it from
+    // caching, and certainly should not break ETag/If-None-Match behavior. But it does for the Jinxxy server impl.
+    // max-age=0 is essentially the same meaning, but works with the Jinxxy API even with ETag/If-None-Match.
+    header_map.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("max-age=0"));
+
     header_map
 }
 
@@ -235,10 +246,6 @@ async fn add_product_version_name_to_license_info(api_key: &str, license_info: &
 
 /// Get list of all license activations
 pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<Vec<LicenseActivation>> {
-    //TODO: build db cache into this using "Etag" header value into "If-None-Match" header value, and check for 304 Not Modified
-    //TODO: ...actually... ugh this thing is a list. Is this thing cache-safe?
-    //TODO: stop calling db from outside this function
-    //TODO: `search_query` field "A search query to filter results"
     static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
