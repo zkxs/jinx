@@ -16,7 +16,7 @@ use serde::de::DeserializeOwned;
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 /// prefix used in activation descriptions
 const DISCORD_PREFIX: &str = "discord_";
@@ -347,27 +347,19 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
 /// You should not wrap this in retry logic, as the retry logic is already built in to each paged request, as should be
 /// done for dependent serial results (e.g. if page 5 fails don't retry the entire paginated request: just retry page 5.)
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
+    const HARD_PAGE_LIMIT: u32 = 100;
     let mut products = Vec::new();
     let mut page_number: u32 = 1;
-    let mut should_be_empty = false;
     loop {
         let response = util::retry_thrice(|| get_products_page(api_key, page_number)).await?;
         let response = response.products();
 
         if response.is_empty() {
-            // we are on the last page and should stop iterating
-            if !should_be_empty {
-                warn!(
-                    "GET /products returned <{PRODUCT_PAGINATION_LIMIT} items on the previous page and >0 items on this page. This implies the data mutated during iteration."
-                );
-            }
+            // we are past the last page and should stop iterating
             // `products` vec already contains everything we need to return
             break;
         } else {
-            if response.len() < PRODUCT_PAGINATION_LIMIT {
-                // if we got less than the limit, we expect the next page to be empty
-                should_be_empty = true;
-            }
+            let response_len = response.len();
 
             // add this page of products to the `products` vec we will eventually return
             if products.is_empty() {
@@ -375,6 +367,17 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
                 products = response;
             } else {
                 products.extend(response);
+            }
+
+            if response_len < PRODUCT_PAGINATION_LIMIT {
+                // we got less than the limit, which implies this is the last page
+                break;
+            }
+
+            if page_number >= HARD_PAGE_LIMIT {
+                // if we pass some hard page limit just stop because something is probably wrong
+                error!("passed hard products page limit! Aborting pagination.");
+                break;
             }
         }
         page_number += 1;
