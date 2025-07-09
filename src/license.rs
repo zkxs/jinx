@@ -71,10 +71,12 @@ impl LicenseType {
     pub fn create_untrusted_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
         match self {
             LicenseType::JinxxyLong => Some(LicenseKey::Long(license)),
+            LicenseType::JinxxyShort => Some(LicenseKey::Short(license)),
             LicenseType::Integer => None,
             LicenseType::Gumroad => None,
             LicenseType::Payhip => None,
-            _ => Some(LicenseKey::Short(license)), // if we aren't certain what this is just try it as a short key
+            LicenseType::Unknown => None,
+            LicenseType::Ambiguous => None,
         }
     }
 
@@ -84,10 +86,12 @@ impl LicenseType {
     pub fn create_trusted_jinxxy_license<'a>(&self, license: &'a str) -> Option<LicenseKey<'a>> {
         match self {
             LicenseType::JinxxyLong => Some(LicenseKey::Long(license)),
+            LicenseType::JinxxyShort => Some(LicenseKey::Short(license)),
             LicenseType::Integer => Some(LicenseKey::Id(license)),
             LicenseType::Gumroad => None,
             LicenseType::Payhip => None,
-            _ => Some(LicenseKey::Short(license)), // if we aren't certain what this is just try it as a short key
+            LicenseType::Unknown => None,
+            LicenseType::Ambiguous => None,
         }
     }
 }
