@@ -148,10 +148,17 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
         .ok_or_else(|| JinxError::new("Jinxxy API key is not set"))?;
     let reply = match jinxxy::get_own_user(&api_key).await {
         Ok(jinxxy_user) => {
+            let profile_url = jinxxy_user.profile_url();
             let jinxxy_user: jinxxy::DisplayUser = jinxxy_user.into(); // convert into just the data we need for this command
+            let display_name = jinxxy_user.name_possessive();
+            let display_name = if let Some(profile_url) = profile_url {
+                format!("[{display_name}](<{profile_url}>)")
+            } else {
+                display_name
+            };
             let embed = CreateEmbed::default()
                 .title("Jinxxy Product Registration")
-                .description(format!("Press the button below to register a Jinxxy license key for any of {} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>).", jinxxy_user.name_possessive()));
+                .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
             let embed = if let Some(profile_image_url) = jinxxy_user.profile_image_url() {
                 embed.thumbnail(profile_image_url)
             } else {
