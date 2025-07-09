@@ -19,7 +19,7 @@ debug = true # required for `cargo flamegraph`, and makes `cargo-bloat` output s
 tokio = { version = "1", features = ["rt-multi-thread", "time"] } # Async runtime
 tokio-graceful-shutdown = "0.16" # Handles SIGINT/SIGTERM/Ctrl+C
 poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next" } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1 + unreleased `next` branch + my two PRs applied
-reqwest = { version = "0.11", default-features = false, features = ["gzip", "json", "rustls-tls"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise
+reqwest = { version = "0.11", default-features = false, features = ["gzip", "brotli", "deflate", "json", "rustls-tls"] } # HTTP; 0.12 exists but intentionally kept back to 0.11 to reduce duplicate dependencies because old version is used by poise
 serde = "1" # Serialization
 serde_json = "1" # Serialization
 tokio-rusqlite = { version = "0.6.0", features = ["bundled"] } # Persistence

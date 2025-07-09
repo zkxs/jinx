@@ -13,7 +13,9 @@ pub mod update_checker;
 static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent(constants::USER_AGENT)
+        .brotli(true)
         .gzip(true)
+        .deflate(true)
         .https_only(true)
         .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(20))
@@ -29,7 +31,9 @@ static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         // the following are disabled because we don't do enough HTTP/2 requests to justify it
         // .http2_keep_alive_interval(Duration::from_secs(5)) // sets an interval for HTTP2 Ping frames should be sent to keep a connection alive
         // .http2_keep_alive_timeout(Duration::from_secs(10)) // if the ping is not acknowledged within the timeout, the connection will be closed
+        .brotli(true)
         .gzip(true)
+        .deflate(true)
         .https_only(true)
         .connect_timeout(Duration::from_secs(7))
         .timeout(Duration::from_secs(7))
