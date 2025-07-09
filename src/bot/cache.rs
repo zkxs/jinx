@@ -39,6 +39,13 @@ const DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SEC
 const LOW_PRIORITY_CACHE_EXPIRY_TIME_FUDGE_FACTOR: Duration = Duration::from_secs(60);
 /// Minimum time the low priority worker will use as its poll timeout
 const MIN_SLEEP_DURATION: Duration = Duration::from_millis(250);
+/// Number of items to limit lists used in autocompletion to.
+///
+/// Exceeding the limit results in:
+/// ```
+/// WARN poise::dispatch::slash: couldn't send autocomplete response: Invalid Form Body (data.choices: Must be 25 or fewer in length.)
+/// ```
+const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 
 /// Cloning returns a reference to this same ApiCache instance
 #[derive(Clone)]
@@ -557,26 +564,34 @@ impl ApiCache {
         map.clear();
     }
 
-    pub async fn product_names_with_prefix(
+    /// Get product names with prefix, up to Discord's limit
+    pub async fn autocomplete_product_names_with_prefix(
         &self,
         db: &JinxDb,
         guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
         self.get(db, guild_id, |cache_entry| {
-            cache_entry.product_names_with_prefix(prefix).collect()
+            cache_entry
+                .product_names_with_prefix(prefix)
+                .take(AUTOCOMPLETE_RESULT_LIMIT)
+                .collect()
         })
         .await
     }
 
-    pub async fn product_version_names_with_prefix(
+    /// Get product version names with prefix, up to Discord's limit
+    pub async fn autocomplete_product_version_names_with_prefix(
         &self,
         db: &JinxDb,
         guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
         self.get(db, guild_id, |cache_entry| {
-            cache_entry.product_version_names_with_prefix(prefix).collect()
+            cache_entry
+                .product_version_names_with_prefix(prefix)
+                .take(AUTOCOMPLETE_RESULT_LIMIT)
+                .collect()
         })
         .await
     }

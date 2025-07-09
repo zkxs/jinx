@@ -612,7 +612,7 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> Cre
             match context
                 .data()
                 .api_cache
-                .product_names_with_prefix(&context.data().db, guild_id, product_prefix)
+                .autocomplete_product_names_with_prefix(&context.data().db, guild_id, product_prefix)
                 .await
             {
                 Ok(result) => util::create_autocomplete_response(result.into_iter()),
@@ -636,7 +636,7 @@ async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str
             match context
                 .data()
                 .api_cache
-                .product_version_names_with_prefix(&context.data().db, guild_id, product_prefix)
+                .autocomplete_product_version_names_with_prefix(&context.data().db, guild_id, product_prefix)
                 .await
             {
                 Ok(result) => util::create_autocomplete_response(result.into_iter()),
