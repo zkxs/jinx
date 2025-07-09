@@ -21,6 +21,9 @@ use tracing::{debug, warn};
 /// prefix used in activation descriptions
 const DISCORD_PREFIX: &str = "discord_";
 const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
+const PAGINATION_LIMIT: usize = 100;
+const PRODUCT_PAGINATION_LIMIT: usize = PAGINATION_LIMIT;
+const ACTIVATION_PAGINATION_LIMIT: usize = PAGINATION_LIMIT;
 
 /// Get extra headers needed for Jinxxy API calls
 fn get_headers(api_key: &str) -> header::HeaderMap {
@@ -238,15 +241,17 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
     static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit=100"))
+        .get(format!(
+            "{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}"
+        ))
         .headers(get_headers(api_key))
         .send()
         .await
         .map_err(|e| Error::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: dto::LicenseActivationList = read_2xx_json(ENDPOINT, response).await?;
-    if response.len() == 100 {
-        warn!("{ENDPOINT} returned exactly 100 items, which is the pagination limit");
+    if response.len() == ACTIVATION_PAGINATION_LIMIT {
+        warn!("{ENDPOINT} returned exactly {ACTIVATION_PAGINATION_LIMIT} items, which is the pagination limit");
     }
     Ok(response.results)
 }
@@ -317,7 +322,9 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
     static ENDPOINT: &str = "GET /products";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
-        .get(format!("{JINXXY_BASE_URL}products?limit=100&page={page_number}"))
+        .get(format!(
+            "{JINXXY_BASE_URL}products?limit={PRODUCT_PAGINATION_LIMIT}&page={page_number}"
+        ))
         .headers(get_headers(api_key))
         .send()
         .await
@@ -343,13 +350,13 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
             // we are on the last page and should stop iterating
             if !should_be_empty {
                 warn!(
-                    "GET /products returned <100 items on the previous page and >0 items on this page. This implies the data mutated during iteration."
+                    "GET /products returned <{PRODUCT_PAGINATION_LIMIT} items on the previous page and >0 items on this page. This implies the data mutated during iteration."
                 );
             }
             // `products` vec already contains everything we need to return
             break;
         } else {
-            if response.len() < 100 {
+            if response.len() < PRODUCT_PAGINATION_LIMIT {
                 // if we got less than the limit, we expect the next page to be empty
                 should_be_empty = true;
             }
