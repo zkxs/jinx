@@ -9,7 +9,7 @@ use ahash::HashSet;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
 static GLOBAL_JINXXY_ACTIVATION_DESCRIPTION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(format!(r"^{DISCORD_PREFIX}(\d+)$").as_str())
@@ -305,44 +305,6 @@ impl CreateLicenseActivation {
         Self {
             description: format!("{DISCORD_PREFIX}{user_id}"),
         }
-    }
-}
-
-/// Undocumented part of the Jinxxy API. JSON looks like this:
-/// ```json
-/// {
-///   "status_code": 500,
-///   "error": "Bad Request",
-///   "message": "You are not authorized.",
-///   "code": "GRAPHQL_ERROR"
-/// }
-/// ```
-#[derive(Debug, Deserialize)]
-pub struct JinxxyError {
-    status_code: u16,
-    error: String,
-    message: String,
-}
-
-impl JinxxyError {
-    /// Create a JinxxyError from raw json bytes
-    pub fn from_slice(bytes: &[u8]) -> serde_json::Result<Self> {
-        debug!("Raw JinxxyError JSON: {}", String::from_utf8_lossy(bytes));
-        serde_json::from_slice(bytes)
-    }
-
-    /// Check if an error looks like a 403.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_403(&self) -> bool {
-        self.status_code == 403 || (self.error == "Bad Request" && self.message == "You are not authorized.")
-    }
-
-    /// Check if an error looks like a 404.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_404(&self) -> bool {
-        self.status_code == 404 || (self.error == "Bad Request" && self.message == "Resource not found.")
     }
 }
 

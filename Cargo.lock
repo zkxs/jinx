@@ -1060,6 +1060,7 @@ name = "jinx"
 version = "0.9.0"
 dependencies = [
  "ahash",
+ "bytes",
  "clap",
  "papaya",
  "percent-encoding",

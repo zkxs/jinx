@@ -19,6 +19,7 @@ use serenity::{
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 use tracing::{debug, error, warn};
@@ -435,10 +436,11 @@ where
 
 /// Calls `provider` up to four times (three retry attempts maximum) until an `Ok` is returned.
 /// Each retry attempt has a gradually increasing delay (0.3s, 3.0s, 10.0s).
-pub async fn retry_thrice<Provider, T, ResultFuture>(provider: Provider) -> Result<T, Error>
+pub async fn retry_thrice<Provider, T, ResultFuture, E>(provider: Provider) -> Result<T, E>
 where
     Provider: FnMut() -> ResultFuture,
-    ResultFuture: Future<Output = Result<T, Error>> + Sized,
+    ResultFuture: Future<Output = Result<T, E>> + Sized,
+    E: Debug,
 {
     let mut retry_count: u8 = 0;
     retry(provider, move |result| match result {

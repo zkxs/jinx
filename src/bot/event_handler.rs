@@ -5,7 +5,7 @@ use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
 use crate::bot::util;
 use crate::bot::util::MessageExtensions;
 use crate::bot::{Data, Error, REGISTER_MODAL_ID};
-use crate::error::JinxError;
+use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
@@ -273,9 +273,10 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                         let nonce: u64 = util::generate_nonce();
                         let nonce = format!("{nonce:016X}");
                         error!("NONCE[{nonce}] Error registering license: {e:?}");
+                        let safe_display = e.safe_display();
                         let embed = CreateEmbed::default()
                             .title("Registration Failure")
-                            .description(format!("An unexpected error has occurred. Please report this to the bot developer with error code `{nonce}`\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
+                            .description(format!("{safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
                             .color(Colour::RED);
                         let edit = EditInteractionResponse::default().embed(embed);
                         modal_interaction.edit_response(context.serenity_context, edit).await?;
@@ -303,7 +304,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
 async fn handle_license_registration<'a>(
     context: FrameworkContext<'a, Data, Error>,
     modal_interaction: &ModalInteraction,
-) -> Result<(), Error> {
+) -> Result<(), JinxError> {
     let license_key = modal_interaction
         .data
         .components
@@ -384,11 +385,20 @@ async fn handle_license_registration<'a>(
                 .description(description)
                 .color(Colour::RED);
             let edit = EditInteractionResponse::default().embed(embed);
-            modal_interaction.edit_response(context.serenity_context, edit).await?;
-            Ok::<(), Error>(())
+            modal_interaction
+                .edit_response(context.serenity_context, edit)
+                .await
+                .map_err(JinxError::from)?;
+            Ok::<(), JinxError>(())
         };
 
-        if let Some(api_key) = context.user_data.db.get_jinxxy_api_key(guild_id).await? {
+        if let Some(api_key) = context
+            .user_data
+            .db
+            .get_jinxxy_api_key(guild_id)
+            .await
+            .map_err(JinxError::from)?
+        {
             let license = license_type.create_untrusted_jinxxy_license(license_key);
             let license_response = if let Some(license) = license {
                 util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?

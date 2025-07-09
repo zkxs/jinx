@@ -4,19 +4,19 @@
 //! Jinxxy API calls and response objects
 
 mod dto;
+mod error;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
-use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
+pub use error::{Error, Result};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Response, header};
+use serde::de::DeserializeOwned;
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::{debug, warn};
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// prefix used in activation descriptions
 const DISCORD_PREFIX: &str = "discord_";
@@ -31,35 +31,47 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
     header_map
 }
 
+/// Deserialize json after ensuring a 2xx status code was received. Not suitable for requests
+/// where some status codes are expected.
+async fn read_2xx_json<T>(endpoint: &'static str, response: Response) -> Result<T>
+where
+    T: DeserializeOwned,
+{
+    let result = handle_unexpected_status(endpoint, response).await?;
+    read_any_json(endpoint, result).await
+}
+
+/// Deserialize json without checking status code.
+async fn read_any_json<T>(endpoint: &'static str, response: Response) -> Result<T>
+where
+    T: DeserializeOwned,
+{
+    let bytes = response.bytes().await.map_err(|e| Error::from_read(endpoint, e))?;
+    serde_json::from_slice::<T>(&bytes).map_err(Error::from_json)
+}
+
 /// Generic handler for any requests with non-successful status codes. Not suitable for requests
 /// where some status codes are expected.
-async fn handle_unexpected_status(endpoint: &'static str, response: Response) -> Result<Response, JinxError> {
+async fn handle_unexpected_status(endpoint: &'static str, response: Response) -> Result<Response> {
     if response.status().is_success() {
         Ok(response)
     } else {
-        let status_code = response.status().as_u16();
-        let headers = format!("{:?}", response.headers());
-        let bytes_result = response.bytes().await;
-        let body: String = bytes_result
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-            .unwrap_or_default();
-
-        let message = format!("{endpoint} returned status code {status_code}. Headers={headers}; Body={body}",);
-        Err(JinxError::new(message))
+        Err(Error::from_response(endpoint, response).await)
     }
 }
 
 /// Get the user the API key belongs to
-pub async fn get_own_user(api_key: &str) -> Result<AuthUser, Error> {
+pub async fn get_own_user(api_key: &str) -> Result<AuthUser> {
+    static ENDPOINT: &str = "GET /me";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}me"))
         .headers(get_headers(api_key))
         .send()
-        .await?;
-    debug!("GET /me took {}ms", start_time.elapsed().as_millis());
-    let response = handle_unexpected_status("GET /me", response).await?;
-    let response: AuthUser = response.json().await?;
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: AuthUser = read_2xx_json(ENDPOINT, response).await?;
     Ok(response)
 }
 
@@ -75,7 +87,7 @@ pub enum LicenseKey<'a> {
 ///
 /// Note that this function does **not** verify if a provided license ID is valid: it only converts
 /// keys into IDs.
-pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Option<String>, Error> {
+pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Option<String>> {
     match license {
         LicenseKey::Id(license_id) => {
             // maybe one day I'll need to verify these, but not today
@@ -88,16 +100,17 @@ pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Op
             } else {
                 "key"
             };
+            static ENDPOINT: &str = "GET /licenses";
             let start_time = Instant::now();
             let response = HTTP_CLIENT
                 .get(format!("{JINXXY_BASE_URL}licenses")) // this does NOT work with `limit` set.
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
-                .await?;
-            debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            let response = handle_unexpected_status("GET /licenses", response).await?;
-            let response: dto::LicenseList = response.json().await?;
+                .await
+                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+            debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+            let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
             if let Some(result) = response.results.first() {
                 Ok(Some(result.id.to_string()))
             } else {
@@ -115,7 +128,7 @@ pub async fn check_license_id(
     api_key: &str,
     license_id: &str,
     inject_product_version_name: bool,
-) -> Result<Option<LicenseInfo>, Error> {
+) -> Result<Option<LicenseInfo>> {
     check_license(api_key, LicenseKey::Id(license_id), inject_product_version_name).await
 }
 
@@ -126,19 +139,21 @@ pub async fn check_license(
     api_key: &str,
     license: LicenseKey<'_>,
     inject_product_version_name: bool,
-) -> Result<Option<LicenseInfo>, Error> {
+) -> Result<Option<LicenseInfo>> {
     match license {
         LicenseKey::Id(license_id) => {
             // look up license directly by ID
+            static ENDPOINT: &str = "GET /licenses/<id>";
             let start_time = Instant::now();
             let response = HTTP_CLIENT
                 .get(format!("{JINXXY_BASE_URL}licenses/{license_id}"))
                 .headers(get_headers(api_key))
                 .send()
-                .await?;
-            debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
+                .await
+                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+            debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
             if response.status().is_success() {
-                let response: dto::License = response.json().await?;
+                let response: dto::License = read_any_json(ENDPOINT, response).await?;
                 let mut response: LicenseInfo = response.into();
                 if inject_product_version_name {
                     add_product_version_name_to_license_info(api_key, &mut response).await?;
@@ -147,16 +162,11 @@ pub async fn check_license(
             } else {
                 debug!("could not look up user-provided license id");
                 // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
-                let status_code = response.status();
-                let response = dto::JinxxyError::from_slice(&response.bytes().await?)?;
-                if response.looks_like_403() || response.looks_like_404() {
+                let error = Error::from_response(ENDPOINT, response).await;
+                if error.looks_like_403() || error.looks_like_404() {
                     Ok(None)
                 } else {
-                    Err(JinxError::boxed(format!(
-                        "GET /licenses/<id> returned status code {}: {:?}",
-                        status_code.as_u16(),
-                        response
-                    )))
+                    Err(error)
                 }
             }
         }
@@ -167,27 +177,29 @@ pub async fn check_license(
             } else {
                 "key"
             };
+            static ENDPOINT: &str = "GET /licenses";
             let start_time = Instant::now();
             let response = HTTP_CLIENT
                 .get(format!("{JINXXY_BASE_URL}licenses"))
                 .headers(get_headers(api_key))
                 .query(&[(search_key, license_key)])
                 .send()
-                .await?;
-            debug!("GET /licenses took {}ms", start_time.elapsed().as_millis());
-            let response = handle_unexpected_status("GET /licenses", response).await?;
-            let response: dto::LicenseList = response.json().await?;
+                .await
+                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+            debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+            let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
             if let Some(result) = response.results.first() {
                 // now look up the license directly by ID
+                static ENDPOINT: &str = "GET /licenses/<id>";
                 let start_time = Instant::now();
                 let response = HTTP_CLIENT
                     .get(format!("{}licenses/{}", JINXXY_BASE_URL, result.id))
                     .headers(get_headers(api_key))
                     .send()
-                    .await?;
-                debug!("GET /licenses/<id> took {}ms", start_time.elapsed().as_millis());
-                let response = handle_unexpected_status("GET /licenses/<id>", response).await?;
-                let response: dto::License = response.json().await?;
+                    .await
+                    .map_err(|e| Error::from_request(ENDPOINT, e))?;
+                debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+                let response: dto::License = read_2xx_json(ENDPOINT, response).await?;
                 let mut response: LicenseInfo = response.into();
                 if inject_product_version_name {
                     add_product_version_name_to_license_info(api_key, &mut response).await?;
@@ -202,7 +214,7 @@ pub async fn check_license(
 }
 
 /// This performs an API call to get_product
-async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<(), Error> {
+async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<()> {
     if let Some(product_version_info) = &mut license_info.product_version_info {
         let product = get_product(api_key, &license_info.product_id).await?;
         if let Some(product_version_name) = product
@@ -218,33 +230,31 @@ async fn add_product_version_name_to_license_info(api_key: &str, license_info: &
 }
 
 /// Get list of all license activations
-pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<Vec<LicenseActivation>, Error> {
+pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<Vec<LicenseActivation>> {
     //TODO: build db cache into this using "Etag" header value into "If-None-Match" header value, and check for 304 Not Modified
     //TODO: ...actually... ugh this thing is a list. Is this thing cache-safe?
     //TODO: stop calling db from outside this function
     //TODO: `search_query` field "A search query to filter results"
+    static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit=100"))
         .headers(get_headers(api_key))
         .send()
-        .await?;
-    debug!(
-        "GET /licenses/<id>/activations took {}ms",
-        start_time.elapsed().as_millis()
-    );
-    let response = handle_unexpected_status("GET /licenses/<id>/activations", response).await?;
-
-    let response: dto::LicenseActivationList = response.json().await?;
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: dto::LicenseActivationList = read_2xx_json(ENDPOINT, response).await?;
     if response.len() == 100 {
-        warn!("GET /licenses/<id>/activations returned exactly 100 items, which is the pagination limit");
+        warn!("{ENDPOINT} returned exactly 100 items, which is the pagination limit");
     }
     Ok(response.results)
 }
 
 /// Create a new license activation
-pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> Result<String, Error> {
+pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> Result<String> {
     let body = dto::CreateLicenseActivation::from_user_id(user_id);
+    static ENDPOINT: &str = "POST /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .post(format!("{JINXXY_BASE_URL}licenses/{license_id}/activations"))
@@ -252,18 +262,16 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
         .header(header::CONTENT_TYPE, "application/json")
         .json(&body)
         .send()
-        .await?;
-    debug!(
-        "POST /licenses/<id>/activations took {}ms",
-        start_time.elapsed().as_millis()
-    );
-    let response = handle_unexpected_status("POST /licenses/<id>/activations", response).await?;
-    let response: LicenseActivation = response.json().await?;
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: LicenseActivation = read_2xx_json(ENDPOINT, response).await?;
     Ok(response.id)
 }
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
-pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool, Error> {
+pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool> {
+    static ENDPOINT: &str = "DELETE /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .delete(format!(
@@ -271,57 +279,51 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
         ))
         .headers(get_headers(api_key))
         .send()
-        .await?;
-    debug!(
-        "DELETE /licenses/<id>/activations took {}ms",
-        start_time.elapsed().as_millis()
-    );
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     if response.status().is_success() {
         Ok(true)
     } else {
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
         // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
-        let status_code = response.status();
-        let response = dto::JinxxyError::from_slice(&response.bytes().await?)?;
-        if response.looks_like_404() {
+        let error = Error::from_response(ENDPOINT, response).await;
+        if error.looks_like_404() {
             // license was not found
             Ok(false)
         } else {
-            Err(JinxError::boxed(format!(
-                "DELETE /licenses/<id>/activations/<id> returned status code {}: {:?}",
-                status_code.as_u16(),
-                response
-            )))
+            Err(error)
         }
     }
 }
 
 /// Look up a product. This includes product version information.
-pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct, Error> {
+pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct> {
+    static ENDPOINT: &str = "GET /products/<id>";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}products/{product_id}"))
         .headers(get_headers(api_key))
         .send()
-        .await?;
-    debug!("GET /products/<id> took {}ms", start_time.elapsed().as_millis());
-    let response = handle_unexpected_status("GET /products/<id>", response).await?;
-
-    let response: FullProduct = response.json().await?;
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
     Ok(response)
 }
 
 /// Get a single page of products.
-async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::ProductList, Error> {
+async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::ProductList> {
+    static ENDPOINT: &str = "GET /products";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}products?limit=100&page={page_number}"))
         .headers(get_headers(api_key))
         .send()
-        .await?;
-    debug!("GET /products took {}ms", start_time.elapsed().as_millis());
-    let response = handle_unexpected_status("GET /products", response).await?;
-    let response: dto::ProductList = response.json().await?;
+        .await
+        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: dto::ProductList = read_2xx_json(ENDPOINT, response).await?;
     Ok(response)
 }
 
@@ -329,7 +331,7 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
 ///
 /// You should not wrap this in retry logic, as the retry logic is already built in to each paged request, as should be
 /// done for dependent serial results (e.g. if page 5 fails don't retry the entire paginated request: just retry page 5.)
-pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
+pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
     let mut products = Vec::new();
     let mut page_number: u32 = 1;
     let mut should_be_empty = false;
@@ -372,7 +374,7 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>, Error> {
 pub async fn get_full_products<const PARALLEL: bool>(
     api_key: &str,
     partial_products: Vec<PartialProduct>,
-) -> Result<Vec<FullProduct>, Error> {
+) -> Result<Vec<FullProduct>> {
     let mut products = Vec::with_capacity(partial_products.len());
     if PARALLEL {
         let mut join_set = JoinSet::new();
@@ -382,7 +384,8 @@ pub async fn get_full_products<const PARALLEL: bool>(
             join_set.spawn(async move { util::retry_thrice(|| get_product(&api_key, &product_id)).await });
         }
         while let Some(full_product) = join_set.join_next().await {
-            products.push(full_product??);
+            let full_product = full_product.map_err(Error::from_join)??;
+            products.push(full_product);
         }
     } else {
         for partial_product in partial_products {

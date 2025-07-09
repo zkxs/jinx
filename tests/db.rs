@@ -1,3 +1,6 @@
+// This file is part of jinx. Copyright © 2025 jinx contributors.
+// jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
+
 //! Tests certain sqlite edge cases to make sure the sqlite library acts as expected even under edge cases
 
 use rusqlite::Connection;
