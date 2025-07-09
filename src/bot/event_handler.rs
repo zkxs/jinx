@@ -276,7 +276,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                         let safe_display = e.safe_display();
                         let embed = CreateEmbed::default()
                             .title("Registration Failure")
-                            .description(format!("{safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
+                            .description(format!("Caused by: {safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
                             .color(Colour::RED);
                         let edit = EditInteractionResponse::default().embed(embed);
                         modal_interaction.edit_response(context.serenity_context, edit).await?;
