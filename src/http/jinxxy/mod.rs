@@ -21,6 +21,7 @@ use tracing::{debug, warn};
 /// prefix used in activation descriptions
 const DISCORD_PREFIX: &str = "discord_";
 const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
+/// Jinxxy API has a hard limit of 100 for page size beyond which it denies requests
 const PAGINATION_LIMIT: usize = 100;
 const PRODUCT_PAGINATION_LIMIT: usize = PAGINATION_LIMIT;
 const ACTIVATION_PAGINATION_LIMIT: usize = PAGINATION_LIMIT;
