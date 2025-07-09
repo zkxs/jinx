@@ -245,10 +245,11 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                 // create the register form when a user presses the register button
                 REGISTER_BUTTON_ID => {
                     let components = vec![CreateActionRow::InputText(
-                        CreateInputText::new(InputTextStyle::Short, "License Key", LICENSE_KEY_ID)
+                        CreateInputText::new(InputTextStyle::Short, "Jinxxy License Key", LICENSE_KEY_ID)
                             .placeholder("XXXX-cd071c534191"),
                     )];
-                    let modal = CreateModal::new(REGISTER_MODAL_ID, "License Registration").components(components);
+                    let modal =
+                        CreateModal::new(REGISTER_MODAL_ID, "Jinxxy License Registration").components(components);
                     let response = CreateInteractionResponse::Modal(modal);
                     component_interaction
                         .create_response(context.serenity_context, response)
