@@ -1081,6 +1081,19 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
                         message.push_str(&name);
                     }
                 }
+
+                // discord has a message length limit of "4096 characters", but they do not specify if the mean
+                // codepoints or code units (bytes) by "characters". We check here to see if we're more than 80%
+                // (> 3276 bytes) of the way to 4096.
+                const MESSAGE_LENGTH_WARN_THRESHOLD: usize = 3276;
+                if message.len() > MESSAGE_LENGTH_WARN_THRESHOLD {
+                    warn!(
+                        "/list_links in {} had length of {}, which is getting dangerously close to the limit",
+                        guild_id.get(),
+                        message.len()
+                    );
+                }
+
                 message
             })
             .await?
