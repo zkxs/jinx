@@ -47,6 +47,8 @@
     - by guild ID
     - by Jinxxy ID (username and name can both change)
     - by user ID (we don't actually record this for creators or unsuccessful license registrations)
+- Gumroad product transfer. Requires https://jinxxy.canny.io/feature-requests/p/give-creators-the-ability-to-manually-assign-licenses
+- Giveaway command. Requires https://jinxxy.canny.io/feature-requests/p/ability-to-create-discount-codes-via-api
 
 ### Other Stores
 
