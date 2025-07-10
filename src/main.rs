@@ -38,6 +38,7 @@ static SHOULD_RESTART: AtomicBool = AtomicBool::new(false);
 async fn main() -> ExitCode {
     let cli_args = JinxArgs::parse();
     match cli_args.command {
+        #[allow(clippy::print_stderr)]
         Some(cli_args::Command::Init { discord_token }) => {
             let discord_token = discord_token.or_else(|| std::env::var("DISCORD_TOKEN").ok());
             if let Some(discord_token) = discord_token {
@@ -55,10 +56,12 @@ async fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
+        #[allow(clippy::print_stdout)]
         Some(cli_args::Command::UpdateCheck) => {
             println!("{}", http::update_checker::check_for_update().await);
             ExitCode::SUCCESS
         }
+        #[allow(clippy::print_stdout)]
         Some(cli_args::Command::Owner(cli_args::OwnerArgs { command })) => {
             let db = db::JinxDb::open()
                 .await
