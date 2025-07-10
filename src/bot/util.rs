@@ -188,6 +188,7 @@ pub fn error_reply(title: impl Into<String>, message: impl Into<String>) -> Crea
 
 /// Get a display name from a product name and a version name.
 /// This is truncated to Discord's 100 character autocomplete limit.
+/// I am assuming the 100 char limit is codepoints, not code units (bytes).
 pub fn product_display_name(product_name: &str, product_version_name: Option<&str>) -> String {
     match product_version_name {
         Some(product_version_name) => {
@@ -218,8 +219,8 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
                     format!("{product_name} {product_version_name}")
                 } else if product_version_len <= PRODUCT_VERSION_MAX_LENGTH {
                     // product version seems short-ish, so I've arbitrarily decided it doesn't need trimming
-                    let lenght_a = MAX_LENGTH - product_version_len;
-                    let product_name: String = product_name.chars().take(lenght_a).collect();
+                    let length_a = MAX_LENGTH - product_version_len;
+                    let product_name: String = product_name.chars().take(length_a).collect();
                     format!("{product_name} {product_version_name}")
                 } else {
                     // product version will be truncated to PRODUCT_VERSION_MAX_LENGTH because why the hell not
@@ -237,7 +238,7 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
             // I use 15 chars
             const MAX_LENGTH: usize = 100 - 15;
             if product_name.chars().count() > MAX_LENGTH {
-                let truncated_product_name = &product_name[0..MAX_LENGTH];
+                let truncated_product_name: String = product_name.chars().take(MAX_LENGTH).collect();
                 format!("{truncated_product_name} (null version)")
             } else {
                 format!("{product_name} (null version)")
