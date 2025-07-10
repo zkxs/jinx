@@ -16,6 +16,7 @@ use serenity::{
     ButtonStyle, ChannelId, Colour, CreateActionRow, CreateAutocompleteResponse, CreateButton, CreateEmbed,
     CreateMessage, GuildId, RoleId,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 use tokio::join;
 use tokio::task::JoinSet;
@@ -1040,6 +1041,10 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
     let message = if links.is_empty() {
         "No product→role links configured".to_string()
     } else {
+        // We always do a cached read here: even in the case of a cache miss we just fall back to IDs instead of names.
+        // The idea is that users should have a warmed cache already when /list_links is invoked. This is because both
+        // /init and /link_product do background cache warming.
+
         let mut linked_roles: Vec<RoleId> = links.keys().copied().collect();
         linked_roles.sort_unstable(); // make sure the roles are listed in a consistent order and not subject to HashMap randomization
         context
@@ -1059,22 +1064,21 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
                         "we just queried a map with its own key list, how the hell is it missing an entry now?",
                     );
                     for link_source in link_sources {
+                        // In the majority of cases we get a name &str here, so we use a Cow<str> to avoid a bunch of copies.
+                        // Only in the case where we have to show an un-cached product version do we need to build an owned String.
                         let name = match link_source {
-                            LinkSource::GlobalBlanket => "`*`".to_string(),
-                            LinkSource::ProductBlanket { product_id } => cache
-                                .product_id_to_name(product_id)
-                                .unwrap_or(product_id.as_str())
-                                .to_string(),
-                            LinkSource::ProductVersion(product_version_id) => {
-                                // obnoxiously this one format requires this whole block to return String vs &str
-                                cache
-                                    .product_version_id_to_name(product_version_id)
-                                    .map(|str| str.to_string())
-                                    .unwrap_or_else(|| format!("{product_version_id}"))
+                            LinkSource::GlobalBlanket => Cow::Borrowed("`*`"),
+                            LinkSource::ProductBlanket { product_id } => {
+                                let name = cache.product_id_to_name(product_id).unwrap_or(product_id.as_str());
+                                Cow::Borrowed(name)
                             }
+                            LinkSource::ProductVersion(product_version_id) => cache
+                                .product_version_id_to_name(product_version_id)
+                                .map(Cow::Borrowed)
+                                .unwrap_or_else(|| Cow::Owned(format!("{product_version_id}"))),
                         };
                         message.push_str("\n  - ");
-                        message.push_str(name.as_str());
+                        message.push_str(&name);
                     }
                 }
                 message
