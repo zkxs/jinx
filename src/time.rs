@@ -3,7 +3,12 @@
 
 use std::time::{Duration, SystemTime};
 
-/// This just represents time as unsigned 64-bit ms since unix epoch. Ain't no way I'm importing a whole dang time library for this.
+/// Represents time as unsigned 64-bit milliseconds since the unix epoch.
+/// Ain't no way I'm importing a whole dang time library for this.
+///
+/// This type can represent any time between 1970-01-01T00:00:00Z and 584556019-04-03T14:25:52Z.
+/// Creating a SimpleTime earlier than the minimum will saturate, setting the SimpleTime to the unix epoch.
+/// Creating a SimpleTime later than the maximum will wrap.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SimpleTime {
     unix_millis: u64,
@@ -12,13 +17,19 @@ pub struct SimpleTime {
 impl SimpleTime {
     pub const UNIX_EPOCH: SimpleTime = SimpleTime::from_unix_millis(0);
 
+    /// Create a SimpleTime from milliseconds since unix epoch.
+    ///
+    /// This is exactly equivalent to the internal representation, so this is a zero-cost wrap.
     #[inline(always)]
     pub const fn from_unix_millis(unix_millis: u64) -> Self {
         Self { unix_millis }
     }
 
+    /// Convert this SimpleTime into milliseconds since unix epoch.
+    ///
+    /// This is exactly equivalent to the internal representation, so this is a zero-cost unwrap.
     #[inline(always)]
-    pub const fn as_epoch_millis(&self) -> u64 {
+    pub const fn as_epoch_millis(self) -> u64 {
         self.unix_millis
     }
 
@@ -27,7 +38,11 @@ impl SimpleTime {
         let duration_since_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default(); // if the current time is before the unix epoch, then fuck you no it isn't. You get a zero.
-        Self::from_unix_millis(duration_since_epoch.as_millis() as u64) // a very naughty truncating cast. This will break in a few hundred million years. If my feeble human consciousness has been somehow been made immortal feel free to complain to me at that time.
+
+        // This is ~very~ naughty truncating cast. This will break in a few hundred million years.
+        // If my feeble human consciousness has been somehow been made immortal feel free to complain to me at that time.
+        #[allow(clippy::cast_possible_truncation)]
+        Self::from_unix_millis(duration_since_epoch.as_millis() as u64)
     }
 
     /// Duration since some earlier time with millisecond precision, or zero if result was negative

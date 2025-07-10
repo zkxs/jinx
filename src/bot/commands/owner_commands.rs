@@ -633,7 +633,10 @@ pub(in crate::bot) async fn set_cache_expiry_time(
     context: Context<'_>,
     #[description = "expiry time in hours"] expiry_time_hours: u64,
 ) -> Result<(), Error> {
+    // we're rounding this for display, so a bit of precision loss is fine
+    #[allow(clippy::cast_precision_loss)]
     let days: f64 = expiry_time_hours as f64 / HOURS_PER_DAY as f64;
+
     let low_priority_cache_expiry_time = Duration::from_secs(expiry_time_hours * SECONDS_PER_HOUR);
     context
         .data()
