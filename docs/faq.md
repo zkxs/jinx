@@ -30,7 +30,7 @@ elaborate:
 ![screenshot of a complex /list_links output](images/list-links.png)
 
 For even more ways to link roles, including distinguishing between versions of a product, see the
-[license management commands](command-reference.md#license-management-commands).
+[role management commands](command-reference.md#role-management-commands).
 
 ### I've re-organized my roles. Can Jinx automatically fix the role grants?
 

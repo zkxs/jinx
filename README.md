@@ -63,7 +63,7 @@ Finally, back in your Discord server run the following slash commands:
    need to grant Jinx permission to send messages to this channel.
 3. Run the `/link_product` command for each Jinxxy product you want to link to a role. You do not need a distinct role for
    each product. Any product can grant any role, or even multiple roles! If you make a mistake, use `/unlink_product` to fix it.
-   For even more ways to link products to roles, check out the rest of the [license management commands](docs/command-reference.md#license-management-commands).
+   For even more ways to link products to roles, check out the rest of the [role management commands](docs/command-reference.md#role-management-commands).
 4. Check your work using `/list_links`
 5. When you're ready, run `/create_post` in the channel of your choosing to have Jinx create a button users can click to
    register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
