@@ -9,7 +9,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "prerelease"
     open-pull-requests-limit: 15
     groups:
       minor-and-patch:
@@ -21,4 +20,3 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "prerelease"
