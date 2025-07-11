@@ -22,7 +22,7 @@
 | `/set_wildcard_role <role>`                        | Manage Roles        | Set a wildcard role which will be granted for all products in your store.                                                    |
 | `/unset_wildcard_role`                             | Manage Roles        | Unset the wildcard role.                                                                                                     |
 | `/list_links`                                      | Manage Roles        | List all product→role links.                                                                                                 |
-| `/grant_missing_roles <role>`                      | Manage Roles        | Grant a role to any users who have a license but are missing the linked role.                                                |
+| `/grant_missing_roles [role]`                      | Manage Roles        | Grant a role to any users who have a license but are missing the linked role. Omit role parameter to run for all roles.      |
 
 ## License Management Commands
 

@@ -18,6 +18,7 @@ use serenity::{
 };
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt::Write;
 use tokio::join;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
@@ -389,7 +390,6 @@ pub async fn deactivate_license(
     Ok(())
 }
 
-// only requires MANAGE_ROLES permission because it can't emit license key info
 /// Query activation information for a license
 #[poise::command(
     slash_command,
@@ -508,7 +508,6 @@ pub async fn license_info(
     Ok(())
 }
 
-// only requires MANAGE_ROLES permission because it can't emit license key info
 /// Lock a license, preventing it from being used to grant roles.
 #[poise::command(
     slash_command,
@@ -555,7 +554,6 @@ pub async fn lock_license(
     Ok(())
 }
 
-// only requires MANAGE_ROLES permission because it can't emit license key info
 /// Unlock a license, allowing it to be used to grant roles.
 #[poise::command(
     slash_command,
@@ -661,7 +659,7 @@ async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str
     }
 }
 
-/// Link all versions of a product to a role grant.
+/// Set a catch-all role which will be granted by all license registrations
 #[poise::command(
     slash_command,
     guild_only,
@@ -701,7 +699,7 @@ pub(in crate::bot) async fn set_wildcard_role(
     Ok(())
 }
 
-/// Unlink a product from a role grant.
+/// Stop granting the catch-all role for all license registrations
 #[poise::command(
     slash_command,
     guild_only,
@@ -1124,46 +1122,66 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
 )]
 pub(in crate::bot) async fn grant_missing_roles(
     context: Context<'_>,
-    #[description = "Role to grant"] role: RoleId,
+    #[description = "Role to grant"] role: Option<RoleId>,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
     let guild_id = context
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let users = context.data().db.get_users_for_role(guild_id, role).await?;
-    let total_users = users.len();
-    let mut missing_users: usize = 0;
-    let mut message_postfix = String::new();
-    for user in users {
-        let member = guild_id.member(context, user).await?;
-        if !member.roles.contains(&role) {
-            message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
-            missing_users += 1;
-            member.add_role(context, role).await?;
+
+    let roles = if let Some(role) = role {
+        vec![role]
+    } else {
+        context.data().db.get_linked_roles(guild_id).await?
+    };
+
+    // handle each role
+    let mut reply_message = String::new();
+    let mut after_first = false;
+    for role in roles {
+        if after_first {
+            // handle delimiters between messages
+            reply_message.push('\n');
         }
+        after_first = true;
+
+        let users = context.data().db.get_users_for_role(guild_id, role).await?;
+        let total_users = users.len();
+        let mut missing_users: usize = 0;
+        let mut message_postfix = String::new();
+        for user in users {
+            let member = guild_id.member(context, user).await?;
+            if !member.roles.contains(&role) {
+                message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
+                missing_users += 1;
+                member.add_role(context, role).await?;
+            }
+        }
+        write!(
+            reply_message,
+            "{}/{} users were missing <@&{}>:{}",
+            missing_users,
+            total_users,
+            role.get(),
+            message_postfix
+        )
+        .expect("somehow failed writing into a String");
     }
-    let message = format!(
-        "{}/{} users were missing <@&{}>:{}",
-        missing_users,
-        total_users,
-        role.get(),
-        message_postfix
-    );
-    context.send(success_reply("Missing Roles Granted", message)).await?;
+
+    context
+        .send(success_reply("Missing Roles Granted", reply_message.as_str()))
+        .await?;
 
     // also send a notification to the guild owner bot log if it's set up for this guild
     if let Some(log_channel) = context.data().db.get_log_channel(guild_id).await? {
-        let message = format!(
-            "<@{}> granted <@&{}> to {}/{} users who were missing it:{}",
+        let log_message = format!(
+            "<@{}> granted missing roles:\n{}",
             context.author().id.get(),
-            role.get(),
-            missing_users,
-            total_users,
-            message_postfix
+            reply_message
         );
         let embed = CreateEmbed::default()
             .title("Missing Roles Granted")
-            .description(message);
+            .description(log_message);
         let bot_log_message = CreateMessage::default().embed(embed);
         let bot_log_result = log_channel.send_message(context, bot_log_message).await;
         if let Err(e) = bot_log_result {

@@ -732,6 +732,30 @@ impl JinxDb {
             .await
     }
 
+    /// get distinct roles from all links
+    pub async fn get_linked_roles(&self, guild: GuildId) -> Result<Vec<RoleId>> {
+        let guild_id = guild.get() as i64;
+        self.connection
+            .call(move |connection| {
+                let mut statement = connection.prepare(
+                    "SELECT blanket_role_id AS role_id FROM guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL \
+                    UNION SELECT role_id FROM product_role WHERE guild_id = :guild \
+                    UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild",
+                )?;
+                let result = statement.query_map(named_params! {":guild": guild_id}, |row| {
+                    let role_id: i64 = row.get(0)?;
+                    let role_id: RoleId = RoleId::new(role_id as u64);
+                    Ok(role_id)
+                })?;
+                let mut vec = Vec::with_capacity(result.size_hint().0);
+                for row in result {
+                    vec.push(row?);
+                }
+                Ok(vec)
+            })
+            .await
+    }
+
     /// get all links
     pub async fn get_links(&self, guild: GuildId) -> Result<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
         let guild_id = guild.get() as i64;

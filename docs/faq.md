@@ -35,7 +35,7 @@ For even more ways to link roles, including distinguishing between versions of a
 ### I've re-organized my roles. Can Jinx automatically fix the role grants?
 
 Partially. Jinx _never_ removes roles from users, so you'll have to handle that yourself. You can run
-`/grant_missing_roles <role>` for each role and Jinx will re-check that role against your current links, granting it to
+`/grant_missing_roles` and Jinx will re-check that role against your current links, granting it to
 anyone who should have it.
 
 ### Are there plans to add support for other marketplaces?
