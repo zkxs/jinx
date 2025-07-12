@@ -3,7 +3,7 @@
 
 use crate::error::SafeDisplay;
 use bytes::Bytes;
-use reqwest::Response;
+use reqwest::{Response, StatusCode};
 use serde::Deserialize;
 use std::fmt::Formatter;
 
@@ -50,7 +50,7 @@ impl std::error::Error for Error {}
 impl Error {
     /// Create a JinxxyError from raw json bytes
     pub async fn from_response(endpoint: &'static str, response: Response) -> Self {
-        let status_code = response.status().as_u16();
+        let status_code = response.status();
         let headers = format!("{:?}", response.headers());
         let bytes = response.bytes().await;
         let body = match bytes {
@@ -130,7 +130,7 @@ pub struct ReqwestError {
 #[allow(unused)] // these are debug printed frequently
 pub struct HttpResponse {
     endpoint: &'static str,
-    status_code: u16,
+    status_code: StatusCode,
     headers: String,
     body: HttpBody,
 }

@@ -208,7 +208,11 @@ pub struct FullProduct {
     pub id: String,
     /// Product name
     pub name: String,
+    /// All versions of this product
     pub versions: Vec<ProductVersion>,
+    /// Etag header value for this `GET /products/<id>` response
+    #[serde(skip)]
+    pub etag: Vec<u8>,
 }
 
 impl From<FullProduct> for PartialProduct {

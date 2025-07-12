@@ -231,8 +231,9 @@ pub async fn check_license(
 /// This performs an API call to get_product
 async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<()> {
     if let Some(product_version_info) = &mut license_info.product_version_info {
-        let product = get_product(api_key, &license_info.product_id).await?;
+        let product = get_product(api_key, &license_info.product_id, None).await?;
         if let Some(product_version_name) = product
+            .expect("cannot get a 304 response because etag wasn't used")
             .versions
             .into_iter()
             .find(|found_product_version| found_product_version.id == product_version_info.product_version_id)
@@ -311,18 +312,40 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
 }
 
 /// Look up a product. This includes product version information.
-pub async fn get_product(api_key: &str, product_id: &str) -> Result<FullProduct> {
+///
+/// Optionally, you can specify an etag. If the etag matches the resource in the server and we get a
+/// 304 Not Modified response, `Ok(None)` will be returned. This is the ONLY case where `Ok(None)` has to be handled.
+pub async fn get_product(api_key: &str, product_id: &str, etag: Option<&[u8]>) -> Result<Option<FullProduct>> {
     static ENDPOINT: &str = "GET /products/<id>";
-    let start_time = Instant::now();
-    let response = HTTP_CLIENT
+    let request = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}products/{product_id}"))
-        .headers(get_headers(api_key))
-        .send()
-        .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .headers(get_headers(api_key));
+    let request = if let Some(etag) = etag {
+        request.header(header::IF_NONE_MATCH, etag)
+    } else {
+        request
+    };
+
+    let start_time = Instant::now();
+    let response = request.send().await.map_err(|e| Error::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
-    let response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
-    Ok(response)
+
+    let etag = response
+        .headers()
+        .get(header::ETAG)
+        .map(|etag| etag.as_bytes().to_owned());
+    let status_code = response.status();
+    if status_code.as_u16() == 304 {
+        // 304 not modified!
+        Ok(None)
+    } else {
+        // cached read failed
+        let mut response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
+        if let Some(etag) = etag {
+            response.etag = etag;
+        }
+        Ok(Some(response))
+    }
 }
 
 /// Get a single page of products.
@@ -344,8 +367,7 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
 
 /// Get all products on this account by performing a paginated request. This does NOT include product version information.
 ///
-/// You should not wrap this in retry logic, as the retry logic is already built in to each paged request, as should be
-/// done for dependent serial results (e.g. if page 5 fails don't retry the entire paginated request: just retry page 5.)
+/// You should not wrap this in retry logic, as the retry logic is already built in to each internal request.
 pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
     const HARD_PAGE_LIMIT: u32 = 100;
     let mut products = Vec::new();
@@ -389,6 +411,8 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
 /// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.
 /// This is done concurrently which speeds things up slightly, but it is still very costly.
 /// Resulting vec is not guaranteed to be in the same order as the input vec.
+///
+/// You should not wrap this in retry logic, as the retry logic is already built in to each internal subrequest.
 pub async fn get_full_products<const PARALLEL: bool>(
     api_key: &str,
     partial_products: Vec<PartialProduct>,
@@ -399,16 +423,16 @@ pub async fn get_full_products<const PARALLEL: bool>(
         for partial_product in partial_products {
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
-            join_set.spawn(async move { util::retry_thrice(|| get_product(&api_key, &product_id)).await });
+            join_set.spawn(async move { util::retry_thrice(|| get_product(&api_key, &product_id, None)).await });
         }
         while let Some(full_product) = join_set.join_next().await {
             let full_product = full_product.map_err(Error::from_join)??;
-            products.push(full_product);
+            products.push(full_product.expect("cannot get a 304 response because etag wasn't used"));
         }
     } else {
         for partial_product in partial_products {
-            let full_product = get_product(api_key, &partial_product.id).await?;
-            products.push(full_product);
+            let full_product = get_product(api_key, &partial_product.id, None).await?;
+            products.push(full_product.expect("cannot get a 304 response because etag wasn't used"));
         }
     }
     Ok(products)
