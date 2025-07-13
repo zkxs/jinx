@@ -1333,7 +1333,7 @@ impl JinxDb {
             let mut statement = connection.prepare_cached(
                 "SELECT version_id, product_version_name FROM product_version WHERE guild_id = :guild AND product_id = :product_id",
             )?;
-            let mapped_rows = statement.query_map(named_params! {":guild_id": guild_id, ":product_id": product_id}, |row| {
+            let mapped_rows = statement.query_map(named_params! {":guild": guild_id, ":product_id": product_id}, |row| {
                 let id = row.get(0)?;
                 let name = row.get(1)?;
                 let info = ProductVersion {
