@@ -138,20 +138,6 @@ impl ApiCache {
                 let mut sleep_duration: Option<Duration> = None;
 
                 'outer: loop {
-                    let low_priority_cache_expiry_time = match db.get_low_priority_cache_expiry_time().await {
-                        Ok(Some(expiry_time)) => expiry_time,
-                        Ok(None) => DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME,
-                        Err(e) => {
-                            // this is kind of a big problem, as if the default is lower than what we're SUPPOSED to
-                            // have read from the DB, then we'd spam the heck out of the API if we just fell back to the
-                            // default.
-                            error!(
-                                "Error reading low_priority_cache_expiry_time from DB. Stopping cache refresh task now! {e:?}"
-                            );
-                            break 'outer;
-                        }
-                    };
-
                     let received_event = if let Some(sleep_duration) = sleep_duration {
                         if sleep_duration.is_zero() {
                             // handle an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
@@ -167,6 +153,19 @@ impl ApiCache {
                     } else {
                         // we have no data yet, so there is no reason to have a timeout
                         Ok(refresh_register_rx.recv().await)
+                    };
+                    let low_priority_cache_expiry_time = match db.get_low_priority_cache_expiry_time().await {
+                        Ok(Some(expiry_time)) => expiry_time,
+                        Ok(None) => DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME,
+                        Err(e) => {
+                            // this is kind of a big problem, as if the default is lower than what we're SUPPOSED to
+                            // have read from the DB, then we'd spam the heck out of the API if we just fell back to the
+                            // default.
+                            error!(
+                                "Error reading low_priority_cache_expiry_time from DB. Stopping cache refresh task now! {e:?}"
+                            );
+                            break 'outer;
+                        }
                     };
                     match received_event {
                         Ok(Some(Some(guild_id))) => {
