@@ -54,7 +54,8 @@ const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 pub struct ApiCache {
     map: MapType,
     high_priority_tx: mpsc::Sender<GuildId>,
-    refresh_register_tx: mpsc::Sender<GuildId>,
+    /// sending a None is considered a "bump", indicating we should re-check the next queued item
+    refresh_register_tx: mpsc::Sender<Option<GuildId>>,
     refresh_unregister_tx: mpsc::Sender<GuildId>,
 }
 
@@ -168,7 +169,7 @@ impl ApiCache {
                         Ok(refresh_register_rx.recv().await)
                     };
                     match received_event {
-                        Ok(Some(guild_id)) => {
+                        Ok(Some(Some(guild_id))) => {
                             // new guild has appeared; insert it into the queue (as long as it isn't a duplicate)
                             if guild_set.insert(guild_id) {
                                 queue.push(GuildQueueRef {
@@ -193,6 +194,27 @@ impl ApiCache {
                                     );
                                 }
                                 sleep_duration = Some(remaining);
+                            }
+                        }
+                        Ok(Some(None)) => {
+                            // cache bump! we've been requested to take a look at the next cache item to see if the sleep time is still correct
+                            if let Some(next_queue_entry) = queue.peek() {
+                                // remaining time until the entry hits the expiration time, or 0 if it's already expired
+                                let remaining = next_queue_entry.remaining_time_until_low_priority_expiry(
+                                    low_priority_cache_expiry_time,
+                                    SimpleTime::now(),
+                                );
+                                // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
+                                if remaining != Duration::ZERO {
+                                    debug!(
+                                        "cache bumped; low-priority worker sleeping for {}s",
+                                        remaining.as_secs()
+                                    );
+                                }
+                                sleep_duration = Some(remaining);
+                            } else {
+                                // queue is totally empty, so sleep until we get an event
+                                sleep_duration = None
                             }
                         }
                         Ok(None) => {
@@ -486,7 +508,13 @@ impl ApiCache {
 
     /// Register a guild in the cache. The guild will have its cache entry periodically warmed automatically.
     pub async fn register_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
-        self.refresh_register_tx.send(guild_id).await?;
+        self.refresh_register_tx.send(Some(guild_id)).await?;
+        Ok(())
+    }
+
+    /// Bump the low priority cache queue.
+    pub async fn bump(&self) -> Result<(), Error> {
+        self.refresh_register_tx.send(None).await?;
         Ok(())
     }
 

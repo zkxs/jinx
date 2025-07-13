@@ -643,6 +643,7 @@ pub(in crate::bot) async fn set_cache_expiry_time(
         .db
         .set_low_priority_cache_expiry_time(low_priority_cache_expiry_time)
         .await?;
+    context.data().api_cache.bump().await?;
     context
         .send(success_reply(
             "Success",
