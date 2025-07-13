@@ -10,7 +10,7 @@ use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
 use crate::db::JinxDb;
 use crate::error::JinxError;
-pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
+pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct, ProductVersion};
 pub use error::{Error, Result};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use poise::serenity_prelude as serenity;
@@ -429,6 +429,11 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
     Ok(products)
 }
 
+enum ParallelFullProductResult {
+    FullProduct(FullProduct),
+    NotModified { product_id: String },
+}
+
 /// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.
 /// This is done concurrently which speeds things up slightly, but it is still very costly.
 /// Resulting vec is not guaranteed to be in the same order as the input vec.
@@ -458,28 +463,51 @@ pub async fn get_full_products<const PARALLEL: bool>(
             // we have to clone the etag because tokio does not support scoped tasks
             let etag = cached_products.get(&product_id).map(|info| info.etag.clone());
             join_set.spawn(async move {
-                util::retry_thrice(|| get_product_cached(&api_key, &product_id, etag.as_deref())).await
+                util::retry_thrice(|| get_product_cached(&api_key, &product_id, etag.as_deref()))
+                    .await
+                    .map(|option| match option {
+                        Some(full_product) => ParallelFullProductResult::FullProduct(full_product),
+                        None => ParallelFullProductResult::NotModified { product_id },
+                    })
             });
         }
-        while let Some(full_product) = join_set.join_next().await {
-            let full_product = full_product.map_err(Error::from_join)??;
-            if let Some(full_product) = full_product {
-                products.push(full_product);
+        while let Some(result) = join_set.join_next().await {
+            let result = result.map_err(Error::from_join)??;
+            let full_product = if let ParallelFullProductResult::FullProduct(full_product) = result {
+                full_product
+            } else if let ParallelFullProductResult::NotModified { product_id } = result
+                && let Some(cached_product) = cached_products.get(&product_id)
+            {
+                let versions = db.product_versions(guild_id, product_id.clone()).await?;
+                FullProduct {
+                    id: product_id,
+                    name: cached_product.product_name.clone(),
+                    versions,
+                    etag: cached_product.etag.to_owned(),
+                }
             } else {
-                todo!("handle 304 by building FullProduct entirely from DB state")
-            }
+                // uh oh, we got a 304 response but somehow did not have the necessary data in the cache?
+                // This ought not to be possible, as we should need etag from cache to even see a 304
+                Err(Error::Impossible304)?
+            };
+            products.push(full_product);
         }
     } else {
         for partial_product in partial_products {
             let product_id = partial_product.id;
-            let cached_product = cached_products.get(&product_id);
-            let full_product = if let Some(cached_product) = cached_product {
+            let full_product = if let Some(cached_product) = cached_products.get(&product_id) {
                 let etag = cached_product.etag.as_slice();
                 let full_product = get_product_cached(api_key, &product_id, Some(etag)).await?;
                 if let Some(full_product) = full_product {
                     full_product
                 } else {
-                    todo!("handle 304 by building FullProduct entirely from DB state")
+                    let versions = db.product_versions(guild_id, product_id.clone()).await?;
+                    FullProduct {
+                        id: product_id,
+                        name: cached_product.product_name.clone(),
+                        versions,
+                        etag: etag.to_owned(),
+                    }
                 }
             } else {
                 get_product_uncached(api_key, &product_id).await?

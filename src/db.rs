@@ -3,7 +3,9 @@
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{
+    ProductNameInfo, ProductNameInfoValue, ProductVersion, ProductVersionId, ProductVersionNameInfo,
+};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
 use rusqlite::types::{FromSql, ToSql};
@@ -1303,6 +1305,31 @@ impl JinxDb {
             vec.push(row?);
         }
         Ok(vec)
+    }
+
+    /// Get versions for a product
+    pub async fn product_versions(&self, guild: GuildId, product_id: String) -> Result<Vec<ProductVersion>> {
+        self.connection.call(move |connection| {
+            let guild_id = guild.get() as i64;
+            //TODO: could use an index
+            let mut statement = connection.prepare_cached(
+                "SELECT version_id, product_version_name FROM product_version WHERE guild_id = :guild AND product_id = :product_id",
+            )?;
+            let mapped_rows = statement.query_map(named_params! {":guild_id": guild_id, ":product_id": product_id}, |row| {
+                let id = row.get(0)?;
+                let name = row.get(1)?;
+                let info = ProductVersion {
+                    id,
+                    name,
+                };
+                Ok(info)
+            })?;
+            let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
+            for row in mapped_rows {
+                vec.push(row?);
+            }
+            Ok(vec)
+        }).await
     }
 
     /// Get name info for products versions in a guild

@@ -24,6 +24,8 @@ pub enum Error {
     JsonDeserialize(serde_json::Error),
     /// Some parallel task join failed.
     Join(tokio::task::JoinError),
+    /// Impossible 304 response: we got a 304 without Etag set
+    Impossible304,
 }
 
 impl std::fmt::Display for Error {
@@ -34,6 +36,10 @@ impl std::fmt::Display for Error {
             Self::HttpRead(_) => write!(f, "HTTP body read failed"),
             Self::JsonDeserialize(_) => write!(f, "JSON deserialization failed"),
             Self::Join(e) => write!(f, "parallel task join failed: {e}"),
+            Self::Impossible304 => write!(
+                f,
+                "got 304 response from Jinxxy API without having set If-None-Match header"
+            ),
         }
     }
 }
