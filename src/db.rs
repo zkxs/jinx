@@ -6,6 +6,7 @@ use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
+use rusqlite::types::{FromSql, ToSql};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
@@ -168,12 +169,7 @@ impl JinxDb {
                     (),
                 )?;
 
-                let mut settings_read =
-                    connection.prepare("SELECT value FROM settings where key = :key")?;
-                let schema_version: i32 = settings_read
-                    .query_row(named_params! {":key": SCHEMA_VERSION_KEY}, |a| a.get(0))
-                    .optional()?
-                    .unwrap_or(SCHEMA_VERSION_VALUE);
+                let schema_version: i32 = Self::get_setting_sync(connection, SCHEMA_VERSION_KEY)?.unwrap_or(SCHEMA_VERSION_VALUE);
 
                 // handle schema downgrade (or rather, DON'T handle it and throw an error)
                 if schema_version > SCHEMA_VERSION_VALUE {
@@ -257,12 +253,7 @@ impl JinxDb {
                 connection.execute("PRAGMA optimize = 0x10002", ())?;
 
                 // update the schema version value persisted to the DB
-                let mut settings_insert = connection.prepare(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)",
-                )?;
-                settings_insert.execute(
-                    named_params! {":key": SCHEMA_VERSION_KEY, ":value": SCHEMA_VERSION_VALUE},
-                )?;
+                Self::set_setting_sync(connection, SCHEMA_VERSION_KEY, SCHEMA_VERSION_VALUE)?;
 
                 Ok(())
             })
@@ -284,6 +275,49 @@ impl JinxDb {
                 Ok(())
             })
             .await
+    }
+
+    async fn get_setting<T>(&self, key: String) -> Result<Option<T>>
+    where
+        T: FromSql + Send + 'static,
+    {
+        let value = self
+            .connection
+            .call(move |connection| Self::get_setting_sync(connection, key.as_str()))
+            .await?;
+        Ok(value)
+    }
+
+    fn get_setting_sync<T>(connection: &rusqlite::Connection, key: &str) -> Result<Option<T>>
+    where
+        T: FromSql,
+    {
+        let mut statement = connection.prepare_cached("SELECT value FROM settings WHERE key = :key")?;
+        let result: Option<T> = statement
+            .query_row(named_params! {":key": key}, |row| row.get(0))
+            .optional()?;
+        Ok(result)
+    }
+
+    async fn set_setting<T>(&self, key: String, value: T) -> Result<bool>
+    where
+        T: ToSql + Send + 'static,
+    {
+        let result = self
+            .connection
+            .call(move |connection| Self::set_setting_sync(connection, key.as_str(), value))
+            .await?;
+        Ok(result)
+    }
+
+    fn set_setting_sync<T>(connection: &rusqlite::Connection, key: &str, value: T) -> Result<bool>
+    where
+        T: ToSql,
+    {
+        let mut statement =
+            connection.prepare_cached("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
+        let update_count = statement.execute(named_params! {":key": key, ":value": value})?;
+        Ok(update_count != 0)
     }
 
     pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
@@ -310,14 +344,8 @@ impl JinxDb {
     }
 
     pub async fn set_discord_token(&self, discord_token: String) -> Result<()> {
-        self.connection
-            .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
-                statement.execute(named_params! {":key": DISCORD_TOKEN_KEY, ":value": discord_token})?;
-                Ok(())
-            })
-            .await
+        self.set_setting(DISCORD_TOKEN_KEY.to_owned(), discord_token).await?;
+        Ok(())
     }
 
     pub async fn get_owners(&self) -> Result<Vec<u64>> {
@@ -353,49 +381,24 @@ impl JinxDb {
     }
 
     pub async fn get_discord_token(&self) -> Result<Option<String>> {
-        let discord_token = self
-            .connection
-            .call(move |connection| {
-                let result: Option<String> = connection
-                    .query_row(
-                        format!(r#"SELECT value FROM settings WHERE key = "{DISCORD_TOKEN_KEY}""#).as_str(),
-                        [],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                Ok(result)
-            })
-            .await?;
-        Ok(discord_token)
+        self.get_setting(DISCORD_TOKEN_KEY.to_owned()).await
     }
 
     pub async fn set_low_priority_cache_expiry_time(&self, low_priority_cache_expiry_time: Duration) -> Result<()> {
-        self.connection
-            .call(move |connection| {
-                let mut statement =
-                    connection.prepare_cached("INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)")?;
-                statement.execute(named_params! {":key": LOW_PRIORITY_CACHE_EXPIRY_SECONDS, ":value": low_priority_cache_expiry_time.as_secs() as i64})?;
-                Ok(())
-            })
-            .await
+        self.set_setting(
+            LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned(),
+            low_priority_cache_expiry_time.as_secs() as i64,
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn get_low_priority_cache_expiry_time(&self) -> Result<Option<Duration>> {
         let low_priority_cache_expiry_time = self
-            .connection
-            .call(move |connection| {
-                let result: Option<i64> = connection
-                    .query_row(
-                        format!(r#"SELECT value FROM settings WHERE key = "{LOW_PRIORITY_CACHE_EXPIRY_SECONDS}""#)
-                            .as_str(),
-                        [],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                Ok(result)
-            })
-            .await?;
-        Ok(low_priority_cache_expiry_time.map(|secs| Duration::from_secs(secs as u64)))
+            .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned())
+            .await?
+            .map(|secs| Duration::from_secs(secs as u64));
+        Ok(low_priority_cache_expiry_time)
     }
 
     /// Locally record that we've activated a license for a user
