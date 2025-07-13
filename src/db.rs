@@ -15,7 +15,7 @@ use tokio_rusqlite::{Connection, OptionalExtension, Result, named_params};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
-const SCHEMA_VERSION_VALUE: i32 = 8;
+const SCHEMA_VERSION_VALUE: i32 = 9;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 
@@ -86,6 +86,7 @@ impl JinxDb {
                              guild_id               INTEGER NOT NULL, \
                              product_id             TEXT NOT NULL, \
                              product_name           TEXT NOT NULL, \
+                             etag                   BLOB, \
                              PRIMARY KEY            (guild_id, product_id) \
                          ) STRICT",
                     (),
@@ -244,6 +245,15 @@ impl JinxDb {
                     )?;
                     connection.execute(
                         "ALTER TABLE license_activation ADD COLUMN version_id TEXT",
+                        (),
+                    )?;
+                }
+
+                // handle schema v8 -> v9 migration
+                if schema_version < 9 {
+                    // "etag"  needs to be added to "product"
+                    connection.execute(
+                        "ALTER TABLE product ADD COLUMN etag BLOB",
                         (),
                     )?;
                 }
@@ -1270,13 +1280,15 @@ impl JinxDb {
     fn product_names_in_guild(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
         let guild_id = guild.get() as i64;
         let mut statement =
-            connection.prepare_cached("SELECT product_id, product_name FROM product WHERE guild_id = :guild")?;
+            connection.prepare_cached("SELECT product_id, product_name, etag FROM product WHERE guild_id = :guild")?;
         let mapped_rows = statement.query_map(named_params! {":guild": guild_id}, |row| {
             let product_id: String = row.get(0)?;
             let product_name: String = row.get(1)?;
+            let etag: Vec<u8> = row.get(2)?;
             let info = ProductNameInfo {
                 id: product_id,
                 product_name,
+                etag,
             };
             Ok(info)
         })?;
@@ -1324,12 +1336,13 @@ impl JinxDb {
         let mut unexpected_keys = Vec::new();
 
         // step 1: insert all entries and keep track of their keys in a set for later
-        let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name) VALUES (:guild, :product_id, :product_name) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name")?;
+        let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name, etag) VALUES (:guild, :product_id, :product_name, :etag) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name, etag = excluded.etag")?;
         for info in product_name_info {
             let product_id = info.id;
             let product_name = info.product_name;
+            let etag = info.etag;
             statement.execute(
-                named_params! {":guild": guild_id, ":product_id": product_id, ":product_name": product_name},
+                named_params! {":guild": guild_id, ":product_id": product_id, ":product_name": product_name, ":etag": etag},
             )?;
             new_key_set.insert(product_id);
         }

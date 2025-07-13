@@ -231,9 +231,8 @@ pub async fn check_license(
 /// This performs an API call to get_product
 async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<()> {
     if let Some(product_version_info) = &mut license_info.product_version_info {
-        let product = get_product(api_key, &license_info.product_id, None).await?;
+        let product = get_product_uncached(api_key, &license_info.product_id).await?;
         if let Some(product_version_name) = product
-            .expect("cannot get a 304 response because etag wasn't used")
             .versions
             .into_iter()
             .find(|found_product_version| found_product_version.id == product_version_info.product_version_id)
@@ -310,18 +309,33 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
         }
     }
 }
+/// Look up a product. This includes product version information.
+///
+/// This completely ignores the cache and is useful if we need guaranteed correct information NOW.
+pub async fn get_product_uncached(api_key: &str, product_id: &str) -> Result<FullProduct> {
+    get_product_cached(api_key, product_id, None)
+        .await
+        .map(|option| option.expect("cannot get a 304 response because etag wasn't used"))
+}
 
 /// Look up a product. This includes product version information.
 ///
 /// Optionally, you can specify an etag. If the etag matches the resource in the server and we get a
 /// 304 Not Modified response, `Ok(None)` will be returned. This is the ONLY case where `Ok(None)` has to be handled.
-pub async fn get_product(api_key: &str, product_id: &str, etag: Option<&[u8]>) -> Result<Option<FullProduct>> {
+///
+/// Note that this function is only _helpful_ for getting products in a cached way: it does not actually handle the
+/// fallback read to cached values!
+pub async fn get_product_cached(
+    api_key: &str,
+    product_id: &str,
+    expected_etag: Option<&[u8]>,
+) -> Result<Option<FullProduct>> {
     static ENDPOINT: &str = "GET /products/<id>";
     let request = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}products/{product_id}"))
         .headers(get_headers(api_key));
-    let request = if let Some(etag) = etag {
-        request.header(header::IF_NONE_MATCH, etag)
+    let request = if let Some(expected_etag) = expected_etag {
+        request.header(header::IF_NONE_MATCH, expected_etag)
     } else {
         request
     };
@@ -330,19 +344,19 @@ pub async fn get_product(api_key: &str, product_id: &str, etag: Option<&[u8]>) -
     let response = request.send().await.map_err(|e| Error::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
 
-    let etag = response
+    let actual_etag = response
         .headers()
         .get(header::ETAG)
-        .map(|etag| etag.as_bytes().to_owned());
+        .map(|actual_etag| actual_etag.as_bytes().to_owned());
     let status_code = response.status();
-    if status_code.as_u16() == 304 {
+    if expected_etag.is_some() && status_code.as_u16() == 304 {
         // 304 not modified!
         Ok(None)
     } else {
         // cached read failed
         let mut response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
-        if let Some(etag) = etag {
-            response.etag = etag;
+        if let Some(actual_etag) = actual_etag {
+            response.etag = actual_etag;
         }
         Ok(Some(response))
     }
@@ -423,7 +437,8 @@ pub async fn get_full_products<const PARALLEL: bool>(
         for partial_product in partial_products {
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
-            join_set.spawn(async move { util::retry_thrice(|| get_product(&api_key, &product_id, None)).await });
+            //TODO: pass in etag
+            join_set.spawn(async move { util::retry_thrice(|| get_product_cached(&api_key, &product_id, None)).await });
         }
         while let Some(full_product) = join_set.join_next().await {
             let full_product = full_product.map_err(Error::from_join)??;
@@ -431,7 +446,8 @@ pub async fn get_full_products<const PARALLEL: bool>(
         }
     } else {
         for partial_product in partial_products {
-            let full_product = get_product(api_key, &partial_product.id, None).await?;
+            //TODO: pass in etag
+            let full_product = get_product_cached(api_key, &partial_product.id, None).await?;
             products.push(full_product.expect("cannot get a 304 response because etag wasn't used"));
         }
     }
@@ -534,6 +550,7 @@ impl Display for ProductVersionId {
 pub struct ProductNameInfo {
     pub id: String,
     pub product_name: String,
+    pub etag: Vec<u8>,
 }
 
 /// Internal struct for holding version name info

@@ -697,7 +697,11 @@ impl GuildCache {
         api_key: &str,
         guild_id: GuildId,
     ) -> Result<GuildCache, Error> {
+        // list products
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
+
+        // get details for each product
+        //TODO: somehow pass in cached etag context
         let products: Vec<FullProduct> = jinxxy::get_full_products::<PARALLEL>(api_key, partial_products)
             .await?
             .into_iter()
@@ -710,7 +714,8 @@ impl GuildCache {
             .map(|product| {
                 let id = product.id.clone();
                 let product_name = util::truncate_string_for_discord_autocomplete(&product.name);
-                ProductNameInfo { id, product_name }
+                let etag = product.etag.clone();
+                ProductNameInfo { id, product_name, etag }
             })
             .collect();
 

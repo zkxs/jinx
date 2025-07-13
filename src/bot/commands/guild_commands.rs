@@ -243,7 +243,7 @@ pub async fn user_info(
                             let api_key = api_key.clone();
                             let product_id = license_info.product_id.clone();
                             product_lookup_join_set
-                                .spawn(async move { jinxxy::get_product(&api_key, &product_id, None).await });
+                                .spawn(async move { jinxxy::get_product_uncached(&api_key, &product_id).await });
                         }
                     }
                 }
@@ -258,7 +258,7 @@ pub async fn user_info(
                 ahash::RandomState,
             > = Default::default();
             while let Some(result) = product_lookup_join_set.join_next().await {
-                let product = result??.expect("cannot get a 304 response because etag wasn't used");
+                let product = result??;
                 for version in product.versions {
                     product_version_name_cache
                         .entry(product.id.clone())
