@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
 use tokio::time::Instant;
-use tokio_rusqlite::{Connection, OptionalExtension, Result, named_params};
+use tokio_rusqlite::{Connection, OptionalExtension, Result as SqliteResult, named_params};
 use tracing::debug;
 
 const SCHEMA_VERSION_KEY: &str = "schema_version";
@@ -36,12 +36,12 @@ impl Drop for JinxDb {
 
 impl JinxDb {
     /// Open a new database
-    pub async fn open() -> Result<Self> {
+    pub async fn open() -> SqliteResult<Self> {
         Self::open_path("jinx.sqlite").await
     }
 
     /// Open a new database
-    async fn open_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+    async fn open_path<P: AsRef<Path>>(path: P) -> SqliteResult<Self> {
         let connection = Connection::open(path).await?;
         JinxDb::init(&connection).await?;
         let db = JinxDb {
@@ -52,7 +52,7 @@ impl JinxDb {
     }
 
     /// Set up the database
-    async fn init(connection: &Connection) -> Result<()> {
+    async fn init(connection: &Connection) -> SqliteResult<()> {
         let start = Instant::now();
         connection
             .call(|connection| {
@@ -280,7 +280,7 @@ impl JinxDb {
     /// Attempt to optimize the database.
     ///
     /// Applications that use long-lived database connections should run "PRAGMA optimize;" periodically, perhaps once per day or once per hour.
-    pub async fn optimize(&self) -> Result<()> {
+    pub async fn optimize(&self) -> SqliteResult<()> {
         self.connection
             .call(move |connection| {
                 connection.execute("PRAGMA optimize", ())?;
@@ -289,7 +289,7 @@ impl JinxDb {
             .await
     }
 
-    async fn get_setting<T>(&self, key: String) -> Result<Option<T>>
+    async fn get_setting<T>(&self, key: String) -> SqliteResult<Option<T>>
     where
         T: FromSql + Send + 'static,
     {
@@ -300,7 +300,7 @@ impl JinxDb {
         Ok(value)
     }
 
-    fn get_setting_sync<T>(connection: &rusqlite::Connection, key: &str) -> Result<Option<T>>
+    fn get_setting_sync<T>(connection: &rusqlite::Connection, key: &str) -> SqliteResult<Option<T>>
     where
         T: FromSql,
     {
@@ -311,7 +311,7 @@ impl JinxDb {
         Ok(result)
     }
 
-    async fn set_setting<T>(&self, key: String, value: T) -> Result<bool>
+    async fn set_setting<T>(&self, key: String, value: T) -> SqliteResult<bool>
     where
         T: ToSql + Send + 'static,
     {
@@ -322,7 +322,7 @@ impl JinxDb {
         Ok(result)
     }
 
-    fn set_setting_sync<T>(connection: &rusqlite::Connection, key: &str, value: T) -> Result<bool>
+    fn set_setting_sync<T>(connection: &rusqlite::Connection, key: &str, value: T) -> SqliteResult<bool>
     where
         T: ToSql,
     {
@@ -332,7 +332,7 @@ impl JinxDb {
         Ok(update_count != 0)
     }
 
-    pub async fn add_owner(&self, owner_id: u64) -> Result<()> {
+    pub async fn add_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
@@ -344,7 +344,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn delete_owner(&self, owner_id: u64) -> Result<()> {
+    pub async fn delete_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
@@ -355,12 +355,12 @@ impl JinxDb {
             .await
     }
 
-    pub async fn set_discord_token(&self, discord_token: String) -> Result<()> {
+    pub async fn set_discord_token(&self, discord_token: String) -> SqliteResult<()> {
         self.set_setting(DISCORD_TOKEN_KEY.to_owned(), discord_token).await?;
         Ok(())
     }
 
-    pub async fn get_owners(&self) -> Result<Vec<u64>> {
+    pub async fn get_owners(&self) -> SqliteResult<Vec<u64>> {
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare_cached("SELECT owner_id FROM owner")?;
@@ -377,7 +377,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn is_user_owner(&self, owner_id: u64) -> Result<bool> {
+    pub async fn is_user_owner(&self, owner_id: u64) -> SqliteResult<bool> {
         let owner_id = owner_id as i64;
         self.connection
             .call(move |connection| {
@@ -392,11 +392,14 @@ impl JinxDb {
             .await
     }
 
-    pub async fn get_discord_token(&self) -> Result<Option<String>> {
+    pub async fn get_discord_token(&self) -> SqliteResult<Option<String>> {
         self.get_setting(DISCORD_TOKEN_KEY.to_owned()).await
     }
 
-    pub async fn set_low_priority_cache_expiry_time(&self, low_priority_cache_expiry_time: Duration) -> Result<()> {
+    pub async fn set_low_priority_cache_expiry_time(
+        &self,
+        low_priority_cache_expiry_time: Duration,
+    ) -> SqliteResult<()> {
         self.set_setting(
             LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned(),
             low_priority_cache_expiry_time.as_secs() as i64,
@@ -405,7 +408,7 @@ impl JinxDb {
         Ok(())
     }
 
-    pub async fn get_low_priority_cache_expiry_time(&self) -> Result<Option<Duration>> {
+    pub async fn get_low_priority_cache_expiry_time(&self) -> SqliteResult<Option<Duration>> {
         let low_priority_cache_expiry_time = self
             .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned())
             .await?
@@ -422,7 +425,7 @@ impl JinxDb {
         user_id: u64,
         product_id: Option<String>,
         version_id: Option<String>,
-    ) -> Result<()> {
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         self.connection.call(move |connection| {
@@ -441,7 +444,7 @@ impl JinxDb {
         user_id: u64,
         product_id: Option<String>,
         version_id: Option<String>,
-    ) -> Result<bool> {
+    ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         self.connection.call(move |connection| {
@@ -451,7 +454,7 @@ impl JinxDb {
         }).await
     }
 
-    pub async fn backfill_license_info(&self) -> std::result::Result<usize, Error> {
+    pub async fn backfill_license_info(&self) -> Result<usize, Error> {
         let license_records = self.connection.call(move |connection| {
             let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0")?;
             let license_rows = license_query.query_map((), |row| {
@@ -507,7 +510,7 @@ impl JinxDb {
         license_id: String,
         license_activation_id: String,
         user_id: u64,
-    ) -> Result<bool> {
+    ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         self.connection.call(move |connection| {
@@ -518,7 +521,7 @@ impl JinxDb {
     }
 
     /// Locally check if a license is locked. This may be out of sync with Jinxxy!
-    pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> Result<bool> {
+    pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -537,7 +540,7 @@ impl JinxDb {
     }
 
     /// Set Jinxxy API key for this guild
-    pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> Result<()> {
+    pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let api_key_clone = api_key.clone();
         self.connection.call(move |connection| {
@@ -551,7 +554,7 @@ impl JinxDb {
     }
 
     /// Get Jinxxy API key for this guild
-    pub async fn get_jinxxy_api_key(&self, guild: GuildId) -> Result<Option<String>> {
+    pub async fn get_jinxxy_api_key(&self, guild: GuildId) -> SqliteResult<Option<String>> {
         if let Some(api_key) = self.api_key_cache.pin().get(&guild) {
             // cache hit
             Ok(api_key.clone())
@@ -573,7 +576,7 @@ impl JinxDb {
     }
 
     /// Set or unset blanket role
-    pub async fn set_blanket_role_id(&self, guild: GuildId, role_id: Option<RoleId>) -> Result<()> {
+    pub async fn set_blanket_role_id(&self, guild: GuildId, role_id: Option<RoleId>) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role_id.map(|role_id| role_id.get() as i64);
         self.connection.call(move |connection| {
@@ -584,7 +587,7 @@ impl JinxDb {
     }
 
     /// blanket link a Jinxxy product and a role
-    pub async fn link_product(&self, guild: GuildId, product_id: String, role: RoleId) -> Result<()> {
+    pub async fn link_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         self.connection.call(move |connection| {
@@ -595,7 +598,7 @@ impl JinxDb {
     }
 
     /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
-    pub async fn unlink_product(&self, guild: GuildId, product_id: String, role: RoleId) -> Result<bool> {
+    pub async fn unlink_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         self.connection
@@ -616,7 +619,7 @@ impl JinxDb {
         guild: GuildId,
         product_version_id: ProductVersionId,
         role: RoleId,
-    ) -> Result<()> {
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         self.connection.call(move |connection| {
@@ -633,7 +636,7 @@ impl JinxDb {
         guild: GuildId,
         product_version_id: ProductVersionId,
         role: RoleId,
-    ) -> Result<bool> {
+    ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         self.connection.call(move |connection| {
@@ -645,7 +648,11 @@ impl JinxDb {
     }
 
     /// Get role grants for a product ID. This includes blanket grants.
-    pub async fn get_role_grants(&self, guild: GuildId, product_version_id: ProductVersionId) -> Result<Vec<RoleId>> {
+    pub async fn get_role_grants(
+        &self,
+        guild: GuildId,
+        product_version_id: ProductVersionId,
+    ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -672,7 +679,7 @@ impl JinxDb {
     }
 
     /// Get roles for a product. This is ONLY product-level blanket grants.
-    pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> Result<Vec<RoleId>> {
+    pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -699,7 +706,7 @@ impl JinxDb {
         &self,
         guild: GuildId,
         product_version_id: ProductVersionId,
-    ) -> Result<Vec<RoleId>> {
+    ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -722,7 +729,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> Result<Vec<UserId>> {
+    pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<Vec<UserId>> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         self.connection
@@ -748,7 +755,7 @@ impl JinxDb {
     }
 
     /// get distinct roles from all links
-    pub async fn get_linked_roles(&self, guild: GuildId) -> Result<Vec<RoleId>> {
+    pub async fn get_linked_roles(&self, guild: GuildId) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -772,7 +779,10 @@ impl JinxDb {
     }
 
     /// get all links
-    pub async fn get_links(&self, guild: GuildId) -> Result<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
+    pub async fn get_links(
+        &self,
+        guild: GuildId,
+    ) -> SqliteResult<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -828,7 +838,7 @@ impl JinxDb {
     }
 
     /// Locally get all licences a users has been recorded to activate. This may be out of sync with Jinxxy!
-    pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> Result<Vec<String>> {
+    pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> SqliteResult<Vec<String>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -849,7 +859,12 @@ impl JinxDb {
     }
 
     /// Locally check if any activations exist for this user/license combo. This may be out of sync with Jinxxy!
-    pub async fn has_user_license_activations(&self, guild: GuildId, user_id: u64, license_id: String) -> Result<bool> {
+    pub async fn has_user_license_activations(
+        &self,
+        guild: GuildId,
+        user_id: u64,
+        license_id: String,
+    ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         self.connection
@@ -872,7 +887,7 @@ impl JinxDb {
         guild: GuildId,
         user_id: u64,
         license_id: String,
-    ) -> Result<Vec<String>> {
+    ) -> SqliteResult<Vec<String>> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         self.connection
@@ -895,7 +910,7 @@ impl JinxDb {
     }
 
     /// Locally get all users that have activated the given license. This may be out of sync with Jinxxy!
-    pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> Result<Vec<u64>> {
+    pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> SqliteResult<Vec<u64>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -918,7 +933,7 @@ impl JinxDb {
     }
 
     /// Get DB size in bytes
-    pub async fn size(&self) -> Result<u64> {
+    pub async fn size(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -932,7 +947,7 @@ impl JinxDb {
     }
 
     /// Get count of license activations
-    pub async fn license_activation_count(&self) -> Result<u64> {
+    pub async fn license_activation_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -946,7 +961,7 @@ impl JinxDb {
     }
 
     /// Get count of distinct users who have activated licenses
-    pub async fn distinct_user_count(&self) -> Result<u64> {
+    pub async fn distinct_user_count(&self) -> SqliteResult<u64> {
         self.connection.call(move |connection| {
             let result: u64 = connection.query_row("SELECT count(DISTINCT user_id) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
             Ok(result)
@@ -954,7 +969,7 @@ impl JinxDb {
     }
 
     /// Get count of configured guilds
-    pub async fn guild_count(&self) -> Result<u64> {
+    pub async fn guild_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 =
@@ -965,7 +980,7 @@ impl JinxDb {
     }
 
     /// Get count of distinct bot log channels
-    pub async fn log_channel_count(&self) -> Result<u64> {
+    pub async fn log_channel_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -979,7 +994,7 @@ impl JinxDb {
     }
 
     /// Get count of guilds with blanket role set
-    pub async fn blanket_role_count(&self) -> Result<u64> {
+    pub async fn blanket_role_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -993,7 +1008,7 @@ impl JinxDb {
     }
 
     /// Get count of product->role mappings
-    pub async fn product_role_count(&self) -> Result<u64> {
+    pub async fn product_role_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -1007,7 +1022,7 @@ impl JinxDb {
     }
 
     /// Get count of product+version->role mappings
-    pub async fn product_version_role_count(&self) -> Result<u64> {
+    pub async fn product_version_role_count(&self) -> SqliteResult<u64> {
         self.connection
             .call(move |connection| {
                 let result: u64 = connection.query_row(
@@ -1021,7 +1036,7 @@ impl JinxDb {
     }
 
     /// Get count of license activations in a guild
-    pub async fn guild_license_activation_count(&self, guild: GuildId) -> Result<u64> {
+    pub async fn guild_license_activation_count(&self, guild: GuildId) -> SqliteResult<u64> {
         let guild_id = guild.get() as i64;
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild")?;
@@ -1031,7 +1046,7 @@ impl JinxDb {
     }
 
     /// Get bot log channel
-    pub async fn get_log_channel(&self, guild: GuildId) -> Result<Option<ChannelId>> {
+    pub async fn get_log_channel(&self, guild: GuildId) -> SqliteResult<Option<ChannelId>> {
         let guild_id = guild.get() as i64;
         let channel_id = self
             .connection
@@ -1048,7 +1063,7 @@ impl JinxDb {
 
     /// Get all bot log channels.
     /// If `TEST_ONLY` is true, then only returns non-production servers. Otherwise, returns all servers.
-    pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> Result<Vec<ChannelId>> {
+    pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> SqliteResult<Vec<ChannelId>> {
         self.connection.call(move |connection| {
             let mut statement = if TEST_ONLY {
                 // only non-production servers
@@ -1067,7 +1082,7 @@ impl JinxDb {
     }
 
     /// Set or unset bot log channel
-    pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> Result<()> {
+    pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let channel_id = channel.map(|channel| channel.get() as i64);
         self.connection.call(move |connection| {
@@ -1078,7 +1093,7 @@ impl JinxDb {
     }
 
     /// Set or unset this guild as a test guild
-    pub async fn set_test(&self, guild: GuildId, test: bool) -> Result<()> {
+    pub async fn set_test(&self, guild: GuildId, test: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, test) VALUES (:guild, :test) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test")?;
@@ -1088,7 +1103,7 @@ impl JinxDb {
     }
 
     /// Check if a guild is a test guild
-    pub async fn is_test_guild(&self, guild: GuildId) -> Result<bool> {
+    pub async fn is_test_guild(&self, guild: GuildId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1105,7 +1120,7 @@ impl JinxDb {
     }
 
     /// Set or unset this guild as an owner guild (gets extra slash commands)
-    pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> Result<()> {
+    pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         self.connection.call(move |connection| {
             let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, owner) VALUES (:guild, :owner) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner")?;
@@ -1115,7 +1130,7 @@ impl JinxDb {
     }
 
     /// Check if a guild is an owner guild (gets extra slash commands)
-    pub async fn is_owner_guild(&self, guild: GuildId) -> Result<bool> {
+    pub async fn is_owner_guild(&self, guild: GuildId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1132,7 +1147,7 @@ impl JinxDb {
     }
 
     /// Check gumroad failure count for a guild
-    pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> Result<Option<u64>> {
+    pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1150,7 +1165,7 @@ impl JinxDb {
     }
 
     /// Increment gumroad failure count for a guild
-    pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> Result<()> {
+    pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1164,7 +1179,7 @@ impl JinxDb {
     }
 
     /// Get tuples of `(guild_id, log_channel_id)` with pending gumroad nag
-    pub async fn get_guilds_pending_gumroad_nag(&self) -> Result<Vec<GuildGumroadInfo>> {
+    pub async fn get_guilds_pending_gumroad_nag(&self) -> SqliteResult<Vec<GuildGumroadInfo>> {
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare_cached(
@@ -1191,7 +1206,7 @@ impl JinxDb {
     }
 
     /// Check gumroad nag count for a guild
-    pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> Result<Option<u64>> {
+    pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1209,7 +1224,7 @@ impl JinxDb {
     }
 
     /// Increment gumroad nag count for a guild
-    pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> Result<()> {
+    pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         self.connection
             .call(move |connection| {
@@ -1222,7 +1237,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn get_guild_cache(&self, guild: GuildId) -> Result<GuildCache> {
+    pub async fn get_guild_cache(&self, guild: GuildId) -> SqliteResult<GuildCache> {
         self.connection
             .call(move |connection| {
                 let cache_time = JinxDb::get_cache_time(connection, guild)?;
@@ -1237,7 +1252,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> Result<()> {
+    pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> SqliteResult<()> {
         self.connection
             .call(move |connection| {
                 JinxDb::persist_product_names(connection, guild, cache_entry.product_name_info)?;
@@ -1249,7 +1264,7 @@ impl JinxDb {
     }
 
     /// Delete all cache entries for all guilds
-    pub async fn clear_cache(&self) -> Result<()> {
+    pub async fn clear_cache(&self) -> SqliteResult<()> {
         self.connection
             .call(move |connection| {
                 connection.execute("DELETE FROM product", ())?;
@@ -1260,7 +1275,7 @@ impl JinxDb {
             .await
     }
 
-    fn get_cache_time(connection: &rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
+    fn get_cache_time(connection: &rusqlite::Connection, guild: GuildId) -> SqliteResult<SimpleTime> {
         let guild_id = guild.get() as i64;
         let mut statement =
             connection.prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;
@@ -1271,7 +1286,7 @@ impl JinxDb {
         Ok(SimpleTime::from_unix_millis(cache_time_unix_ms))
     }
 
-    fn set_cache_time(connection: &rusqlite::Connection, guild: GuildId, time: SimpleTime) -> Result<()> {
+    fn set_cache_time(connection: &rusqlite::Connection, guild: GuildId, time: SimpleTime) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (:guild, :time) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms")?;
         statement.execute(named_params! {":guild": guild_id, ":time": time.as_epoch_millis()})?;
@@ -1279,14 +1294,17 @@ impl JinxDb {
     }
 
     /// Get cached name info for products in a guild
-    pub async fn product_names_in_guild(&self, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+    pub async fn product_names_in_guild(&self, guild: GuildId) -> SqliteResult<Vec<ProductNameInfo>> {
         self.connection
             .call(move |connection| Self::product_names_in_guild_sync(connection, guild))
             .await
     }
 
     /// Get cached name info for products in a guild
-    fn product_names_in_guild_sync(connection: &rusqlite::Connection, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+    fn product_names_in_guild_sync(
+        connection: &rusqlite::Connection,
+        guild: GuildId,
+    ) -> SqliteResult<Vec<ProductNameInfo>> {
         let guild_id = guild.get() as i64;
         let mut statement =
             connection.prepare_cached("SELECT product_id, product_name, etag FROM product WHERE guild_id = :guild")?;
@@ -1308,7 +1326,7 @@ impl JinxDb {
     }
 
     /// Get versions for a product
-    pub async fn product_versions(&self, guild: GuildId, product_id: String) -> Result<Vec<ProductVersion>> {
+    pub async fn product_versions(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<ProductVersion>> {
         self.connection.call(move |connection| {
             let guild_id = guild.get() as i64;
             //TODO: could use an index
@@ -1336,7 +1354,7 @@ impl JinxDb {
     fn product_version_names_in_guild(
         connection: &rusqlite::Connection,
         guild: GuildId,
-    ) -> Result<Vec<ProductVersionNameInfo>> {
+    ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
         let guild_id = guild.get() as i64;
         let mut statement = connection.prepare_cached(
             "SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild",
@@ -1363,7 +1381,7 @@ impl JinxDb {
         connection: &rusqlite::Connection,
         guild: GuildId,
         product_name_info: Vec<ProductNameInfo>,
-    ) -> Result<()> {
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut new_key_set = HashSet::with_capacity_and_hasher(product_name_info.len(), ahash::RandomState::default());
         let mut unexpected_keys = Vec::new();
@@ -1403,7 +1421,7 @@ impl JinxDb {
         connection: &rusqlite::Connection,
         guild: GuildId,
         product_version_name_info: Vec<ProductVersionNameInfo>,
-    ) -> Result<()> {
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut new_key_set =
             HashSet::with_capacity_and_hasher(product_version_name_info.len(), ahash::RandomState::default());

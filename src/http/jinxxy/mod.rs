@@ -11,7 +11,7 @@ use crate::bot::util;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct, ProductVersion};
-pub use error::{Error, Result};
+pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use poise::serenity_prelude as serenity;
 use reqwest::{Response, header};
@@ -53,7 +53,7 @@ fn get_headers(api_key: &str) -> header::HeaderMap {
 
 /// Deserialize json after ensuring a 2xx status code was received. Not suitable for requests
 /// where some status codes are expected.
-async fn read_2xx_json<T>(endpoint: &'static str, response: Response) -> Result<T>
+async fn read_2xx_json<T>(endpoint: &'static str, response: Response) -> JinxxyResult<T>
 where
     T: DeserializeOwned,
 {
@@ -62,26 +62,29 @@ where
 }
 
 /// Deserialize json without checking status code.
-async fn read_any_json<T>(endpoint: &'static str, response: Response) -> Result<T>
+async fn read_any_json<T>(endpoint: &'static str, response: Response) -> JinxxyResult<T>
 where
     T: DeserializeOwned,
 {
-    let bytes = response.bytes().await.map_err(|e| Error::from_read(endpoint, e))?;
-    serde_json::from_slice::<T>(&bytes).map_err(Error::from_json)
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| JinxxyError::from_read(endpoint, e))?;
+    serde_json::from_slice::<T>(&bytes).map_err(JinxxyError::from_json)
 }
 
 /// Generic handler for any requests with non-successful status codes. Not suitable for requests
 /// where some status codes are expected.
-async fn handle_unexpected_status(endpoint: &'static str, response: Response) -> Result<Response> {
+async fn handle_unexpected_status(endpoint: &'static str, response: Response) -> JinxxyResult<Response> {
     if response.status().is_success() {
         Ok(response)
     } else {
-        Err(Error::from_response(endpoint, response).await)
+        Err(JinxxyError::from_response(endpoint, response).await)
     }
 }
 
 /// Get the user the API key belongs to
-pub async fn get_own_user(api_key: &str) -> Result<AuthUser> {
+pub async fn get_own_user(api_key: &str) -> JinxxyResult<AuthUser> {
     static ENDPOINT: &str = "GET /me";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
@@ -89,7 +92,7 @@ pub async fn get_own_user(api_key: &str) -> Result<AuthUser> {
         .headers(get_headers(api_key))
         .send()
         .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: AuthUser = read_2xx_json(ENDPOINT, response).await?;
     Ok(response)
@@ -107,7 +110,7 @@ pub enum LicenseKey<'a> {
 ///
 /// Note that this function does **not** verify if a provided license ID is valid: it only converts
 /// keys into IDs.
-pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Option<String>> {
+pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> JinxxyResult<Option<String>> {
     match license {
         LicenseKey::Id(license_id) => {
             // maybe one day I'll need to verify these, but not today
@@ -128,7 +131,7 @@ pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> Result<Op
                 .query(&[(search_key, license_key)])
                 .send()
                 .await
-                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+                .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
             debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
             let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
             if let Some(result) = response.results.first() {
@@ -148,7 +151,7 @@ pub async fn check_license_id(
     api_key: &str,
     license_id: &str,
     inject_product_version_name: bool,
-) -> Result<Option<LicenseInfo>> {
+) -> JinxxyResult<Option<LicenseInfo>> {
     check_license(api_key, LicenseKey::Id(license_id), inject_product_version_name).await
 }
 
@@ -159,7 +162,7 @@ pub async fn check_license(
     api_key: &str,
     license: LicenseKey<'_>,
     inject_product_version_name: bool,
-) -> Result<Option<LicenseInfo>> {
+) -> JinxxyResult<Option<LicenseInfo>> {
     match license {
         LicenseKey::Id(license_id) => {
             // look up license directly by ID
@@ -170,7 +173,7 @@ pub async fn check_license(
                 .headers(get_headers(api_key))
                 .send()
                 .await
-                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+                .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
             debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
             if response.status().is_success() {
                 let response: dto::License = read_any_json(ENDPOINT, response).await?;
@@ -182,7 +185,7 @@ pub async fn check_license(
             } else {
                 debug!("could not look up user-provided license id");
                 // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
-                let error = Error::from_response(ENDPOINT, response).await;
+                let error = JinxxyError::from_response(ENDPOINT, response).await;
                 if error.looks_like_403() || error.looks_like_404() {
                     Ok(None)
                 } else {
@@ -205,7 +208,7 @@ pub async fn check_license(
                 .query(&[(search_key, license_key)])
                 .send()
                 .await
-                .map_err(|e| Error::from_request(ENDPOINT, e))?;
+                .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
             debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
             let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
             if let Some(result) = response.results.first() {
@@ -217,7 +220,7 @@ pub async fn check_license(
                     .headers(get_headers(api_key))
                     .send()
                     .await
-                    .map_err(|e| Error::from_request(ENDPOINT, e))?;
+                    .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
                 debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
                 let response: dto::License = read_2xx_json(ENDPOINT, response).await?;
                 let mut response: LicenseInfo = response.into();
@@ -234,7 +237,7 @@ pub async fn check_license(
 }
 
 /// This performs an API call to get_product
-async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> Result<()> {
+async fn add_product_version_name_to_license_info(api_key: &str, license_info: &mut LicenseInfo) -> JinxxyResult<()> {
     if let Some(product_version_info) = &mut license_info.product_version_info {
         let product = get_product_uncached(api_key, &license_info.product_id).await?;
         if let Some(product_version_name) = product
@@ -250,7 +253,7 @@ async fn add_product_version_name_to_license_info(api_key: &str, license_info: &
 }
 
 /// Get list of all license activations
-pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<Vec<LicenseActivation>> {
+pub async fn get_license_activations(api_key: &str, license_id: &str) -> JinxxyResult<Vec<LicenseActivation>> {
     static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
@@ -260,7 +263,7 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
         .headers(get_headers(api_key))
         .send()
         .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: dto::LicenseActivationList = read_2xx_json(ENDPOINT, response).await?;
     if response.len() == ACTIVATION_PAGINATION_LIMIT {
@@ -270,7 +273,7 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> Result<
 }
 
 /// Create a new license activation
-pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> Result<String> {
+pub async fn create_license_activation(api_key: &str, license_id: &str, user_id: u64) -> JinxxyResult<String> {
     let body = dto::CreateLicenseActivation::from_user_id(user_id);
     static ENDPOINT: &str = "POST /licenses/<id>/activations";
     let start_time = Instant::now();
@@ -281,14 +284,14 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: LicenseActivation = read_2xx_json(ENDPOINT, response).await?;
     Ok(response.id)
 }
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
-pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> Result<bool> {
+pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> JinxxyResult<bool> {
     static ENDPOINT: &str = "DELETE /licenses/<id>/activations";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
@@ -298,14 +301,14 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
         .headers(get_headers(api_key))
         .send()
         .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     if response.status().is_success() {
         Ok(true)
     } else {
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
         // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
-        let error = Error::from_response(ENDPOINT, response).await;
+        let error = JinxxyError::from_response(ENDPOINT, response).await;
         if error.looks_like_404() {
             // license was not found
             Ok(false)
@@ -317,7 +320,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
 /// Look up a product. This includes product version information.
 ///
 /// This completely ignores the cache and is useful if we need guaranteed correct information NOW.
-pub async fn get_product_uncached(api_key: &str, product_id: &str) -> Result<FullProduct> {
+pub async fn get_product_uncached(api_key: &str, product_id: &str) -> JinxxyResult<FullProduct> {
     get_product_cached(api_key, product_id, None)
         .await
         .map(|option| option.expect("cannot get a 304 response because etag wasn't used"))
@@ -334,7 +337,7 @@ pub async fn get_product_cached(
     api_key: &str,
     product_id: &str,
     expected_etag: Option<&[u8]>,
-) -> Result<Option<FullProduct>> {
+) -> JinxxyResult<Option<FullProduct>> {
     static ENDPOINT: &str = "GET /products/<id>";
     let request = HTTP_CLIENT
         .get(format!("{JINXXY_BASE_URL}products/{product_id}"))
@@ -346,7 +349,10 @@ pub async fn get_product_cached(
     };
 
     let start_time = Instant::now();
-    let response = request.send().await.map_err(|e| Error::from_request(ENDPOINT, e))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     let elapsed = start_time.elapsed();
 
     let actual_etag = response
@@ -370,7 +376,7 @@ pub async fn get_product_cached(
 }
 
 /// Get a single page of products.
-async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::ProductList> {
+async fn get_products_page(api_key: &str, page_number: u32) -> JinxxyResult<dto::ProductList> {
     static ENDPOINT: &str = "GET /products";
     let start_time = Instant::now();
     let response = HTTP_CLIENT
@@ -380,7 +386,7 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
         .headers(get_headers(api_key))
         .send()
         .await
-        .map_err(|e| Error::from_request(ENDPOINT, e))?;
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: dto::ProductList = read_2xx_json(ENDPOINT, response).await?;
     Ok(response)
@@ -389,7 +395,7 @@ async fn get_products_page(api_key: &str, page_number: u32) -> Result<dto::Produ
 /// Get all products on this account by performing a paginated request. This does NOT include product version information.
 ///
 /// You should not wrap this in retry logic, as the retry logic is already built in to each internal request.
-pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
+pub async fn get_products(api_key: &str) -> JinxxyResult<Vec<PartialProduct>> {
     const HARD_PAGE_LIMIT: u32 = 100;
     let mut products = Vec::new();
     let mut page_number: u32 = 1;
@@ -444,7 +450,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
     api_key: &str,
     guild_id: GuildId,
     partial_products: Vec<PartialProduct>,
-) -> std::result::Result<Vec<FullProduct>, JinxError> {
+) -> Result<Vec<FullProduct>, JinxError> {
     let mut products = Vec::with_capacity(partial_products.len());
 
     // get cached data (including etags) from db
@@ -472,7 +478,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
             });
         }
         while let Some(result) = join_set.join_next().await {
-            let result = result.map_err(Error::from_join)??;
+            let result = result.map_err(JinxxyError::from_join)??;
             let full_product = if let ParallelFullProductResult::FullProduct(full_product) = result {
                 full_product
             } else if let ParallelFullProductResult::NotModified { product_id } = result
@@ -488,7 +494,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
             } else {
                 // uh oh, we got a 304 response but somehow did not have the necessary data in the cache?
                 // This ought not to be possible, as we should need etag from cache to even see a 304
-                Err(Error::Impossible304)?
+                Err(JinxxyError::Impossible304)?
             };
             products.push(full_product);
         }

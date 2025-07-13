@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::http::jinxxy::Error as JinxxyError;
+use crate::http::jinxxy::JinxxyError;
 use poise::serenity_prelude as serenity;
 use serenity::Error as SerenityError;
 use std::fmt::{Display, Formatter};

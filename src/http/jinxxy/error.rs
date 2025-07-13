@@ -7,11 +7,11 @@ use reqwest::{Response, StatusCode};
 use serde::Deserialize;
 use std::fmt::Formatter;
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type JinxxyResult<T> = Result<T, JinxxyError>;
 
 #[derive(Debug)]
 #[allow(unused)] // these are debug printed frequently
-pub enum Error {
+pub enum JinxxyError {
     /// Any error for which we got an HTTP response from Jinxxy. Happens when we detect non-200 status codes.
     /// If we're looking for a 404 we just build one of these errors directly. If we expect a 2xx these errors
     /// are built for any non-2xx response.
@@ -28,7 +28,7 @@ pub enum Error {
     Impossible304,
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for JinxxyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::HttpResponse(_) => write!(f, "Jinxxy API error"),
@@ -45,15 +45,15 @@ impl std::fmt::Display for Error {
 }
 
 /// mark the normal Display impl as being safe
-impl<'a> SafeDisplay<'a, &'a Self> for Error {
+impl<'a> SafeDisplay<'a, &'a Self> for JinxxyError {
     fn safe_display(&'a self) -> &'a Self {
         self
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for JinxxyError {}
 
-impl Error {
+impl JinxxyError {
     /// Create a JinxxyError from raw json bytes
     pub async fn from_response(endpoint: &'static str, response: Response) -> Self {
         let status_code = response.status();
