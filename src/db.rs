@@ -3,9 +3,7 @@
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{
-    ProductNameInfo, ProductNameInfoValue, ProductVersion, ProductVersionId, ProductVersionNameInfo,
-};
+use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
 use rusqlite::types::{FromSql, ToSql};
@@ -1326,7 +1324,11 @@ impl JinxDb {
     }
 
     /// Get versions for a product
-    pub async fn product_versions(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<ProductVersion>> {
+    pub async fn product_versions(
+        &self,
+        guild: GuildId,
+        product_id: String,
+    ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
         self.connection.call(move |connection| {
             let guild_id = guild.get() as i64;
             //TODO: could use an index
@@ -1336,9 +1338,9 @@ impl JinxDb {
             let mapped_rows = statement.query_map(named_params! {":guild": guild_id, ":product_id": product_id}, |row| {
                 let id = row.get(0)?;
                 let name = row.get(1)?;
-                let info = ProductVersion {
-                    id,
-                    name,
+                let info = ProductVersionNameInfo {
+                    id: ProductVersionId { product_id: product_id.clone(), product_version_id: id },
+                    product_version_name: name,
                 };
                 Ok(info)
             })?;

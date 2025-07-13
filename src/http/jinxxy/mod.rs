@@ -10,7 +10,7 @@ use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
 use crate::db::JinxDb;
 use crate::error::JinxError;
-pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct, ProductVersion};
+pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use poise::serenity_prelude as serenity;
@@ -438,6 +438,16 @@ enum ParallelFullProductResult {
     NotModified { product_id: String },
 }
 
+/// Either an API full product or cached data from DB we've determined is non-stale
+pub enum LoadedProduct {
+    Api(FullProduct),
+    Cached {
+        /// this is ONLY in an `Option` so you can steal the value later. It is guaranteed to be set!
+        product_info: Option<ProductNameInfo>,
+        versions: Vec<ProductVersionNameInfo>,
+    },
+}
+
 /// Upgrade products from partial data to full data. This is expensive, as it has to call an API once per product.
 /// This is done concurrently which speeds things up slightly, but it is still very costly.
 /// Resulting vec is not guaranteed to be in the same order as the input vec.
@@ -448,7 +458,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
     api_key: &str,
     guild_id: GuildId,
     partial_products: Vec<PartialProduct>,
-) -> Result<Vec<FullProduct>, JinxError> {
+) -> Result<Vec<LoadedProduct>, JinxError> {
     let mut products = Vec::with_capacity(partial_products.len());
 
     // get cached data (including etags) from db
@@ -478,16 +488,20 @@ pub async fn get_full_products<const PARALLEL: bool>(
         while let Some(result) = join_set.join_next().await {
             let result = result.map_err(JinxxyError::from_join)??;
             let full_product = if let ParallelFullProductResult::FullProduct(full_product) = result {
-                full_product
+                LoadedProduct::Api(full_product)
             } else if let ParallelFullProductResult::NotModified { product_id } = result
                 && let Some(cached_product) = cached_products.get(&product_id)
             {
                 let versions = db.product_versions(guild_id, product_id.clone()).await?;
-                FullProduct {
-                    id: product_id,
-                    name: cached_product.product_name.clone(),
+                LoadedProduct::Cached {
+                    product_info: Some(ProductNameInfo {
+                        id: product_id,
+                        value: ProductNameInfoValue {
+                            product_name: cached_product.product_name.clone(),
+                            etag: cached_product.etag.to_owned(),
+                        },
+                    }),
                     versions,
-                    etag: cached_product.etag.to_owned(),
                 }
             } else {
                 // uh oh, we got a 304 response but somehow did not have the necessary data in the cache?
@@ -503,18 +517,22 @@ pub async fn get_full_products<const PARALLEL: bool>(
                 let etag = cached_product.etag.as_deref();
                 let full_product = get_product_cached(api_key, &product_id, etag).await?;
                 if let Some(full_product) = full_product {
-                    full_product
+                    LoadedProduct::Api(full_product)
                 } else {
                     let versions = db.product_versions(guild_id, product_id.clone()).await?;
-                    FullProduct {
-                        id: product_id,
-                        name: cached_product.product_name.clone(),
+                    LoadedProduct::Cached {
+                        product_info: Some(ProductNameInfo {
+                            id: product_id,
+                            value: ProductNameInfoValue {
+                                product_name: cached_product.product_name.clone(),
+                                etag: etag.map(|slice| slice.to_vec()),
+                            },
+                        }),
                         versions,
-                        etag: etag.map(|slice| slice.to_vec()),
                     }
                 }
             } else {
-                get_product_uncached(api_key, &product_id).await?
+                LoadedProduct::Api(get_product_uncached(api_key, &product_id).await?)
             };
             products.push(full_product);
         }
