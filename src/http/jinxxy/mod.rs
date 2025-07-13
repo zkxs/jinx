@@ -368,9 +368,7 @@ pub async fn get_product_cached(
         // cached read failed
         debug!("{} took {}ms", ENDPOINT, elapsed.as_millis());
         let mut response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
-        if let Some(actual_etag) = actual_etag {
-            response.etag = actual_etag;
-        }
+        response.etag = actual_etag;
         Ok(Some(response))
     }
 }
@@ -467,7 +465,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
             // we have to clone the etag because tokio does not support scoped tasks
-            let etag = cached_products.get(&product_id).map(|info| info.etag.clone());
+            let etag = cached_products.get(&product_id).and_then(|info| info.etag.clone());
             join_set.spawn(async move {
                 util::retry_thrice(|| get_product_cached(&api_key, &product_id, etag.as_deref()))
                     .await
@@ -502,8 +500,8 @@ pub async fn get_full_products<const PARALLEL: bool>(
         for partial_product in partial_products {
             let product_id = partial_product.id;
             let full_product = if let Some(cached_product) = cached_products.get(&product_id) {
-                let etag = cached_product.etag.as_slice();
-                let full_product = get_product_cached(api_key, &product_id, Some(etag)).await?;
+                let etag = cached_product.etag.as_deref();
+                let full_product = get_product_cached(api_key, &product_id, etag).await?;
                 if let Some(full_product) = full_product {
                     full_product
                 } else {
@@ -512,7 +510,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
                         id: product_id,
                         name: cached_product.product_name.clone(),
                         versions,
-                        etag: etag.to_owned(),
+                        etag: etag.map(|slice| slice.to_vec()),
                     }
                 }
             } else {
@@ -625,7 +623,7 @@ pub struct ProductNameInfo {
 #[derive(Clone)]
 pub struct ProductNameInfoValue {
     pub product_name: String,
-    pub etag: Vec<u8>,
+    pub etag: Option<Vec<u8>>,
 }
 
 /// Internal struct for holding version name info

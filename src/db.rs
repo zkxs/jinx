@@ -1311,7 +1311,7 @@ impl JinxDb {
         let mapped_rows = statement.query_map(named_params! {":guild": guild_id}, |row| {
             let product_id: String = row.get(0)?;
             let product_name: String = row.get(1)?;
-            let etag: Vec<u8> = row.get(2)?;
+            let etag: Option<Vec<u8>> = row.get(2)?;
             let info = ProductNameInfo {
                 id: product_id,
                 value: ProductNameInfoValue { product_name, etag },
