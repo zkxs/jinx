@@ -3,7 +3,7 @@
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
 use rusqlite::types::{FromSql, ToSql};
@@ -1224,7 +1224,7 @@ impl JinxDb {
         self.connection
             .call(move |connection| {
                 let cache_time = JinxDb::get_cache_time(connection, guild)?;
-                let product_name_info = JinxDb::product_names_in_guild(connection, guild)?;
+                let product_name_info = JinxDb::product_names_in_guild_sync(connection, guild)?;
                 let product_version_name_info = JinxDb::product_version_names_in_guild(connection, guild)?;
                 Ok(GuildCache {
                     product_name_info,
@@ -1258,7 +1258,7 @@ impl JinxDb {
             .await
     }
 
-    fn get_cache_time(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
+    fn get_cache_time(connection: &rusqlite::Connection, guild: GuildId) -> Result<SimpleTime> {
         let guild_id = guild.get() as i64;
         let mut statement =
             connection.prepare_cached("SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild")?;
@@ -1269,15 +1269,22 @@ impl JinxDb {
         Ok(SimpleTime::from_unix_millis(cache_time_unix_ms))
     }
 
-    fn set_cache_time(connection: &mut rusqlite::Connection, guild: GuildId, time: SimpleTime) -> Result<()> {
+    fn set_cache_time(connection: &rusqlite::Connection, guild: GuildId, time: SimpleTime) -> Result<()> {
         let guild_id = guild.get() as i64;
         let mut statement = connection.prepare_cached("INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (:guild, :time) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms")?;
         statement.execute(named_params! {":guild": guild_id, ":time": time.as_epoch_millis()})?;
         Ok(())
     }
 
-    /// Get name info for products in a guild
-    fn product_names_in_guild(connection: &mut rusqlite::Connection, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+    /// Get cached name info for products in a guild
+    pub async fn product_names_in_guild(&self, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
+        self.connection
+            .call(move |connection| Self::product_names_in_guild_sync(connection, guild))
+            .await
+    }
+
+    /// Get cached name info for products in a guild
+    fn product_names_in_guild_sync(connection: &rusqlite::Connection, guild: GuildId) -> Result<Vec<ProductNameInfo>> {
         let guild_id = guild.get() as i64;
         let mut statement =
             connection.prepare_cached("SELECT product_id, product_name, etag FROM product WHERE guild_id = :guild")?;
@@ -1287,8 +1294,7 @@ impl JinxDb {
             let etag: Vec<u8> = row.get(2)?;
             let info = ProductNameInfo {
                 id: product_id,
-                product_name,
-                etag,
+                value: ProductNameInfoValue { product_name, etag },
             };
             Ok(info)
         })?;
@@ -1301,7 +1307,7 @@ impl JinxDb {
 
     /// Get name info for products versions in a guild
     fn product_version_names_in_guild(
-        connection: &mut rusqlite::Connection,
+        connection: &rusqlite::Connection,
         guild: GuildId,
     ) -> Result<Vec<ProductVersionNameInfo>> {
         let guild_id = guild.get() as i64;
@@ -1327,7 +1333,7 @@ impl JinxDb {
     }
 
     fn persist_product_names(
-        connection: &mut rusqlite::Connection,
+        connection: &rusqlite::Connection,
         guild: GuildId,
         product_name_info: Vec<ProductNameInfo>,
     ) -> Result<()> {
@@ -1339,8 +1345,8 @@ impl JinxDb {
         let mut statement = connection.prepare_cached("INSERT INTO product (guild_id, product_id, product_name, etag) VALUES (:guild, :product_id, :product_name, :etag) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name, etag = excluded.etag")?;
         for info in product_name_info {
             let product_id = info.id;
-            let product_name = info.product_name;
-            let etag = info.etag;
+            let product_name = info.value.product_name;
+            let etag = info.value.etag;
             statement.execute(
                 named_params! {":guild": guild_id, ":product_id": product_id, ":product_name": product_name, ":etag": etag},
             )?;
@@ -1367,7 +1373,7 @@ impl JinxDb {
     }
 
     fn persist_product_version_names(
-        connection: &mut rusqlite::Connection,
+        connection: &rusqlite::Connection,
         guild: GuildId,
         product_version_name_info: Vec<ProductVersionNameInfo>,
     ) -> Result<()> {

@@ -15,7 +15,9 @@ use crate::db;
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{FullProduct, PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{
+    FullProduct, PartialProduct, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo,
+};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
@@ -701,8 +703,7 @@ impl GuildCache {
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
 
         // get details for each product
-        //TODO: somehow pass in cached etag context
-        let products: Vec<FullProduct> = jinxxy::get_full_products::<PARALLEL>(api_key, partial_products)
+        let products: Vec<FullProduct> = jinxxy::get_full_products::<PARALLEL>(db, api_key, guild_id, partial_products)
             .await?
             .into_iter()
             .filter(|product| !product.name.is_empty()) // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
@@ -715,7 +716,10 @@ impl GuildCache {
                 let id = product.id.clone();
                 let product_name = util::truncate_string_for_discord_autocomplete(&product.name);
                 let etag = product.etag.clone();
-                ProductNameInfo { id, product_name, etag }
+                ProductNameInfo {
+                    id,
+                    value: ProductNameInfoValue { product_name, etag },
+                }
             })
             .collect();
 
@@ -806,7 +810,7 @@ impl GuildCache {
         let product_name_trie = {
             let mut trie_builder = TrieBuilder::new();
             for name_info in product_name_info.iter() {
-                let name = &name_info.product_name;
+                let name = &name_info.value.product_name;
                 trie_builder.push(name.to_lowercase(), name.to_string());
             }
             trie_builder.build()
@@ -825,7 +829,7 @@ impl GuildCache {
         // build forward map without versions
         let product_id_to_name_map = product_name_info
             .iter()
-            .map(|name_info| (name_info.id.clone(), name_info.product_name.clone()))
+            .map(|name_info| (name_info.id.clone(), name_info.value.product_name.clone()))
             .collect();
 
         // build forward map with versions
@@ -838,7 +842,7 @@ impl GuildCache {
         let mut product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState> = Default::default();
         for name_info in product_name_info {
             product_name_to_id_map
-                .entry(name_info.product_name)
+                .entry(name_info.value.product_name)
                 .or_default()
                 .push(name_info.id);
         }

@@ -8,11 +8,16 @@ mod error;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
+use crate::db::JinxDb;
+use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{Error, Result};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use poise::serenity_prelude as serenity;
 use reqwest::{Response, header};
 use serde::de::DeserializeOwned;
+use serenity::GuildId;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
@@ -342,7 +347,7 @@ pub async fn get_product_cached(
 
     let start_time = Instant::now();
     let response = request.send().await.map_err(|e| Error::from_request(ENDPOINT, e))?;
-    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let elapsed = start_time.elapsed();
 
     let actual_etag = response
         .headers()
@@ -351,9 +356,11 @@ pub async fn get_product_cached(
     let status_code = response.status();
     if expected_etag.is_some() && status_code.as_u16() == 304 {
         // 304 not modified!
+        debug!("{} took {}ms (cached)", ENDPOINT, elapsed.as_millis());
         Ok(None)
     } else {
         // cached read failed
+        debug!("{} took {}ms", ENDPOINT, elapsed.as_millis());
         let mut response: FullProduct = read_2xx_json(ENDPOINT, response).await?;
         if let Some(actual_etag) = actual_etag {
             response.etag = actual_etag;
@@ -428,27 +435,56 @@ pub async fn get_products(api_key: &str) -> Result<Vec<PartialProduct>> {
 ///
 /// You should not wrap this in retry logic, as the retry logic is already built in to each internal subrequest.
 pub async fn get_full_products<const PARALLEL: bool>(
+    db: &JinxDb,
     api_key: &str,
+    guild_id: GuildId,
     partial_products: Vec<PartialProduct>,
-) -> Result<Vec<FullProduct>> {
+) -> std::result::Result<Vec<FullProduct>, JinxError> {
     let mut products = Vec::with_capacity(partial_products.len());
+
+    // get cached data (including etags) from db
+    let cached_products: HashMap<String, ProductNameInfoValue, ahash::RandomState> = db
+        .product_names_in_guild(guild_id)
+        .await?
+        .into_iter()
+        .map(|info| (info.id, info.value))
+        .collect();
+
     if PARALLEL {
         let mut join_set = JoinSet::new();
         for partial_product in partial_products {
             let api_key = api_key.to_string();
             let product_id = partial_product.id;
-            //TODO: pass in etag
-            join_set.spawn(async move { util::retry_thrice(|| get_product_cached(&api_key, &product_id, None)).await });
+            // we have to clone the etag because tokio does not support scoped tasks
+            let etag = cached_products.get(&product_id).map(|info| info.etag.clone());
+            join_set.spawn(async move {
+                util::retry_thrice(|| get_product_cached(&api_key, &product_id, etag.as_deref())).await
+            });
         }
         while let Some(full_product) = join_set.join_next().await {
             let full_product = full_product.map_err(Error::from_join)??;
-            products.push(full_product.expect("cannot get a 304 response because etag wasn't used"));
+            if let Some(full_product) = full_product {
+                products.push(full_product);
+            } else {
+                todo!("handle 304 by building FullProduct entirely from DB state")
+            }
         }
     } else {
         for partial_product in partial_products {
-            //TODO: pass in etag
-            let full_product = get_product_cached(api_key, &partial_product.id, None).await?;
-            products.push(full_product.expect("cannot get a 304 response because etag wasn't used"));
+            let product_id = partial_product.id;
+            let cached_product = cached_products.get(&product_id);
+            let full_product = if let Some(cached_product) = cached_product {
+                let etag = cached_product.etag.as_slice();
+                let full_product = get_product_cached(api_key, &product_id, Some(etag)).await?;
+                if let Some(full_product) = full_product {
+                    full_product
+                } else {
+                    todo!("handle 304 by building FullProduct entirely from DB state")
+                }
+            } else {
+                get_product_uncached(api_key, &product_id).await?
+            };
+            products.push(full_product);
         }
     }
     Ok(products)
@@ -549,6 +585,11 @@ impl Display for ProductVersionId {
 #[derive(Clone)]
 pub struct ProductNameInfo {
     pub id: String,
+    pub value: ProductNameInfoValue,
+}
+
+#[derive(Clone)]
+pub struct ProductNameInfoValue {
     pub product_name: String,
     pub etag: Vec<u8>,
 }
