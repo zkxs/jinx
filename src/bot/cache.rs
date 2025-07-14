@@ -49,7 +49,19 @@ const MIN_SLEEP_DURATION: Duration = Duration::from_millis(2000);
 /// ```
 const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 
-/// Cloning returns a reference to this same ApiCache instance
+/// Missless cache for Jinxxy product and version names.
+///
+/// "Missless" means cache reads will _always_ hit the cache: even for expired entries. Expired entries are not deleted.
+/// This cache has no retention time: instead expiry is handled by a background task which re-warms old cache entries.
+///
+/// This admittedly unusual design is due to the Jinxxy API's extraordinarily high latencies. On a _good_ day it can
+/// take >3s to enumerate all product and version names for a guild. On a bad day it can take up to 15s, and beyond that
+/// point the API will actually time out server-side and start returning 500s. We need product and version names for
+/// text autocompletion which absolutely _must_ be low-latency to feel usable. Sub-second latency is a must, and faster
+/// is always better, especially because network latency from the bot to the user's Discord client will already be
+/// adding a noticeable delay.
+///
+/// Clones of this struct reference the same underlying data: you do not need to wrap this in an Arc.
 #[derive(Clone)]
 pub struct ApiCache {
     map: MapType,
@@ -68,7 +80,23 @@ impl ApiCache {
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel(QUEUE_SIZE);
         let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel(QUEUE_SIZE);
 
-        // high priority refresh task. This always hits the Jinxxy API directly.
+        /* High priority refresh task.
+
+        This is used when we have strong reason to believe a user will be needing the cache imminently: for example,
+        initializing the guild or linking a product is a strong hint the user will need a product list soon.
+
+        As long as the substantially shorter HIGH_PRIORITY_CACHE_EXPIRY_TIME is not exceeded, this always hits the
+        Jinxxy API directly if the memory cache is cold (in comparison to the low-priority refresh which does a DB read
+        if the memory cache misses).
+
+        This is handled via a simple FIFO queue with no delays. The effect is that only one high-priority refresh can be
+        in-flight at a time.
+
+        High-priority refreshes are moderately costly, as every single product in the guild will be queried in parallel.
+        This has been measured to have a substantial negative impact on Jinxxy API response times, as it struggles to
+        handle concurrent requests for the same API key. It is unknown if this issue is localized to an API key: it
+        could be that Jinxxy simply cannot handle concurrent requests globally.
+        */
         {
             let db = db.clone();
             let map = map.clone();
@@ -120,7 +148,24 @@ impl ApiCache {
             });
         }
 
-        // low priority refresh task. Used for initial cache warm and refresh. Initial cache warm. Hits DB values if they exist.
+        /* Low priority refresh task
+
+        Handles periodic background cache warming. We have no reason to suspect the user will need the data soon, so
+        this task works at a relaxed pace. The task will load a single guild at a time, and each product in the guild is
+        loaded serially which is far less intensive on the Jinxxy API than a parallel load.
+
+        On bot start, each guild is registered, causing a cache load in this task. This is guaranteed to miss the memory
+        cache (remember, the bot just started), so it falls back to a DB cache read. This is the mechanism by which the
+        cache is re-warmed from disk.
+
+        This is a priority queue, where the oldest cache line is at the head of the queue. The task wakes when a guild
+        is registered, unregistered, or after the calculated delay to the queue head expiring. This delay is updated
+        every time the task wakes. Additionally, the task is required to sleep a certain minimum interval every time it
+        finishes work in order to prevent API spam and spinning in the case of bugs... there is a lot of fiddly
+        timekeeping math at play here, so this code has been the subject of a disproportionate number of bugs.
+
+
+         */
         {
             let db = db;
             let map = map.clone();
