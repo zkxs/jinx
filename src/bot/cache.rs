@@ -40,7 +40,7 @@ const DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SEC
 /// room avoid waking right before an entry expires (I'd rather wake a bit after instead).
 const LOW_PRIORITY_CACHE_EXPIRY_TIME_FUDGE_FACTOR: Duration = Duration::from_secs(60);
 /// Minimum time the low priority worker will use as its poll timeout
-const MIN_SLEEP_DURATION: Duration = Duration::from_millis(250);
+const MIN_SLEEP_DURATION: Duration = Duration::from_millis(2000);
 /// Number of items to limit lists used in autocompletion to.
 ///
 /// Exceeding the limit results in:
@@ -125,8 +125,6 @@ impl ApiCache {
             let db = db;
             let map = map.clone();
             tokio::task::spawn(async move {
-                let mut first_run = true;
-
                 // set of all registered guilds ids
                 let mut guild_set = HashSet::with_hasher(ahash::RandomState::default());
 
@@ -139,17 +137,15 @@ impl ApiCache {
 
                 'outer: loop {
                     let received_event = if let Some(sleep_duration) = sleep_duration {
-                        if sleep_duration.is_zero() {
-                            // handle an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
-                            // we yield here just in case this thread tries to spin on zero-duration timeouts due to any kind of bug
-                            tokio::task::yield_now().await;
-                            Err(())
-                        } else {
-                            // do a receive or a timeout, whatever happens first
-                            timeout(MIN_SLEEP_DURATION.max(sleep_duration), refresh_register_rx.recv())
-                                .await
-                                .map_err(|_| ())
-                        }
+                        // note: there is an undocumented edge case where tokio's timeout function treats 0 as "no timeout"
+                        // because we have a min sleep time we dodge, this but be wary of passing Duration::ZERO in there.
+
+                        // do a receive or a timeout, whatever happens first
+                        let sleep_duration = MIN_SLEEP_DURATION.max(sleep_duration);
+                        debug!("sleeping for {}s", sleep_duration.as_secs());
+                        timeout(sleep_duration, refresh_register_rx.recv())
+                            .await
+                            .map_err(|_| ())
                     } else {
                         // we have no data yet, so there is no reason to have a timeout
                         Ok(refresh_register_rx.recv().await)
@@ -185,13 +181,11 @@ impl ApiCache {
                                     SimpleTime::now(),
                                 );
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                if remaining != Duration::ZERO {
-                                    debug!(
-                                        "new guild {} registered; low-priority worker sleeping for {}s",
-                                        guild_id,
-                                        remaining.as_secs()
-                                    );
-                                }
+                                debug!(
+                                    "new guild {} registered; low-priority worker will sleep for {}s",
+                                    guild_id,
+                                    remaining.as_secs()
+                                );
                                 sleep_duration = Some(remaining);
                             }
                         }
@@ -204,12 +198,10 @@ impl ApiCache {
                                     SimpleTime::now(),
                                 );
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                if remaining != Duration::ZERO {
-                                    debug!(
-                                        "cache bumped; low-priority worker sleeping for {}s",
-                                        remaining.as_secs()
-                                    );
-                                }
+                                debug!(
+                                    "cache bumped; low-priority worker will sleep for {}s",
+                                    remaining.as_secs()
+                                );
                                 sleep_duration = Some(remaining);
                             } else {
                                 // queue is totally empty, so sleep until we get an event
@@ -285,9 +277,7 @@ impl ApiCache {
                                             } else {
                                                 // entry exists and was not expired
                                                 // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
-                                                if !first_run {
-                                                    debug!("skipping unexpired guild {}", queue_entry.guild_id.get());
-                                                }
+                                                debug!("skipping unexpired guild {}", queue_entry.guild_id.get());
                                                 (false, false)
                                             }
                                         })
@@ -299,12 +289,10 @@ impl ApiCache {
                                             Ok(api_key) => {
                                                 match api_key {
                                                     Some(api_key) => {
-                                                        if !first_run {
-                                                            debug!(
-                                                                "starting low priority refresh of cache for {}",
-                                                                queue_entry.guild_id.get()
-                                                            );
-                                                        }
+                                                        debug!(
+                                                            "starting low priority refresh of cache for {}",
+                                                            queue_entry.guild_id.get()
+                                                        );
 
                                                         let guild_cache = if try_db_load {
                                                             // try a DB load instead of an API load
@@ -441,7 +429,7 @@ impl ApiCache {
                                         .peek()
                                         .map(|next_guild| !touched_guild_set.contains(&next_guild.guild_id.get()))
                                         .unwrap_or(false);
-                                    if !first_run && !next_guild_pending_work {
+                                    if !next_guild_pending_work {
                                         debug!("stopping work loop because next guild has already been touched");
                                     }
                                     work_remaining &= next_guild_pending_work;
@@ -462,9 +450,9 @@ impl ApiCache {
                                     .remaining_time_until_low_priority_expiry(low_priority_cache_expiry_time, now);
 
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                if !first_run || !remaining.is_zero() {
+                                if !remaining.is_zero() {
                                     debug!(
-                                        "low-priority worker caught up; sleeping for {}s. Next up is {}",
+                                        "low-priority worker caught up; will sleep for {}s. Next up is {}",
                                         remaining.as_secs(),
                                         next_queue_entry.guild_id.get()
                                     );
@@ -478,11 +466,6 @@ impl ApiCache {
                                 sleep_duration = None;
                             }
                         }
-                    }
-
-                    if first_run {
-                        debug!("Finished initial cache warm");
-                        first_run = false;
                     }
                 }
                 // end of outer loop
