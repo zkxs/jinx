@@ -470,6 +470,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
         .collect();
 
     if PARALLEL {
+        // parallel load
         let mut join_set = JoinSet::new();
         for partial_product in partial_products {
             let api_key = api_key.to_string();
@@ -511,11 +512,12 @@ pub async fn get_full_products<const PARALLEL: bool>(
             products.push(full_product);
         }
     } else {
+        // sequential load
         for partial_product in partial_products {
             let product_id = partial_product.id;
             let full_product = if let Some(cached_product) = cached_products.get(&product_id) {
                 let etag = cached_product.etag.as_deref();
-                let full_product = get_product_cached(api_key, &product_id, etag).await?;
+                let full_product = util::retry_thrice(|| get_product_cached(api_key, &product_id, etag)).await?;
                 if let Some(full_product) = full_product {
                     LoadedProduct::Api(full_product)
                 } else {
