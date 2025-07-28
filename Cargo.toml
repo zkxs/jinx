@@ -39,9 +39,14 @@ bytes = "1"
 [dev-dependencies]
 tracing-test = "0.2" # Allow tracing to print during unit tests
 
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_attr_outside_unsafe = "forbid"
+closure_returning_async_block = "warn"
+
 [lints.clippy]
-dbg_macro = "deny"
-todo = "deny"
+dbg_macro = "warn"
+todo = "warn"
 unused_async = "warn"
 unused_self = "warn"
 unwrap_used = "deny"
@@ -55,3 +60,4 @@ cast_precision_loss = "warn"
 fn_to_numeric_cast_any = "warn"
 ptr_as_ptr = "warn"
 integer_division = "warn"
+undocumented_unsafe_blocks = "deny"
