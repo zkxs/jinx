@@ -17,6 +17,8 @@ use serenity::{
     CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
 };
 use std::sync::LazyLock;
+use std::time::Duration;
+use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
 static GLOBAL_EASTER_EGG_1_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -306,6 +308,7 @@ async fn handle_license_registration<'a>(
     context: FrameworkContext<'a, Data, Error>,
     modal_interaction: &ModalInteraction,
 ) -> Result<(), JinxError> {
+    let start_time = Instant::now();
     let license_key = modal_interaction
         .data
         .components
@@ -742,6 +745,13 @@ async fn handle_license_registration<'a>(
         if let Err(error) = user_notification_result {
             error!("Error notifying user of missing license key: {:?}", error);
         }
+    }
+
+    // log if license registration took a really long time
+    let elapsed = start_time.elapsed();
+    if elapsed > Duration::from_secs(3) {
+        let elapsed_ms = elapsed.as_millis();
+        warn!("License registration took {elapsed_ms}ms");
     }
 
     Ok(())
