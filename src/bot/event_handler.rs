@@ -272,10 +272,12 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             match modal_interaction.data.custom_id.as_str() {
                 // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                 REGISTER_MODAL_ID => {
+                    let start_time = Instant::now();
                     if let Err(e) = handle_license_registration(context, modal_interaction).await {
+                        let elapsed_ms = start_time.elapsed().as_millis();
                         let nonce: u64 = util::generate_nonce();
                         let nonce = format!("{nonce:016X}");
-                        error!("NONCE[{nonce}] Error registering license: {e:?}");
+                        error!("NONCE[{nonce}] Error registering license after {elapsed_ms}ms: {e:?}");
                         let safe_display = e.safe_display();
                         let embed = CreateEmbed::default()
                             .title("Registration Failure")
