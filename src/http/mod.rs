@@ -10,6 +10,9 @@ use std::time::Duration;
 pub mod jinxxy;
 pub mod update_checker;
 
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// This client allows both HTTP1 and HTTP2
 static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
@@ -19,8 +22,8 @@ static HTTP1_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .gzip(true)
         .deflate(true)
         .https_only(true)
-        .connect_timeout(Duration::from_secs(20))
-        .timeout(Duration::from_secs(20))
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
         // .connection_verbose(true) // useful for debugging
         .build()
         .expect("Failed to build HTTP1 client")
@@ -39,8 +42,8 @@ static HTTP2_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .gzip(true)
         .deflate(true)
         .https_only(true)
-        .connect_timeout(Duration::from_secs(7))
-        .timeout(Duration::from_secs(7))
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
         // .connection_verbose(true) // useful for debugging
         .build()
         .expect("Failed to build HTTP2 client")
