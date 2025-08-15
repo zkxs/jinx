@@ -96,7 +96,7 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "AGPL-3.0",
+    "AGPL-3.0-or-later",
     # weird stuff
     "Unlicense", # used by byteorder, memchr
     "0BSD", # used by adler
@@ -249,6 +249,7 @@ skip = [
     { crate = "sync_wrapper@0.1", reason = "used by reqwest@0.11.27"},
     { crate = "tokio-rustls@0.25", reason = "used by reqwest@0.11.27"},
     { crate = "webpki-roots@0.26", reason = "used by reqwest@0.11.27"},
+    { crate = "socket2@0.5", reason = "used by reqwest@0.11.27"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
