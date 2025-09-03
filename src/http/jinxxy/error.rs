@@ -141,6 +141,12 @@ pub struct HttpResponse {
     body: HttpBody,
 }
 
+impl HttpResponse {
+    pub fn status(&self) -> StatusCode {
+        self.status_code
+    }
+}
+
 #[derive(Debug)]
 #[allow(unused)] // these are debug printed frequently
 pub enum HttpBody {

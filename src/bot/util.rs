@@ -7,6 +7,7 @@ use crate::bot::{CREATOR_COMMANDS, Context, OWNER_COMMANDS};
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
+use crate::http::jinxxy::JinxxyError;
 use crate::license;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use poise::{CreateReply, serenity_prelude as serenity};
@@ -435,30 +436,55 @@ where
     }
 }
 
+/// Some item that is known to be either deterministic or non-deterministic. This behavior is useful to know, as if
+/// recreating this item will always yield the same result then there is no reason to recreate the item.
+pub trait Determinable {
+    /// Check if this item is deterministic or non-deterministic.
+    fn is_deterministic(&self) -> bool;
+}
+
+impl Determinable for JinxxyError {
+    fn is_deterministic(&self) -> bool {
+        match self {
+            JinxxyError::HttpResponse(e) => e.status() == 403 || e.status() == 404,
+            JinxxyError::HttpRequest(_) => false,
+            JinxxyError::HttpRead(_) => false,
+            JinxxyError::JsonDeserialize(_) => false,
+            JinxxyError::Join(_) => false,
+            JinxxyError::Impossible304 => true,
+        }
+    }
+}
+
 /// Calls `provider` up to four times (three retry attempts maximum) until an `Ok` is returned.
 /// Each retry attempt has a gradually increasing delay (0.3s, 3.0s, 10.0s).
-pub async fn retry_thrice<Provider, T, ResultFuture, E>(provider: Provider) -> Result<T, E>
+pub async fn retry_thrice<'a, Provider, T, ResultFuture, E>(provider: Provider) -> Result<T, E>
 where
     Provider: FnMut() -> ResultFuture,
     ResultFuture: Future<Output = Result<T, E>> + Sized,
-    E: Debug,
+    E: Debug + Determinable,
 {
     let mut retry_count: u8 = 0;
     retry(provider, move |result| match result {
         Ok(_) => RetryCheck::DoNotRetry,
         Err(e) => {
-            let retry_check = match retry_count {
-                0 => RetryCheck::RetryAfter(Duration::from_millis(300)),
-                1 => RetryCheck::RetryAfter(Duration::from_secs(3)),
-                2 => RetryCheck::RetryAfter(Duration::from_secs(10)),
-                _ => RetryCheck::DoNotRetry,
-            };
-            if !matches!(retry_check, RetryCheck::DoNotRetry) {
-                // set up for the retry we are about to perform
-                retry_count += 1;
-                warn!("retry attempt {} on something because: {:?}", retry_count, e);
-            } // else, we're not retrying so there's no reason to do set-up
-            retry_check
+            if e.is_deterministic() {
+                warn!("aborting retry on something because it's deterministic: {:?}", e);
+                RetryCheck::DoNotRetry
+            } else {
+                let retry_check = match retry_count {
+                    0 => RetryCheck::RetryAfter(Duration::from_millis(300)),
+                    1 => RetryCheck::RetryAfter(Duration::from_secs(3)),
+                    2 => RetryCheck::RetryAfter(Duration::from_secs(10)),
+                    _ => RetryCheck::DoNotRetry,
+                };
+                if !matches!(retry_check, RetryCheck::DoNotRetry) {
+                    // set up for the retry we are about to perform
+                    retry_count += 1;
+                    warn!("retry attempt {} on something because: {:?}", retry_count, e);
+                } // else, we're not retrying so there's no reason to do set-up
+                retry_check
+            }
         }
     })
     .await
