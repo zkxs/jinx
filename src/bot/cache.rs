@@ -408,32 +408,11 @@ impl ApiCache {
                                                             }
                                                             Err(e) => {
                                                                 warn!(
-                                                                    "Error initializing API cache during low-priority refresh for {}: {:?}",
+                                                                    "Error initializing API cache during low-priority refresh for {}, will unregister now: {:?}",
                                                                     queue_entry.guild_id.get(),
                                                                     e
                                                                 );
-
-                                                                match jinxxy::get_own_user(&api_key).await {
-                                                                    Ok(auth_user) => {
-                                                                        // we were able to do an API request with this key...
-                                                                        // okay must have been a weird fluke, we'll leave this guild registered
-                                                                        if !auth_user.has_required_scopes() {
-                                                                            warn!(
-                                                                                "Could not initialize API cache for guild {}, possibly because it lacks required scopes. Will try it again later.",
-                                                                                queue_entry.guild_id.get()
-                                                                            );
-                                                                        }
-                                                                        true
-                                                                    }
-                                                                    Err(e) => {
-                                                                        info!(
-                                                                            "error checking /me for guild {}, will unregister now: {:?}",
-                                                                            queue_entry.guild_id.get(),
-                                                                            e
-                                                                        );
-                                                                        false
-                                                                    }
-                                                                }
+                                                                false
                                                             }
                                                         }
                                                     }
