@@ -16,6 +16,7 @@ const JINXXY_LONG_KEY_INDEX: usize = 1;
 const GUMROAD_KEY_INDEX: usize = 2;
 const NUMBER_KEY_INDEX: usize = 3;
 const PAYHIP_KEY_INDEX: usize = 4;
+const PI_KEY_INDEX: usize = 5;
 static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
     RegexSet::new([
         r"^[A-Z]{4}-[a-f0-9]{12}$", // jinxxy short key `XXXX-cd071c534191`
@@ -23,6 +24,7 @@ static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
         r"^[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$", // gumroad key `ABCD1234-1234FEDC-0987A321-A2B3C5D6`
         r"^[0-9]+$",                                          // an integer number `3245554511053325533`
         r"^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$", // payhip key `WTKP4-66NL5-HMKQW-GFSCZ`
+        r"^pi_[A-Za-z0-9]{24}$", // I'm not sure what these are. Possible new Gumroad format?
     ])
     .expect("Failed to compile license heuristic RegexSet")
 }); // in case you are wondering the above are not real keys: they're only examples
@@ -121,6 +123,7 @@ pub fn identify_license(license: &str) -> LicenseType {
         Some(GUMROAD_KEY_INDEX) => LicenseType::Gumroad,
         Some(NUMBER_KEY_INDEX) => LicenseType::Integer,
         Some(PAYHIP_KEY_INDEX) => LicenseType::Payhip,
+        Some(PI_KEY_INDEX) => LicenseType::Unknown,
         _ => LicenseType::Unknown,
     };
 
