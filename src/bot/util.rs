@@ -458,7 +458,7 @@ impl Determinable for JinxxyError {
 
 /// Calls `provider` up to four times (three retry attempts maximum) until an `Ok` is returned.
 /// Each retry attempt has a gradually increasing delay (0.3s, 3.0s, 10.0s).
-pub async fn retry_thrice<'a, Provider, T, ResultFuture, E>(provider: Provider) -> Result<T, E>
+pub async fn retry_thrice<Provider, T, ResultFuture, E>(provider: Provider) -> Result<T, E>
 where
     Provider: FnMut() -> ResultFuture,
     ResultFuture: Future<Output = Result<T, E>> + Sized,
