@@ -102,7 +102,7 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target.triple }}
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: jinx-${{ matrix.target.triple }}
           path: ./target/${{ matrix.target.triple }}/release/jinx${{ matrix.target.suffix }}
