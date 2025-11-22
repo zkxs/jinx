@@ -19,7 +19,9 @@ const SCHEMA_VERSION_VALUE: i32 = 9;
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 
-type Error = Box<dyn std::error::Error + Send + Sync>;
+type BoxedError = Box<dyn std::error::Error + Send + Sync>;
+pub type DoubleFuckedError = tokio_rusqlite::Error<tokio_rusqlite::Error>;
+type DoubleFuckedResult<T> = Result<T, DoubleFuckedError>;
 
 pub struct JinxDb {
     connection: Connection,
@@ -34,13 +36,15 @@ impl Drop for JinxDb {
 
 impl JinxDb {
     /// Open a new database
-    pub async fn open() -> SqliteResult<Self> {
+    pub async fn open() -> Result<Self, JinxError> {
         Self::open_path("jinx.sqlite").await
     }
 
     /// Open a new database
-    async fn open_path<P: AsRef<Path>>(path: P) -> SqliteResult<Self> {
-        let connection = Connection::open(path).await?;
+    async fn open_path<P: AsRef<Path>>(path: P) -> Result<Self, JinxError> {
+        let connection = Connection::open(path)
+            .await
+            .map_err(|_e| JinxError::new("Error opening DB"))?;
         JinxDb::init(&connection).await?;
         let db = JinxDb {
             connection,
@@ -50,12 +54,12 @@ impl JinxDb {
     }
 
     /// Set up the database
-    async fn init(connection: &Connection) -> SqliteResult<()> {
+    async fn init(connection: &Connection) -> Result<(), JinxError> {
         let start = Instant::now();
         connection
             .call(|connection| {
                 // all applications are encouraged to switch this setting off on every database connection as soon as that connection is opened
-                connection.execute("PRAGMA trusted_schema = OFF;", ())?;
+                connection.execute("PRAGMA trusted_schema = OFF;", ()).map_err(|_e| JinxError::new("error unsetting trusted_schema"))?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS \"settings\" ( \
@@ -63,7 +67,7 @@ impl JinxDb {
                              value                  ANY \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating settings table"))?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS guild ( \
@@ -78,7 +82,7 @@ impl JinxDb {
                              blanket_role_id        INTEGER\
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating guild table"))?;
 
                 // disk cache for product names
                 connection.execute(
@@ -90,12 +94,12 @@ impl JinxDb {
                              PRIMARY KEY            (guild_id, product_id) \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating product table"))?;
                 // index used for initial cache load
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS product_lookup_by_guild ON product (guild_id)",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating product_lookup_by_guild index"))?;
 
                 // disk cache for product version names
                 connection.execute(
@@ -107,12 +111,12 @@ impl JinxDb {
                              PRIMARY KEY            (guild_id, product_id, version_id) \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating product_version table"))?;
                 // index used for initial cache load
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS version_lookup_by_guild ON product_version (guild_id)",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating version_lookup_by_guild index"))?;
 
                 // this is the "blanket" roles for any version in a product
                 connection.execute(
@@ -123,11 +127,11 @@ impl JinxDb {
                              PRIMARY KEY            (guild_id, product_id, role_id) \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating product_role table"))?;
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating role_lookup index"))?;
 
                 // this is product-version specific role grants
                 connection.execute(
@@ -139,12 +143,12 @@ impl JinxDb {
                              PRIMARY KEY            (guild_id, product_id, version_id, role_id) \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating product_version_role table"))?;
                 // index used for initial cache load
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating version_role_lookup index"))?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS license_activation ( \
@@ -157,37 +161,37 @@ impl JinxDb {
                              PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id) \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating license_activation table"))?;
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (guild_id, license_id, user_id)",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating license_activation_lookup index"))?;
 
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS \"owner\" ( \
                              owner_id               INTEGER PRIMARY KEY \
                          ) STRICT",
                     (),
-                )?;
+                ).map_err(|_e| JinxError::new("error creating owner table"))?;
 
                 let schema_version: i32 = Self::get_setting_sync(connection, SCHEMA_VERSION_KEY)?.unwrap_or(SCHEMA_VERSION_VALUE);
 
                 // handle schema downgrade (or rather, DON'T handle it and throw an error)
                 if schema_version > SCHEMA_VERSION_VALUE {
                     let message = format!("db schema version is v{schema_version}, which is newer than v{SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports.");
-                    return Err(tokio_rusqlite::Error::Other(JinxError::boxed(message)));
+                    return Err(JinxError::new(message));
                 }
 
                 // handle schema v1 -> v2 migration
                 if schema_version < 2 {
                     // "log_channel_id" column needs to be added to "guild"
                     connection
-                        .execute("ALTER TABLE guild ADD COLUMN log_channel_id INTEGER", ())?;
+                        .execute("ALTER TABLE guild ADD COLUMN log_channel_id INTEGER", ()).map_err(|_e| JinxError::new("error altering table"))?;
                     // "test" column needs to be added to "guild"
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN test INTEGER NOT NULL DEFAULT 0",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v2 -> v3 migration
@@ -196,13 +200,13 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN owner INTEGER NOT NULL DEFAULT 0",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v3 -> v4 migration
                 if schema_version < 4 {
                     // "guild.id" column needs to be renamed to "guild_id"
-                    connection.execute("ALTER TABLE guild RENAME COLUMN id TO guild_id", ())?;
+                    connection.execute("ALTER TABLE guild RENAME COLUMN id TO guild_id", ()).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v4 -> v5 migration
@@ -211,11 +215,11 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN gumroad_failure_count INTEGER NOT NULL DEFAULT 0",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN gumroad_nag_count INTEGER NOT NULL DEFAULT 0",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v5 -> v6 migration
@@ -224,7 +228,7 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN blanket_role_id INTEGER",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v6 -> v7 migration
@@ -233,7 +237,7 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE guild ADD COLUMN cache_time_unix_ms INTEGER NOT NULL DEFAULT 0",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v7 -> v8 migration
@@ -242,11 +246,11 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE license_activation ADD COLUMN product_id TEXT",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                     connection.execute(
                         "ALTER TABLE license_activation ADD COLUMN version_id TEXT",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // handle schema v8 -> v9 migration
@@ -255,19 +259,25 @@ impl JinxDb {
                     connection.execute(
                         "ALTER TABLE product ADD COLUMN etag BLOB",
                         (),
-                    )?;
+                    ).map_err(|_e| JinxError::new("error altering table"))?;
                 }
 
                 // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
                 // All applications should run "PRAGMA optimize;" after a schema change.
-                connection.execute("PRAGMA optimize = 0x10002", ())?;
+                connection.execute("PRAGMA optimize = 0x10002", ()).map_err(|_e| JinxError::new("error optimizing db"))?;
 
                 // update the schema version value persisted to the DB
-                Self::set_setting_sync(connection, SCHEMA_VERSION_KEY, SCHEMA_VERSION_VALUE)?;
+                Self::set_setting_sync(connection, SCHEMA_VERSION_KEY, SCHEMA_VERSION_VALUE).map_err(|_e| JinxError::new("error setting schema version"))?;
 
                 Ok(())
             })
-            .await?;
+            .await.map_err(|e| {
+                if let tokio_rusqlite::Error::Error(jinx_error) = e {
+                    jinx_error
+                } else {
+                    JinxError::new("error reading tokio_rusqlite error")
+                }
+            })?;
 
         let elapsed = start.elapsed();
         debug!("initialized db in {}ms", elapsed.as_millis());
@@ -287,7 +297,7 @@ impl JinxDb {
             .await
     }
 
-    async fn get_setting<T>(&self, key: String) -> SqliteResult<Option<T>>
+    async fn get_setting<T>(&self, key: String) -> DoubleFuckedResult<Option<T>>
     where
         T: FromSql + Send + 'static,
     {
@@ -309,7 +319,7 @@ impl JinxDb {
         Ok(result)
     }
 
-    async fn set_setting<T>(&self, key: String, value: T) -> SqliteResult<bool>
+    async fn set_setting<T>(&self, key: String, value: T) -> DoubleFuckedResult<bool>
     where
         T: ToSql + Send + 'static,
     {
@@ -353,7 +363,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn set_discord_token(&self, discord_token: String) -> SqliteResult<()> {
+    pub async fn set_discord_token(&self, discord_token: String) -> DoubleFuckedResult<()> {
         self.set_setting(DISCORD_TOKEN_KEY.to_owned(), discord_token).await?;
         Ok(())
     }
@@ -390,14 +400,14 @@ impl JinxDb {
             .await
     }
 
-    pub async fn get_discord_token(&self) -> SqliteResult<Option<String>> {
+    pub async fn get_discord_token(&self) -> DoubleFuckedResult<Option<String>> {
         self.get_setting(DISCORD_TOKEN_KEY.to_owned()).await
     }
 
     pub async fn set_low_priority_cache_expiry_time(
         &self,
         low_priority_cache_expiry_time: Duration,
-    ) -> SqliteResult<()> {
+    ) -> DoubleFuckedResult<()> {
         self.set_setting(
             LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned(),
             low_priority_cache_expiry_time.as_secs() as i64,
@@ -406,7 +416,7 @@ impl JinxDb {
         Ok(())
     }
 
-    pub async fn get_low_priority_cache_expiry_time(&self) -> SqliteResult<Option<Duration>> {
+    pub async fn get_low_priority_cache_expiry_time(&self) -> DoubleFuckedResult<Option<Duration>> {
         let low_priority_cache_expiry_time = self
             .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned())
             .await?
@@ -452,7 +462,7 @@ impl JinxDb {
         }).await
     }
 
-    pub async fn backfill_license_info(&self) -> Result<usize, Error> {
+    pub async fn backfill_license_info(&self) -> Result<usize, BoxedError> {
         let license_records = self.connection.call(move |connection| {
             let mut license_query = connection.prepare("SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0")?;
             let license_rows = license_query.query_map((), |row| {
@@ -468,7 +478,7 @@ impl JinxDb {
             for row in license_rows {
                 vec.push(row?);
             }
-            Ok(vec)
+            Result::<_, tokio_rusqlite::Error>::Ok(vec)
         }).await?;
 
         let mut updated: usize = 0;
@@ -1235,7 +1245,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn get_guild_cache(&self, guild: GuildId) -> SqliteResult<GuildCache> {
+    pub async fn get_guild_cache(&self, guild: GuildId) -> DoubleFuckedResult<GuildCache> {
         self.connection
             .call(move |connection| {
                 let cache_time = JinxDb::get_cache_time(connection, guild)?;
@@ -1250,7 +1260,7 @@ impl JinxDb {
             .await
     }
 
-    pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> SqliteResult<()> {
+    pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> DoubleFuckedResult<()> {
         self.connection
             .call(move |connection| {
                 JinxDb::persist_product_names(connection, guild, cache_entry.product_name_info)?;
@@ -1292,7 +1302,7 @@ impl JinxDb {
     }
 
     /// Get cached name info for products in a guild
-    pub async fn product_names_in_guild(&self, guild: GuildId) -> SqliteResult<Vec<ProductNameInfo>> {
+    pub async fn product_names_in_guild(&self, guild: GuildId) -> DoubleFuckedResult<Vec<ProductNameInfo>> {
         self.connection
             .call(move |connection| Self::product_names_in_guild_sync(connection, guild))
             .await

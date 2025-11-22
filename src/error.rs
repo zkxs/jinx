@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::db::DoubleFuckedError;
 use crate::http::jinxxy::JinxxyError;
 use poise::serenity_prelude as serenity;
 use serenity::Error as SerenityError;
@@ -49,6 +50,15 @@ impl From<SqliteError> for JinxError {
 impl From<SerenityError> for JinxError {
     fn from(e: SerenityError) -> Self {
         Self::Serenity(e)
+    }
+}
+
+impl From<DoubleFuckedError> for JinxError {
+    fn from(e: DoubleFuckedError) -> Self {
+        match e {
+            tokio_rusqlite::Error::Error(e) => JinxError::Sqlite(e),
+            _ => JinxError::new("error flattening doubly-fucked Sqlite error"),
+        }
     }
 }
 
