@@ -145,9 +145,9 @@ pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-pub fn create_role_warning_from_roles<T: Iterator<Item = RoleId>>(
+pub fn create_role_warning_from_roles(
     assignable_roles: &HashSet<RoleId, ahash::RandomState>,
-    roles: T,
+    roles: impl Iterator<Item = RoleId>,
 ) -> Option<CreateEmbed> {
     let roles: HashSet<RoleId, ahash::RandomState> = roles.into_iter().collect();
     let mut unassignable_roles: Vec<RoleId> = roles.difference(assignable_roles).copied().collect();
@@ -155,7 +155,7 @@ pub fn create_role_warning_from_roles<T: Iterator<Item = RoleId>>(
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-pub fn create_role_warning_from_unassignable<T: Iterator<Item = RoleId>>(unassignable_roles: T) -> Option<CreateEmbed> {
+pub fn create_role_warning_from_unassignable(unassignable_roles: impl Iterator<Item = RoleId>) -> Option<CreateEmbed> {
     let mut unassignable_roles: Vec<RoleId> = unassignable_roles.into_iter().collect();
     create_role_warning(&mut unassignable_roles)
 }
