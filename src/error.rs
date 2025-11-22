@@ -69,11 +69,6 @@ impl JinxError {
     pub fn new<T: Into<String>>(message: T) -> Self {
         Self::Message(message.into())
     }
-
-    /// `message` is a message that is safe to display to a user
-    pub fn boxed<T: Into<String>>(message: T) -> Box<Self> {
-        Box::new(Self::new(message))
-    }
 }
 
 /// A type with an alternate Display implementation that is safe to display to untrusted users

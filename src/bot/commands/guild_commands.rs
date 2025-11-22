@@ -236,15 +236,15 @@ pub async fn user_info(
             let mut license_infos: Vec<_> = Vec::with_capacity(license_id_count);
             while let Some(result) = license_check_join_set.join_next().await {
                 let license_info = result??;
-                if let Ok(license_info) = &license_info {
-                    if license_info.product_version_info.is_some() {
-                        let newly_inserted = products_requiring_lookup.insert(license_info.product_id.clone());
-                        if newly_inserted {
-                            let api_key = api_key.clone();
-                            let product_id = license_info.product_id.clone();
-                            product_lookup_join_set
-                                .spawn(async move { jinxxy::get_product_uncached(&api_key, &product_id).await });
-                        }
+                if let Ok(license_info) = &license_info
+                    && license_info.product_version_info.is_some()
+                {
+                    let newly_inserted = products_requiring_lookup.insert(license_info.product_id.clone());
+                    if newly_inserted {
+                        let api_key = api_key.clone();
+                        let product_id = license_info.product_id.clone();
+                        product_lookup_join_set
+                            .spawn(async move { jinxxy::get_product_uncached(&api_key, &product_id).await });
                     }
                 }
                 license_infos.push(license_info);
