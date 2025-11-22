@@ -21,8 +21,8 @@ poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next" } # Di
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "brotli", "deflate", "zstd", "json", "http2", "rustls-tls"] } # HTTP client
 serde = "1" # Serialization
 serde_json = "1" # Serialization
-tokio-rusqlite = { version = "0.6.0", features = ["bundled"] } # Persistence
-rusqlite = { version = "0.32", features = ["bundled"] } # Persistence, needed because of missing re-exports in tokio-rusqlite 0.6.0, intentionally held back so that versions match.
+tokio-rusqlite = { version = "0.7.0", features = ["bundled"] } # Persistence
+rusqlite = { version = "0.37", features = ["bundled"] } # Persistence, needed because of missing re-exports in tokio-rusqlite 0.7.0, intentionally held back so that versions match.
 tracing = "0.1" # Logging API
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
 regex = "1" # Pattern matching
