@@ -109,7 +109,7 @@ async fn main() -> ExitCode {
                 constants::GIT_COMMIT_HASH
             );
 
-            let result = Toplevel::new(async |subsystem| {
+            let result = Toplevel::new(async |subsystem: &mut SubsystemHandle| {
                 subsystem.start(SubsystemBuilder::new("Discord bot", bot_subsystem));
             })
             .catch_signals()
@@ -127,7 +127,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn bot_subsystem(subsystem: SubsystemHandle) -> Result<(), Error> {
+async fn bot_subsystem(subsystem: &mut SubsystemHandle) -> Result<(), Error> {
     tokio::select! {
         _ = subsystem.on_shutdown_requested() => {
             info!("shutdown requested");
