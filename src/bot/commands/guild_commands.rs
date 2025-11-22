@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use tokio::join;
 use tokio::task::JoinSet;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 // discord component ids
 pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
@@ -1040,6 +1040,9 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
 
     // handle deleted roles
     let deleted_roles = util::deleted_roles(&context, guild_id, linked_roles.iter().copied())?;
+    if !deleted_roles.is_empty() {
+        info!("Unlinking {} deleted roles in {}", deleted_roles.len(), guild_id);
+    }
     for deleted_role in &deleted_roles {
         context.data().db.delete_role(guild_id, *deleted_role).await?;
     }
