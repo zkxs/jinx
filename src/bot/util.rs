@@ -122,6 +122,18 @@ pub(super) async fn assignable_roles(
     Ok(assignable_roles)
 }
 
+pub(super) fn deleted_roles(
+    context: &Context<'_>,
+    guild_id: GuildId,
+    known_roles: impl Iterator<Item = RoleId>,
+) -> Result<Vec<RoleId>, Error> {
+    let guild = guild_id
+        .to_guild_cached(context)
+        .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
+    let roles = &guild.roles;
+    Ok(known_roles.filter(|role| !roles.contains_key(role)).collect())
+}
+
 pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -> Result<bool, Error> {
     let bot_id = context.framework().bot_id();
     let bot_member = guild_id.member(context, bot_id).await?;

@@ -1036,65 +1036,78 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
 pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: GuildId) -> Result<(), Error> {
     let assignable_roles = util::assignable_roles(&context, guild_id).await?;
     let links = context.data().db.get_links(guild_id).await?;
+    static NO_LINKS_MESSAGE: &str = "No product→role links configured";
     let message = if links.is_empty() {
-        "No product→role links configured".to_string()
+        NO_LINKS_MESSAGE.to_string()
     } else {
         // We always do a cached read here: even in the case of a cache miss we just fall back to IDs instead of names.
         // The idea is that users should have a warmed cache already when /list_links is invoked. This is because both
         // /init and /link_product do background cache warming.
 
         let mut linked_roles: Vec<RoleId> = links.keys().copied().collect();
-        linked_roles.sort_unstable(); // make sure the roles are listed in a consistent order and not subject to HashMap randomization
-        context
-            .data()
-            .api_cache
-            .get(&context.data().db, guild_id, |cache| {
-                let mut first_line = true;
-                let mut message = String::new();
-                for role in linked_roles {
-                    if first_line {
-                        first_line = false;
-                    } else {
-                        message.push('\n');
-                    }
-                    message.push_str(format!("- <@&{}> granted by:", role.get()).as_str());
-                    let link_sources = links.get(&role).expect(
-                        "we just queried a map with its own key list, how the hell is it missing an entry now?",
-                    );
-                    for link_source in link_sources {
-                        // In the majority of cases we get a name &str here, so we use a Cow<str> to avoid a bunch of copies.
-                        // Only in the case where we have to show an un-cached product version do we need to build an owned String.
-                        let name = match link_source {
-                            LinkSource::GlobalBlanket => Cow::Borrowed("`*`"),
-                            LinkSource::ProductBlanket { product_id } => {
-                                let name = cache.product_id_to_name(product_id).unwrap_or(product_id.as_str());
-                                Cow::Borrowed(name)
-                            }
-                            LinkSource::ProductVersion(product_version_id) => cache
-                                .product_version_id_to_name(product_version_id)
-                                .map(Cow::Borrowed)
-                                .unwrap_or_else(|| Cow::Owned(format!("{product_version_id}"))),
-                        };
-                        message.push_str("\n  - ");
-                        message.push_str(&name);
-                    }
-                }
 
-                // discord has a message length limit of "4096 characters", but they do not specify if the mean
-                // codepoints or code units (bytes) by "characters". We check here to see if we're more than 80%
-                // (> 3276 bytes) of the way to 4096.
-                const MESSAGE_LENGTH_WARN_THRESHOLD: usize = 3276;
-                if message.len() > MESSAGE_LENGTH_WARN_THRESHOLD {
-                    warn!(
-                        "/list_links in {} had length of {}, which is getting dangerously close to the limit",
-                        guild_id.get(),
-                        message.len()
-                    );
-                }
+        // handle deleted roles
+        let deleted_roles = util::deleted_roles(&context, guild_id, linked_roles.iter().copied())?;
+        for deleted_role in &deleted_roles {
+            context.data().db.delete_role(guild_id, *deleted_role).await?;
+        }
+        linked_roles.retain(|role| !deleted_roles.contains(role));
 
-                message
-            })
-            .await?
+        if linked_roles.is_empty() {
+            NO_LINKS_MESSAGE.to_string()
+        } else {
+            linked_roles.sort_unstable(); // make sure the roles are listed in a consistent order and not subject to HashMap randomization
+            context
+                .data()
+                .api_cache
+                .get(&context.data().db, guild_id, |cache| {
+                    let mut first_line = true;
+                    let mut message = String::new();
+                    for role in linked_roles {
+                        if first_line {
+                            first_line = false;
+                        } else {
+                            message.push('\n');
+                        }
+                        message.push_str(format!("- <@&{}> granted by:", role.get()).as_str());
+                        let link_sources = links.get(&role).expect(
+                            "we just queried a map with its own key list, how the hell is it missing an entry now?",
+                        );
+                        for link_source in link_sources {
+                            // In the majority of cases we get a name &str here, so we use a Cow<str> to avoid a bunch of copies.
+                            // Only in the case where we have to show an un-cached product version do we need to build an owned String.
+                            let name = match link_source {
+                                LinkSource::GlobalBlanket => Cow::Borrowed("`*`"),
+                                LinkSource::ProductBlanket { product_id } => {
+                                    let name = cache.product_id_to_name(product_id).unwrap_or(product_id.as_str());
+                                    Cow::Borrowed(name)
+                                }
+                                LinkSource::ProductVersion(product_version_id) => cache
+                                    .product_version_id_to_name(product_version_id)
+                                    .map(Cow::Borrowed)
+                                    .unwrap_or_else(|| Cow::Owned(format!("{product_version_id}"))),
+                            };
+                            message.push_str("\n  - ");
+                            message.push_str(&name);
+                        }
+                    }
+
+                    // discord has a message length limit of "4096 characters", but they do not specify if the mean
+                    // codepoints or code units (bytes) by "characters". We check here to see if we're more than 80%
+                    // (> 3276 bytes) of the way to 4096.
+                    const MESSAGE_LENGTH_WARN_THRESHOLD: usize = 3276;
+                    if message.len() > MESSAGE_LENGTH_WARN_THRESHOLD {
+                        warn!(
+                            "/list_links in {} had length of {}, which is getting dangerously close to the limit",
+                            guild_id.get(),
+                            message.len()
+                        );
+                    }
+
+                    message
+                })
+                .await?
+        }
     };
 
     let unassignable_embed = util::create_role_warning_from_roles(&assignable_roles, links.keys().copied());

@@ -655,6 +655,35 @@ impl JinxDb {
         }).await
     }
 
+    /// Delete all references to a role id for the given guild
+    pub async fn delete_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<usize> {
+        let guild_id = guild.get() as i64;
+        let role_id = role.get() as i64;
+        self.connection
+            .call(move |connection| {
+                let mut deleted = 0;
+
+                // handle blanket role
+                let mut statement = connection.prepare_cached(
+                    "UPDATE guild SET blanket_role_id = NULL WHERE guild_id = :guild AND blanket_role_id = :role",
+                )?;
+                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
+
+                // handle product links
+                let mut statement = connection
+                    .prepare_cached("DELETE FROM product_role WHERE guild_id = :guild AND role_id = :role")?;
+                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
+
+                // handle product-version links
+                let mut statement = connection
+                    .prepare_cached("DELETE FROM product_version_role WHERE guild_id = :guild AND role_id = :role")?;
+                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
+
+                Ok(deleted)
+            })
+            .await
+    }
+
     /// Get role grants for a product ID. This includes blanket grants.
     pub async fn get_role_grants(
         &self,

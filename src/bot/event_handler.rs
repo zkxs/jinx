@@ -300,6 +300,32 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                 command_interaction.user.id.get()
             );
         }
+        FullEvent::GuildRoleDelete {
+            guild_id,
+            removed_role_id,
+            removed_role_data_if_available,
+        } => {
+            match context.user_data.db.delete_role(*guild_id, *removed_role_id).await {
+                Ok(deleted) => {
+                    if deleted != 0 {
+                        // only log role deletions if they were actually in the DB
+                        info!(
+                            "role {} was removed from guild {}. Data = {:?}",
+                            removed_role_id.get(),
+                            guild_id.get(),
+                            removed_role_data_if_available
+                        )
+                    }
+                }
+                Err(e) => error!(
+                    "Error cleaning up deleted role {} from guild {}. Data = {:?}; Error = {:?}",
+                    removed_role_id.get(),
+                    guild_id.get(),
+                    removed_role_data_if_available,
+                    e
+                ),
+            };
+        }
         _ => {}
     }
 
