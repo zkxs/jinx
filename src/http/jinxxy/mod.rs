@@ -256,10 +256,9 @@ async fn add_product_version_name_to_license_info(api_key: &str, license_info: &
 pub async fn get_license_activations(api_key: &str, license_id: &str) -> JinxxyResult<Vec<LicenseActivation>> {
     static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
+    let url = format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}");
     let response = HTTP_CLIENT
-        .get(format!(
-            "{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}"
-        ))
+        .get(&url)
         .headers(get_headers(api_key))
         .send()
         .await
@@ -267,9 +266,16 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> JinxxyR
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: dto::LicenseActivationList = read_2xx_json(ENDPOINT, response).await?;
     if response.len() == ACTIVATION_PAGINATION_LIMIT {
-        warn!("{ENDPOINT} returned exactly {ACTIVATION_PAGINATION_LIMIT} items, which is the pagination limit");
+        // if we hit the activation pagination limit we cannot safely continue, as it's possible all Jinx activations
+        // occur after page 1, and would therefore be missed.
+        let nonce: u64 = util::generate_nonce();
+        warn!(
+            "NONCE[{nonce}] {url} returned exactly {ACTIVATION_PAGINATION_LIMIT} items, which is the pagination limit"
+        );
+        Err(JinxxyError::UnsupportedPagination(nonce))
+    } else {
+        Ok(response.results)
     }
-    Ok(response.results)
 }
 
 /// Create a new license activation

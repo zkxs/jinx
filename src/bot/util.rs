@@ -461,9 +461,10 @@ impl Determinable for JinxxyError {
             JinxxyError::HttpResponse(e) => e.status() == 403 || e.status() == 404,
             JinxxyError::HttpRequest(_) => false,
             JinxxyError::HttpRead(_) => false,
-            JinxxyError::JsonDeserialize(_) => false,
+            JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives a 200 with a HTML error page, which web APIs are wont to do
             JinxxyError::Join(_) => false,
             JinxxyError::Impossible304 => true,
+            JinxxyError::UnsupportedPagination(_) => true,
         }
     }
 }

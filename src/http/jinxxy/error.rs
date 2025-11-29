@@ -26,6 +26,8 @@ pub enum JinxxyError {
     Join(tokio::task::JoinError),
     /// Impossible 304 response: we got a 304 without Etag set
     Impossible304,
+    /// We encountered a case where pagination support is required, but unimplemented in Jinx
+    UnsupportedPagination(u64),
 }
 
 impl std::fmt::Display for JinxxyError {
@@ -39,6 +41,11 @@ impl std::fmt::Display for JinxxyError {
             Self::Impossible304 => write!(
                 f,
                 "got 304 response from Jinxxy API without having set If-None-Match header"
+            ),
+            JinxxyError::UnsupportedPagination(nonce) => write!(
+                f,
+                "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{}`",
+                nonce
             ),
         }
     }
