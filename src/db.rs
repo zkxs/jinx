@@ -5,6 +5,7 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
+use poise::futures_util::StreamExt;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{
@@ -493,7 +494,7 @@ impl JinxDb {
         let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(r#"INSERT OR IGNORE INTO owner (owner_id) VALUES (?)"#, owner_id)
             .execute(&mut connection)
-            .await;
+            .await?;
         Ok(())
     }
 
@@ -575,7 +576,8 @@ impl JinxDb {
             product_id,
             version_id)
             .execute(&mut connection)
-            .await
+            .await?;
+        Ok(())
     }
 
     /// Update product_id and version_id for an existing license. Returns `true` if a row was updated, or `false` if no matching row was found.
@@ -600,7 +602,8 @@ impl JinxDb {
             product_id,
             version_id)
             .execute(&mut connection)
-            .await?;
+            .await?
+            .rows_affected();
         Ok(update_count != 0)
     }
 
@@ -608,7 +611,8 @@ impl JinxDb {
         let mut connection = self.read_write_pool.acquire().await?;
         //TODO: this tries to cast db i64 to u64 for guild_id and user_id
         let license_records = sqlx::query_as!(LicenseRecord, r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
-            .fetch_all(&mut connection);
+            .fetch_all(&mut connection)
+            .await?;
 
         let mut updated: usize = 0;
         for license_record in license_records {
@@ -657,7 +661,8 @@ impl JinxDb {
             ,license_activation_id
             ,user_id)
             .execute(&mut connection)
-            .await?;
+            .await?
+            .rows_affected();
         Ok(delete_count != 0)
     }
 
@@ -693,11 +698,12 @@ impl JinxDb {
             Ok(api_key.clone())
         } else {
             // cache miss
-            let mut connection = self.read_only_pool.acquire().await?;
             let guild_id = guild.get() as i64;
-            let api_key = sqlx::query!(r#"SELECT jinxxy_api_key FROM guild WHERE guild_id = ?"#, guild_id)
+            let mut connection = self.read_only_pool.acquire().await?;
+            let api_key = sqlx::query_scalar!(r#"SELECT jinxxy_api_key FROM guild WHERE guild_id = ?"#, guild_id)
                 .fetch_optional(&mut connection)
-                .await?;
+                .await?
+                .flatten();
             self.api_key_cache.pin().insert(guild, api_key.clone());
             Ok(api_key)
         }
@@ -719,12 +725,15 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        //TODO: continue rusqlite -> sqlx migration
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (:guild, :product, :role)"#)?;
-            statement.execute(named_params! {":guild": guild_id, ":product": product_id, ":role": role_id})?;
-            Ok(())
-        }).await
+        sqlx::query!(
+            r#"INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (?, ?, ?)"#,
+            guild_id,
+            product_id,
+            role_id
+        )
+        .execute(&mut connection)
+        .await?;
+        Ok(())
     }
 
     /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
@@ -732,16 +741,16 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(
-                    r#"DELETE FROM product_role WHERE guild_id = :guild AND product_id = :product AND role_id = :role"#,
-                )?;
-                let delete_count =
-                    statement.execute(named_params! {":guild": guild_id, ":product": product_id, ":role": role_id})?;
-                Ok(delete_count != 0)
-            })
-            .await
+        let delete_count = sqlx::query!(
+            r#"DELETE FROM product_role WHERE guild_id = ? AND product_id = ? AND role_id = ?"#,
+            guild_id,
+            product_id,
+            role_id
+        )
+        .execute(&mut connection)
+        .await?
+        .rows_affected();
+        Ok(delete_count != 0)
     }
 
     /// link a Jinxxy product-version and a role
@@ -753,13 +762,12 @@ impl JinxDb {
     ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let (product_id, version_id) = product_version_id.into_db_values();
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (:guild, :product, :version, :role)"#)?;
-            let (product_id, version_id) = product_version_id.into_db_values();
-            statement.execute(named_params! {":guild": guild_id, ":product": product_id, ":version": version_id, ":role": role_id})?;
-            Ok(())
-        }).await
+        sqlx::query!(r#"INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (?, ?, ?, ?)"#, guild_id, product_id, version_id, role_id)
+            .execute(&mut connection)
+            .await?;
+        Ok(())
     }
 
     /// unlink a Jinxxy product-version and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
@@ -771,43 +779,51 @@ impl JinxDb {
     ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let (product_id, version_id) = product_version_id.into_db_values();
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version AND role_id = :role"#)?;
-            let (product_id, version_id) = product_version_id.into_db_values();
-            let delete_count = statement.execute(named_params! {":guild": guild_id, ":product": product_id, ":version": version_id, ":role": role_id})?;
-            Ok(delete_count != 0)
-        }).await
+        let delete_count = sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ? AND role_id = ?"#, guild_id, product_id, version_id, role_id)
+            .execute(&mut connection)
+            .await?
+            .rows_affected();
+        Ok(delete_count != 0)
     }
 
     /// Delete all references to a role id for the given guild
-    pub async fn delete_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<usize> {
+    pub async fn delete_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<u64> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut deleted = 0;
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut deleted = 0;
 
-                // handle blanket role
-                let mut statement = sqlx::query!(
-                    r#"UPDATE guild SET blanket_role_id = NULL WHERE guild_id = :guild AND blanket_role_id = :role"#,
-                )?;
-                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
+        // handle blanket role
+        deleted += sqlx::query!(
+            r#"UPDATE guild SET blanket_role_id = NULL WHERE guild_id = ? AND blanket_role_id = ?"#,
+            guild_id,
+            role_id
+        )
+        .execute(&mut connection)
+        .await?
+        .rows_affected();
+        // handle product links
+        deleted += sqlx::query!(
+            r#"DELETE FROM product_role WHERE guild_id = ? AND role_id = ?"#,
+            guild_id,
+            role_id
+        )
+        .execute(&mut connection)
+        .await?
+        .rows_affected();
+        // handle product-version links
+        deleted += sqlx::query!(
+            r#"DELETE FROM product_version_role WHERE guild_id = ? AND role_id = ?"#,
+            guild_id,
+            role_id
+        )
+        .execute(&mut connection)
+        .await?
+        .rows_affected();
 
-                // handle product links
-                let mut statement =
-                    sqlx::query!(r#"DELETE FROM product_role WHERE guild_id = :guild AND role_id = :role"#)?;
-                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
-
-                // handle product-version links
-                let mut statement =
-                    sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = :guild AND role_id = :role"#)?;
-                deleted += statement.execute(named_params! {":guild": guild_id, ":role": role_id})?;
-
-                Ok(deleted)
-            })
-            .await
+        Ok(deleted)
     }
 
     /// Get role grants for a product ID. This includes blanket grants.
@@ -817,27 +833,16 @@ impl JinxDb {
         product_version_id: ProductVersionId,
     ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
+        let (product_id, version_id) = product_version_id.into_db_values();
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                // uses `role_lookup` and `version_role_lookup` indices
-                let mut statement = sqlx::query!(r#"SELECT blanket_role_id as role_id from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL
-                    UNION SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product
-                    UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#)?;
-                let (product_id, version_id) = product_version_id.into_db_values();
-                let result = statement.query_map(
-                    named_params! {":guild": guild_id, ":product": product_id, ":version": version_id},
-                    |row| {
-                        let role_id: i64 = row.get(0)?;
-                        Ok(RoleId::new(role_id as u64))
-                    },
-                )?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
+        sqlx::query!(r#"SELECT blanket_role_id as "role_id!" from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL
+                    UNION SELECT role_id as "role_id!" FROM product_role WHERE guild_id = :guild AND product_id = :product
+                    UNION SELECT role_id as "role_id!" FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#,
+        guild_id,
+        product_id,
+        version_id)
+            .map(|row| RoleId::new(row.role_id as u64))
+            .fetch_all(&mut connection)
             .await
     }
 
@@ -845,24 +850,15 @@ impl JinxDb {
     pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                // uses `role_lookup` index
-                let mut statement = sqlx::query!(
-                    r#"SELECT role_id FROM product_role WHERE guild_id = :guild AND product_id = :product"#,
-                )?;
-                let result =
-                    statement.query_map(named_params! {":guild": guild_id, ":product": product_id}, |row| {
-                        let role_id: i64 = row.get(0)?;
-                        Ok(RoleId::new(role_id as u64))
-                    })?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        // uses `role_lookup` index
+        sqlx::query!(
+            r#"SELECT role_id as "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?"#,
+            guild_id,
+            product_id
+        )
+        .map(|row| RoleId::new(row.role_id as u64))
+        .fetch_all(&mut connection)
+        .await
     }
 
     /// Get roles for a product version. This does not include blanket grants.
@@ -872,25 +868,16 @@ impl JinxDb {
         product_version_id: ProductVersionId,
     ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
+        let (product_id, version_id) = product_version_id.into_db_values();
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                // uses `version_role_lookup` index
-                let mut statement = sqlx::query!(r#"SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#)?;
-                let (product_id, version_id) = product_version_id.into_db_values();
-                let result = statement.query_map(
-                    named_params! {":guild": guild_id, ":product": product_id, ":version": version_id},
-                    |row| {
-                        let role_id: i64 = row.get(0)?;
-                        Ok(RoleId::new(role_id as u64))
-                    },
-                )?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
+        sqlx::query!(
+            r#"SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#,
+            guild_id,
+            product_id,
+            version_id
+        )
+            .map(|row| RoleId::new(row.role_id as u64))
+            .fetch_all(&mut connection)
             .await
     }
 
@@ -898,6 +885,7 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let mut connection = self.read_only_pool.acquire().await?;
+        //TODO: continue sqlx migration
         self.connection
             .call(move |connection| {
                 //TODO: this could use an index, or even several indices
@@ -1527,8 +1515,9 @@ where
         key,
         value
     )
-    .execute()
-    .await?;
+    .execute(connection)
+    .await?
+    .rows_affected();
     Ok(update_count != 0)
 }
 
