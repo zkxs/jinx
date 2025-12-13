@@ -468,7 +468,8 @@ impl JinxDb {
     /// Applications that use long-lived database connections should run "PRAGMA optimize;" periodically, perhaps once per day or once per hour.
     pub async fn optimize(&self) -> SqliteResult<()> {
         let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"PRAGMA optimize"#).execute(&mut connection).await?;
+        connection.execute(r#"PRAGMA optimize"#).await?;
+        Ok(())
     }
 
     async fn get_setting<T>(&self, key: String) -> SqliteResult<Option<T>>
@@ -490,19 +491,19 @@ impl JinxDb {
     pub async fn add_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"INSERT OR IGNORE INTO owner (owner_id) VALUES (?)"#)
-            .bind(owner_id)
+        sqlx::query!(r#"INSERT OR IGNORE INTO owner (owner_id) VALUES (?)"#, owner_id)
             .execute(&mut connection)
-            .await
+            .await;
+        Ok(())
     }
 
     pub async fn delete_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"DELETE FROM owner WHERE owner_id = ?"#)
-            .bind(owner_id)
+        sqlx::query!(r#"DELETE FROM owner WHERE owner_id = ?"#, owner_id)
             .execute(&mut connection)
             .await?;
+        Ok(())
     }
 
     pub async fn set_discord_token(&self, discord_token: String) -> SqliteResult<()> {
@@ -520,10 +521,12 @@ impl JinxDb {
     pub async fn is_user_owner(&self, owner_id: u64) -> SqliteResult<bool> {
         let owner_id = owner_id as i64;
         let mut connection = self.read_only_pool.acquire().await?;
-        sqlx::query!(r#"SELECT EXISTS(SELECT * FROM owner WHERE owner_id = ?)"#)
-            .bind(owner_id)
-            .fetch_one(&mut connection)
-            .await
+        sqlx::query!(
+            r#"SELECT EXISTS(SELECT * FROM owner WHERE owner_id = ?) as is_owner"#,
+            owner_id
+        )
+        .fetch_one(&mut connection)
+        .await
     }
 
     pub async fn get_discord_token(&self) -> SqliteResult<Option<String>> {
@@ -563,13 +566,14 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id, product_id, version_id) VALUES (?, ?, ?, ?, ?, ?)"#)
-            .bind(guild_id)
-            .bind(license_id)
-            .bind(license_activation_id)
-            .bind(user_id)
-            .bind(product_id)
-            .bind(version_id)
+        sqlx::query!(
+            r#"INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id, product_id, version_id) VALUES (?, ?, ?, ?, ?, ?)"#,
+            guild_id,
+            license_id,
+            license_activation_id,
+            user_id,
+            product_id,
+            version_id)
             .execute(&mut connection)
             .await
     }
@@ -587,13 +591,14 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        let update_count = sqlx::query!(r#"UPDATE license_activation SET product_id = :product_id, version_id = :version_id WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#)
-            .bind(guild_id)
-            .bind(license_id)
-            .bind(license_activation_id)
-            .bind(user_id)
-            .bind(product_id)
-            .bind(version_id)
+        let update_count = sqlx::query!(
+            r#"UPDATE license_activation SET product_id = :product_id, version_id = :version_id WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#,
+            guild_id,
+            license_id,
+            license_activation_id,
+            user_id,
+            product_id,
+            version_id)
             .execute(&mut connection)
             .await?;
         Ok(update_count != 0)
@@ -602,7 +607,7 @@ impl JinxDb {
     pub async fn backfill_license_info(&self) -> Result<usize, BoxedError> {
         let mut connection = self.read_write_pool.acquire().await?;
         //TODO: this tries to cast db i64 to u64 for guild_id and user_id
-        let license_records: Vec<LicenseRecord> = sqlx::query_as!(r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
+        let license_records = sqlx::query_as!(LicenseRecord, r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
             .fetch_all(&mut connection);
 
         let mut updated: usize = 0;
@@ -646,11 +651,11 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        let delete_count = sqlx::query!(r#"DELETE FROM license_activation WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#)
-            .bind(guild_id)
-            .bind(license_id)
-            .bind(license_activation_id)
-            .bind(user_id)
+        let delete_count = sqlx::query!(r#"DELETE FROM license_activation WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#
+            ,guild_id
+            ,license_id
+            ,license_activation_id
+            ,user_id)
             .execute(&mut connection)
             .await?;
         Ok(delete_count != 0)
@@ -661,9 +666,9 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_only_pool.acquire().await?;
         //TODO: could use an index
-        sqlx::query!(r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0)"#)
-            .bind(guild_id)
-            .bind(license_id)
+        sqlx::query!(r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0) as is_locked"#
+            ,guild_id
+            ,license_id)
             .fetch_one(&mut connection)
             .await
     }
@@ -672,9 +677,9 @@ impl JinxDb {
     pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#)
-            .bind(guild_id)
-            .bind(&api_key)
+        sqlx::query!(r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#
+            ,guild_id
+            ,&api_key)
             .execute(&mut connection).await?;
         let api_key_cache = self.api_key_cache.pin();
         api_key_cache.insert(guild, Some(api_key));
@@ -690,8 +695,7 @@ impl JinxDb {
             // cache miss
             let mut connection = self.read_only_pool.acquire().await?;
             let guild_id = guild.get() as i64;
-            let api_key = sqlx::query!(r#"SELECT jinxxy_api_key FROM guild WHERE guild_id = ?"#)
-                .bind(guild_id)
+            let api_key = sqlx::query!(r#"SELECT jinxxy_api_key FROM guild WHERE guild_id = ?"#, guild_id)
                 .fetch_optional(&mut connection)
                 .await?;
             self.api_key_cache.pin().insert(guild, api_key.clone());
@@ -704,19 +708,18 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role_id.map(|role_id| role_id.get() as i64);
         let mut connection = self.read_write_pool.acquire().await?;
-        //TODO: continue rusqlite -> sqlx migration
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, blanket_role_id) VALUES (:guild, :role_id) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#)?;
-            statement.execute(named_params! {":guild": guild_id, ":role_id": role_id})?;
-            Ok(())
-        }).await
+        sqlx::query!(r#"INSERT INTO guild (guild_id, blanket_role_id) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#, guild_id, role_id)
+            .execute(&mut connection)
+            .await?;
+        Ok(())
     }
 
     /// blanket link a Jinxxy product and a role
     pub async fn link_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
+        //TODO: continue rusqlite -> sqlx migration
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (:guild, :product, :role)"#)?;
             statement.execute(named_params! {":guild": guild_id, ":product": product_id, ":role": role_id})?;
@@ -726,9 +729,9 @@ impl JinxDb {
 
     /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
     pub async fn unlink_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<bool> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(
@@ -748,9 +751,9 @@ impl JinxDb {
         product_version_id: ProductVersionId,
         role: RoleId,
     ) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (:guild, :product, :version, :role)"#)?;
             let (product_id, version_id) = product_version_id.into_db_values();
@@ -766,9 +769,9 @@ impl JinxDb {
         product_version_id: ProductVersionId,
         role: RoleId,
     ) -> SqliteResult<bool> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version AND role_id = :role"#)?;
             let (product_id, version_id) = product_version_id.into_db_values();
@@ -779,9 +782,9 @@ impl JinxDb {
 
     /// Delete all references to a role id for the given guild
     pub async fn delete_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<usize> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut deleted = 0;
@@ -813,8 +816,8 @@ impl JinxDb {
         guild: GuildId,
         product_version_id: ProductVersionId,
     ) -> SqliteResult<Vec<RoleId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` and `version_role_lookup` indices
@@ -840,8 +843,8 @@ impl JinxDb {
 
     /// Get roles for a product. This is ONLY product-level blanket grants.
     pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<RoleId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 // uses `role_lookup` index
@@ -868,8 +871,8 @@ impl JinxDb {
         guild: GuildId,
         product_version_id: ProductVersionId,
     ) -> SqliteResult<Vec<RoleId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 // uses `version_role_lookup` index
@@ -892,9 +895,9 @@ impl JinxDb {
     }
 
     pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<Vec<UserId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 //TODO: this could use an index, or even several indices
@@ -919,8 +922,8 @@ impl JinxDb {
 
     /// get distinct roles from all links
     pub async fn get_linked_roles(&self, guild: GuildId) -> SqliteResult<Vec<RoleId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = connection.prepare(
@@ -947,8 +950,8 @@ impl JinxDb {
         &self,
         guild: GuildId,
     ) -> SqliteResult<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
@@ -1003,8 +1006,8 @@ impl JinxDb {
 
     /// Locally get all licences a users has been recorded to activate. This may be out of sync with Jinxxy!
     pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> SqliteResult<Vec<String>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(
@@ -1030,9 +1033,9 @@ impl JinxDb {
         user_id: u64,
         license_id: String,
     ) -> SqliteResult<bool> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license)"#)?;
@@ -1053,9 +1056,9 @@ impl JinxDb {
         user_id: u64,
         license_id: String,
     ) -> SqliteResult<Vec<String>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license"#)?;
@@ -1077,8 +1080,8 @@ impl JinxDb {
 
     /// Locally get all users that have activated the given license. This may be out of sync with Jinxxy!
     pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> SqliteResult<Vec<u64>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 //TODO: could use an index
@@ -1212,8 +1215,8 @@ impl JinxDb {
 
     /// Get count of license activations in a guild
     pub async fn guild_license_activation_count(&self, guild: GuildId) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild"#)?;
             let result: u64 = statement.query_row(named_params! {":guild": guild_id}, |row| row.get(0))?;
@@ -1223,8 +1226,8 @@ impl JinxDb {
 
     /// Get bot log channel
     pub async fn get_log_channel(&self, guild: GuildId) -> SqliteResult<Option<ChannelId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         let channel_id = self
             .connection
             .call(move |connection| {
@@ -1261,9 +1264,9 @@ impl JinxDb {
 
     /// Set or unset bot log channel
     pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
         let channel_id = channel.map(|channel| channel.get() as i64);
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id"#)?;
             statement.execute(named_params! {":guild": guild_id, ":channel": channel_id})?;
@@ -1273,8 +1276,8 @@ impl JinxDb {
 
     /// Set or unset this guild as a test guild
     pub async fn set_test(&self, guild: GuildId, test: bool) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, test) VALUES (:guild, :test) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test"#)?;
             statement.execute(named_params! {":guild": guild_id, ":test": test})?;
@@ -1284,8 +1287,8 @@ impl JinxDb {
 
     /// Check if a guild is a test guild
     pub async fn is_test_guild(&self, guild: GuildId) -> SqliteResult<bool> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT test FROM guild WHERE guild_id = :guild"#)?;
@@ -1302,8 +1305,8 @@ impl JinxDb {
 
     /// Set or unset this guild as an owner guild (gets extra slash commands)
     pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection.call(move |connection| {
             let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, owner) VALUES (:guild, :owner) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner"#)?;
             statement.execute(named_params! {":guild": guild_id, ":owner": owner})?;
@@ -1313,8 +1316,8 @@ impl JinxDb {
 
     /// Check if a guild is an owner guild (gets extra slash commands)
     pub async fn is_owner_guild(&self, guild: GuildId) -> SqliteResult<bool> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT owner FROM guild WHERE guild_id = :guild"#)?;
@@ -1331,8 +1334,8 @@ impl JinxDb {
 
     /// Check gumroad failure count for a guild
     pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT gumroad_failure_count FROM guild WHERE guild_id = :guild"#)?;
@@ -1349,8 +1352,8 @@ impl JinxDb {
 
     /// Increment gumroad failure count for a guild
     pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(
@@ -1391,8 +1394,8 @@ impl JinxDb {
 
     /// Check gumroad nag count for a guild
     pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_only_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(r#"SELECT gumroad_nag_count FROM guild WHERE guild_id = :guild"#)?;
@@ -1409,8 +1412,8 @@ impl JinxDb {
 
     /// Increment gumroad nag count for a guild
     pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<()> {
-        let mut connection = self.read_write_pool.acquire().await?;
         let guild_id = guild.get() as i64;
+        let mut connection = self.read_write_pool.acquire().await?;
         self.connection
             .call(move |connection| {
                 let mut statement = sqlx::query!(
@@ -1509,8 +1512,7 @@ async fn get_setting_sync<T>(connection: &mut Connection, key: &str) -> SqliteRe
 where
     T: Type<Sqlite> + 'static,
 {
-    let result = sqlx::query!(r#"SELECT value FROM settings WHERE key = ?"#)
-        .bind(key)
+    let result = sqlx::query!(r#"SELECT value FROM settings WHERE key = ?"#, key)
         .fetch_optional(connection)
         .await?;
     Ok(result.map(|r| r.0))
@@ -1520,11 +1522,13 @@ async fn set_setting_sync<T>(connection: &mut Connection, key: &str, value: T) -
 where
     T: Type<Sqlite> + 'static,
 {
-    let update_count = sqlx::query!(r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#)
-        .bind(key)
-        .bind(value)
-        .execute()
-        .await?;
+    let update_count = sqlx::query!(
+        r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#,
+        key,
+        value
+    )
+    .execute()
+    .await?;
     Ok(update_count != 0)
 }
 

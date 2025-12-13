@@ -14,6 +14,9 @@ inherits = "release"
 strip = false # required for `cargo-bloat`
 debug = true # required for `cargo flamegraph`, and makes `cargo-bloat` output significantly better
 
+[profile.dev.package.sqlx-macros]
+opt-level = 3 # unoptimized sqlx macros can really slow down builds
+
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "time"] } # Async runtime
 tokio-graceful-shutdown = "0.19" # Handles SIGINT/SIGTERM/Ctrl+C
