@@ -5,7 +5,7 @@ use crate::error::SafeDisplay;
 use bytes::Bytes;
 use reqwest::{Response, StatusCode};
 use serde::Deserialize;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 
 pub type JinxxyResult<T> = Result<T, JinxxyError>;
 
@@ -30,31 +30,52 @@ pub enum JinxxyError {
     UnsupportedPagination(u64),
 }
 
-impl std::fmt::Display for JinxxyError {
+pub struct RedactedJinxxyError<'a>(&'a JinxxyError);
+
+impl Display for JinxxyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::HttpResponse(_) => write!(f, "Jinxxy API error"),
-            Self::HttpRequest(_) => write!(f, "HTTP general failure"),
-            Self::HttpRead(_) => write!(f, "HTTP body read failed"),
-            Self::JsonDeserialize(_) => write!(f, "JSON deserialization failed"),
-            Self::Join(e) => write!(f, "parallel task join failed: {e}"),
-            Self::Impossible304 => write!(
+            JinxxyError::HttpResponse(e) => write!(f, "Jinxxy API error: {e}"),
+            JinxxyError::HttpRequest(e) => write!(f, "HTTP general failure: {e}"),
+            JinxxyError::HttpRead(e) => write!(f, "HTTP body read failed: {e}"),
+            JinxxyError::JsonDeserialize(e) => write!(f, "JSON deserialization failed: {e}"),
+            JinxxyError::Join(e) => write!(f, "parallel task join failed: {e}"),
+            JinxxyError::Impossible304 => write!(
                 f,
                 "got 304 response from Jinxxy API without having set If-None-Match header"
             ),
             JinxxyError::UnsupportedPagination(nonce) => write!(
                 f,
-                "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{}`",
-                nonce
+                "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
+            ),
+        }
+    }
+}
+
+impl<'a> Display for RedactedJinxxyError<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            JinxxyError::HttpResponse(_) => write!(f, "Jinxxy API error"),
+            JinxxyError::HttpRequest(_) => write!(f, "HTTP general failure"),
+            JinxxyError::HttpRead(_) => write!(f, "HTTP body read failed"),
+            JinxxyError::JsonDeserialize(_) => write!(f, "JSON deserialization failed"),
+            JinxxyError::Join(e) => write!(f, "parallel task join failed: {e}"),
+            JinxxyError::Impossible304 => write!(
+                f,
+                "got 304 response from Jinxxy API without having set If-None-Match header"
+            ),
+            JinxxyError::UnsupportedPagination(nonce) => write!(
+                f,
+                "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
             ),
         }
     }
 }
 
 /// mark the normal Display impl as being safe
-impl<'a> SafeDisplay<'a, &'a Self> for JinxxyError {
-    fn safe_display(&'a self) -> &'a Self {
-        self
+impl<'a> SafeDisplay<'a, RedactedJinxxyError<'a>> for JinxxyError {
+    fn safe_display(&'a self) -> RedactedJinxxyError<'a> {
+        RedactedJinxxyError(self)
     }
 }
 

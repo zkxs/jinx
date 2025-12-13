@@ -15,7 +15,7 @@ use crate::error::JinxError;
 use commands::*;
 use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
 use serenity::{ActivityData, Colour, CreateEmbed, CreateMessage, GatewayIntents};
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info};
 
@@ -78,9 +78,10 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
     ]
 });
 
-/// User data, which is stored and accessible in all command invocations
+/// User data, which is stored and accessible in all command invocations. Cloning is by-reference.
+#[derive(Clone)]
 struct Data {
-    db: Arc<JinxDb>,
+    db: JinxDb,
     api_cache: ApiCache,
 }
 
@@ -97,10 +98,7 @@ pub async fn run_bot() -> Result<(), Error> {
         .union(GatewayIntents::GUILD_MESSAGES)
         .union(GatewayIntents::DIRECT_MESSAGES);
 
-    // we need this thing all over the place, so wrap it in an Arc
-    let db = Arc::new(db);
     let framework_db_clone = db.clone();
-
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             // all commands must appear in this list otherwise poise won't recognize interactions for them

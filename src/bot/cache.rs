@@ -72,7 +72,7 @@ pub struct ApiCache {
 }
 
 impl ApiCache {
-    pub fn new(db: Arc<JinxDb>) -> Self {
+    pub fn new(db: JinxDb) -> Self {
         let map: MapType = Default::default();
 
         const QUEUE_SIZE: usize = 1024;
