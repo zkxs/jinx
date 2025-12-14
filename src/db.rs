@@ -5,13 +5,10 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
-use poise::futures_util::StreamExt;
+use poise::futures_util::{StreamExt, TryStreamExt};
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
-use sqlx::pool::PoolConnection;
-use sqlx::sqlite::{
-    SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteSynchronous,
-};
-use sqlx::{Executor, FromRow, Pool, Sqlite, SqlitePool, Type, error::Error as SqlxError};
+use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow, SqliteSynchronous};
+use sqlx::{Executor, Pool, Sqlite, SqliteConnection, SqlitePool, Type, error::Error as SqlxError, Encode, Decode, Row};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -29,7 +26,6 @@ const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_secon
 
 type SqliteResult<T> = Result<T, SqlxError>;
 type BoxedError = Box<dyn std::error::Error + Send + Sync>;
-type Connection = PoolConnection<Sqlite>;
 
 /// Set up the database
 async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
@@ -491,18 +487,16 @@ impl JinxDb {
 
     pub async fn add_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(r#"INSERT OR IGNORE INTO owner (owner_id) VALUES (?)"#, owner_id)
-            .execute(&mut connection)
+            .execute(&self.read_write_pool)
             .await?;
         Ok(())
     }
 
     pub async fn delete_owner(&self, owner_id: u64) -> SqliteResult<()> {
         let owner_id = owner_id as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(r#"DELETE FROM owner WHERE owner_id = ?"#, owner_id)
-            .execute(&mut connection)
+            .execute(&self.read_write_pool)
             .await?;
         Ok(())
     }
@@ -513,20 +507,19 @@ impl JinxDb {
     }
 
     pub async fn get_owners(&self) -> SqliteResult<Vec<u64>> {
-        let mut connection = self.read_only_pool.acquire().await?;
         sqlx::query!(r#"SELECT owner_id FROM owner"#)
-            .fetch_all(&mut connection)
+            .map(|row| row.owner_id as u64)
+            .fetch_all(&self.read_only_pool)
             .await
     }
 
     pub async fn is_user_owner(&self, owner_id: u64) -> SqliteResult<bool> {
         let owner_id = owner_id as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        sqlx::query!(
-            r#"SELECT EXISTS(SELECT * FROM owner WHERE owner_id = ?) as is_owner"#,
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT * FROM owner WHERE owner_id = ?) AS "is_owner: bool""#,
             owner_id
         )
-        .fetch_one(&mut connection)
+        .fetch_one(&self.read_only_pool)
         .await
     }
 
@@ -566,7 +559,6 @@ impl JinxDb {
     ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(
             r#"INSERT OR IGNORE INTO license_activation (guild_id, license_id, license_activation_id, user_id, product_id, version_id) VALUES (?, ?, ?, ?, ?, ?)"#,
             guild_id,
@@ -574,9 +566,10 @@ impl JinxDb {
             license_activation_id,
             user_id,
             product_id,
-            version_id)
-            .execute(&mut connection)
-            .await?;
+            version_id
+        )
+        .execute(&self.read_write_pool)
+        .await?;
         Ok(())
     }
 
@@ -592,7 +585,6 @@ impl JinxDb {
     ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         let update_count = sqlx::query!(
             r#"UPDATE license_activation SET product_id = :product_id, version_id = :version_id WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#,
             guild_id,
@@ -600,18 +592,23 @@ impl JinxDb {
             license_activation_id,
             user_id,
             product_id,
-            version_id)
-            .execute(&mut connection)
-            .await?
-            .rows_affected();
+            version_id
+        )
+        .execute(&self.read_write_pool)
+        .await?
+        .rows_affected();
         Ok(update_count != 0)
     }
 
     pub async fn backfill_license_info(&self) -> Result<usize, BoxedError> {
-        let mut connection = self.read_write_pool.acquire().await?;
-        //TODO: this tries to cast db i64 to u64 for guild_id and user_id
-        let license_records = sqlx::query_as!(LicenseRecord, r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
-            .fetch_all(&mut connection)
+        let license_records = sqlx::query!(r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
+            .map(|row| LicenseRecord {
+                guild_id: GuildId::new(row.guild_id as u64),
+                license_id: row.license_id,
+                license_activation_id: row.license_activation_id,
+                user_id: row.user_id as u64,
+            })
+            .fetch_all(&self.read_write_pool)
             .await?;
 
         let mut updated: usize = 0;
@@ -654,38 +651,43 @@ impl JinxDb {
     ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        let delete_count = sqlx::query!(r#"DELETE FROM license_activation WHERE guild_id = :guild AND license_id = :license AND license_activation_id = :activation AND user_id = :user"#
-            ,guild_id
-            ,license_id
-            ,license_activation_id
-            ,user_id)
-            .execute(&mut connection)
-            .await?
-            .rows_affected();
+        let delete_count = sqlx::query!(
+            r#"DELETE FROM license_activation WHERE guild_id = ? AND license_id = ? AND license_activation_id = ? AND user_id = ?"#,
+            guild_id,
+            license_id,
+            license_activation_id,
+            user_id
+        )
+        .execute(&self.read_write_pool)
+        .await?
+        .rows_affected();
         Ok(delete_count != 0)
     }
 
     /// Locally check if a license is locked. This may be out of sync with Jinxxy!
     pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
         //TODO: could use an index
-        sqlx::query!(r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND license_id = :license AND user_id = 0) as is_locked"#
-            ,guild_id
-            ,license_id)
-            .fetch_one(&mut connection)
-            .await
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = ? AND license_id = ? AND user_id = 0) AS "is_locked: bool""#,
+            guild_id,
+            license_id
+        )
+        .fetch_one(&self.read_only_pool)
+        .await
     }
 
     /// Set Jinxxy API key for this guild
     pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        sqlx::query!(r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (:guild, :api_key) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#
-            ,guild_id
-            ,&api_key)
-            .execute(&mut connection).await?;
+        let api_key_str = api_key.as_str();
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#,
+            guild_id,
+            api_key_str
+        )
+        .execute(&self.read_write_pool)
+        .await?;
         let api_key_cache = self.api_key_cache.pin();
         api_key_cache.insert(guild, Some(api_key));
         Ok(())
@@ -699,9 +701,8 @@ impl JinxDb {
         } else {
             // cache miss
             let guild_id = guild.get() as i64;
-            let mut connection = self.read_only_pool.acquire().await?;
             let api_key = sqlx::query_scalar!(r#"SELECT jinxxy_api_key FROM guild WHERE guild_id = ?"#, guild_id)
-                .fetch_optional(&mut connection)
+                .fetch_optional(&self.read_only_pool)
                 .await?
                 .flatten();
             self.api_key_cache.pin().insert(guild, api_key.clone());
@@ -713,9 +714,8 @@ impl JinxDb {
     pub async fn set_blanket_role_id(&self, guild: GuildId, role_id: Option<RoleId>) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role_id.map(|role_id| role_id.get() as i64);
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(r#"INSERT INTO guild (guild_id, blanket_role_id) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#, guild_id, role_id)
-            .execute(&mut connection)
+            .execute(&self.read_write_pool)
             .await?;
         Ok(())
     }
@@ -724,14 +724,13 @@ impl JinxDb {
     pub async fn link_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(
             r#"INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (?, ?, ?)"#,
             guild_id,
             product_id,
             role_id
         )
-        .execute(&mut connection)
+        .execute(&self.read_write_pool)
         .await?;
         Ok(())
     }
@@ -740,14 +739,13 @@ impl JinxDb {
     pub async fn unlink_product(&self, guild: GuildId, product_id: String, role: RoleId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
         let delete_count = sqlx::query!(
             r#"DELETE FROM product_role WHERE guild_id = ? AND product_id = ? AND role_id = ?"#,
             guild_id,
             product_id,
             role_id
         )
-        .execute(&mut connection)
+        .execute(&self.read_write_pool)
         .await?
         .rows_affected();
         Ok(delete_count != 0)
@@ -763,9 +761,8 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let (product_id, version_id) = product_version_id.into_db_values();
-        let mut connection = self.read_write_pool.acquire().await?;
         sqlx::query!(r#"INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (?, ?, ?, ?)"#, guild_id, product_id, version_id, role_id)
-            .execute(&mut connection)
+            .execute(&self.read_write_pool)
             .await?;
         Ok(())
     }
@@ -780,9 +777,8 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let (product_id, version_id) = product_version_id.into_db_values();
-        let mut connection = self.read_write_pool.acquire().await?;
         let delete_count = sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ? AND role_id = ?"#, guild_id, product_id, version_id, role_id)
-            .execute(&mut connection)
+            .execute(&self.read_write_pool)
             .await?
             .rows_affected();
         Ok(delete_count != 0)
@@ -801,7 +797,7 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut connection)
+        .execute(&mut *connection)
         .await?
         .rows_affected();
         // handle product links
@@ -810,7 +806,7 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut connection)
+        .execute(&mut *connection)
         .await?
         .rows_affected();
         // handle product-version links
@@ -819,7 +815,7 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut connection)
+        .execute(&mut *connection)
         .await?
         .rows_affected();
 
@@ -834,30 +830,32 @@ impl JinxDb {
     ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.into_db_values();
-        let mut connection = self.read_only_pool.acquire().await?;
-        sqlx::query!(r#"SELECT blanket_role_id as "role_id!" from guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL
-                    UNION SELECT role_id as "role_id!" FROM product_role WHERE guild_id = :guild AND product_id = :product
-                    UNION SELECT role_id as "role_id!" FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#,
+        sqlx::query!(
+        r#"SELECT blanket_role_id AS "role_id!" from guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
+           UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?
+           UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
+        guild_id,
+        guild_id,
+        product_id,
         guild_id,
         product_id,
         version_id)
             .map(|row| RoleId::new(row.role_id as u64))
-            .fetch_all(&mut connection)
+            .fetch_all(&self.read_only_pool)
             .await
     }
 
     /// Get roles for a product. This is ONLY product-level blanket grants.
     pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: String) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
         // uses `role_lookup` index
         sqlx::query!(
-            r#"SELECT role_id as "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?"#,
+            r#"SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?"#,
             guild_id,
             product_id
         )
         .map(|row| RoleId::new(row.role_id as u64))
-        .fetch_all(&mut connection)
+        .fetch_all(&self.read_only_pool)
         .await
     }
 
@@ -869,68 +867,51 @@ impl JinxDb {
     ) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.into_db_values();
-        let mut connection = self.read_only_pool.acquire().await?;
         sqlx::query!(
-            r#"SELECT role_id FROM product_version_role WHERE guild_id = :guild AND product_id = :product AND version_id = :version"#,
+            r#"SELECT role_id FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
             guild_id,
             product_id,
             version_id
         )
-            .map(|row| RoleId::new(row.role_id as u64))
-            .fetch_all(&mut connection)
-            .await
+        .map(|row| RoleId::new(row.role_id as u64))
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<Vec<UserId>> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        //TODO: continue sqlx migration
-        self.connection
-            .call(move |connection| {
-                //TODO: this could use an index, or even several indices
-                let mut statement = connection.prepare(
-                    "SELECT user_id FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild_id = :guild AND blanket_role_id = :role \
-                     UNION SELECT user_id FROM license_activation LEFT JOIN product_role USING (guild_id, product_id) WHERE guild_id = :guild AND role_id = :role \
-                     UNION SELECT user_id FROM license_activation LEFT JOIN product_version_role USING (guild_id, product_id, version_id) WHERE guild_id = :guild AND role_id = :role")?;
-                let result =
-                    statement.query_map(named_params! {":guild": guild_id, ":role": role_id }, |row| {
-                        let user_id: i64 = row.get(0)?;
-                        let user_id: UserId = UserId::new(user_id as u64);
-                        Ok(user_id)
-                    })?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        //TODO: this could use an index, or even several indices
+        sqlx::query!(
+            r#"SELECT user_id AS "user_id!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild_id = ? AND blanket_role_id = ?
+               UNION SELECT user_id AS "user_id!" FROM license_activation LEFT JOIN product_role USING (guild_id, product_id) WHERE guild_id = ? AND role_id = ?
+               UNION SELECT user_id AS "user_id!" FROM license_activation LEFT JOIN product_version_role USING (guild_id, product_id, version_id) WHERE guild_id = ? AND role_id = ?"#,
+            guild_id,
+            role_id,
+            guild_id,
+            role_id,
+            guild_id,
+            role_id
+        )
+        .map(|row| UserId::new(row.user_id as u64))
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// get distinct roles from all links
     pub async fn get_linked_roles(&self, guild: GuildId) -> SqliteResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = connection.prepare(
-                    "SELECT blanket_role_id AS role_id FROM guild WHERE guild_id = :guild AND blanket_role_id IS NOT NULL \
-                    UNION SELECT role_id FROM product_role WHERE guild_id = :guild \
-                    UNION SELECT role_id FROM product_version_role WHERE guild_id = :guild",
-                )?;
-                let result = statement.query_map(named_params! {":guild": guild_id}, |row| {
-                    let role_id: i64 = row.get(0)?;
-                    let role_id: RoleId = RoleId::new(role_id as u64);
-                    Ok(role_id)
-                })?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        sqlx::query!(
+            r#"SELECT blanket_role_id AS "role_id!" FROM guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
+               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ?
+               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ?"#,
+            guild_id,
+            guild_id,
+            guild_id,
+        )
+        .map(|row| RoleId::new(row.role_id as u64))
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// get all links
@@ -940,78 +921,73 @@ impl JinxDb {
     ) -> SqliteResult<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
 
-                // deal with global blanket
-                let mut blanket_statement = sqlx::query!(r#"SELECT blanket_role_id from guild where guild_id = ?"#)?;
-                let blanket_result: Option<Option<i64>> =
-                    blanket_statement.query_row([guild_id], |row| row.get(0)).optional()?;
-                let blanket_result = blanket_result.flatten().map(|role_id| RoleId::new(role_id as u64));
-                if let Some(blanket_role) = blanket_result {
-                    map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
-                }
+        let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
 
-                // deal with product blankets
-                //TODO: could use an index
-                let mut product_statement =
-                    sqlx::query!(r#"SELECT product_id, role_id FROM product_role WHERE guild_id = ?"#)?;
-                let product_result = product_statement.query_map([guild_id], |row| {
-                    let product_id: String = row.get(0)?;
-                    let role_id: i64 = row.get(1)?;
-                    Ok((RoleId::new(role_id as u64), product_id))
-                })?;
-                for row in product_result {
-                    let (role, product_id) = row?;
-                    map.entry(role)
-                        .or_default()
-                        .push(LinkSource::ProductBlanket { product_id });
-                }
+        // deal with global blanket
+        {
+            let blanket_result =
+                sqlx::query_scalar!(r#"SELECT blanket_role_id from guild where guild_id = ?"#, guild_id)
+                    .fetch_optional(&mut *connection)
+                    .await?
+                    .flatten()
+                    .map(|role_id| RoleId::new(role_id as u64));
+            if let Some(blanket_role) = blanket_result {
+                map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
+            }
+        }
 
-                // deal with specific links
-                //TODO: could use an index
-                let mut product_version_statement = sqlx::query!(
-                    r#"SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,
-                )?;
-                let product_version_result = product_version_statement.query_map([guild_id], |row| {
-                    let product_id: String = row.get(0)?;
-                    let product_version_id: String = row.get(1)?;
-                    let role_id: i64 = row.get(2)?;
-                    let product_version_id = ProductVersionId::from_db_values(product_id, product_version_id);
-                    Ok((RoleId::new(role_id as u64), product_version_id))
-                })?;
-                for row in product_version_result {
-                    let (role, product_version_id) = row?;
-                    map.entry(role)
-                        .or_default()
-                        .push(LinkSource::ProductVersion(product_version_id));
-                }
-                Ok(map)
+        // deal with product blankets
+        //TODO: could use an index
+        {
+            let mut product_result = sqlx::query!(
+                r#"SELECT product_id, role_id FROM product_role WHERE guild_id = ?"#,
+                guild_id
+            )
+            .map(|row| (RoleId::new(row.role_id as u64), row.product_id))
+            .fetch(&mut *connection);
+            while let Some((role, product_id)) = product_result.try_next().await? {
+                map.entry(role)
+                    .or_default()
+                    .push(LinkSource::ProductBlanket { product_id });
+            }
+        }
+
+        // deal with specific links
+        //TODO: could use an index
+        {
+            let mut product_version_result = sqlx::query!(
+                r#"SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,
+                guild_id
+            )
+            .map(|row| {
+                (
+                    RoleId::new(row.role_id as u64),
+                    ProductVersionId::from_db_values(row.product_id, row.version_id),
+                )
             })
-            .await
+            .fetch(&mut *connection);
+            while let Some((role, product_version_id)) = product_version_result.try_next().await? {
+                map.entry(role)
+                    .or_default()
+                    .push(LinkSource::ProductVersion(product_version_id));
+            }
+        }
+
+        Ok(map)
     }
 
     /// Locally get all licences a users has been recorded to activate. This may be out of sync with Jinxxy!
     pub async fn get_user_licenses(&self, guild: GuildId, user_id: u64) -> SqliteResult<Vec<String>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(
-                    r#"SELECT license_id FROM license_activation WHERE guild_id = :guild AND user_id = :user"#,
-                )?;
-                let result = statement.query_map(named_params! {":guild": guild_id, ":user": user_id}, |row| {
-                    let license_id: String = row.get(0)?;
-                    Ok(license_id)
-                })?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        let user_id = user_id as i64;
+        sqlx::query_scalar!(
+            r#"SELECT license_id FROM license_activation WHERE guild_id = ? AND user_id = ?"#,
+            guild_id,
+            user_id
+        )
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// Locally check if any activations exist for this user/license combo. This may be out of sync with Jinxxy!
@@ -1023,18 +999,14 @@ impl JinxDb {
     ) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license)"#)?;
-                let activation_exists =
-                    statement.query_row(named_params! {":guild": guild_id, ":user": user_id, ":license": license_id}, |row| {
-                        let exists: bool = row.get(0)?;
-                        Ok(exists)
-                    })?;
-                Ok(activation_exists)
-            })
-            .await
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = ? AND user_id = ? AND license_id = ?) AS "has_activations: bool""#,
+            guild_id,
+            user_id,
+            license_id
+        )
+        .fetch_one(&self.read_only_pool)
+        .await
     }
 
     /// Locally get all activations for a user and license has been recorded to activate. This may be out of sync with Jinxxy!
@@ -1046,424 +1018,303 @@ impl JinxDb {
     ) -> SqliteResult<Vec<String>> {
         let guild_id = guild.get() as i64;
         let user_id = user_id as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT license_activation_id FROM license_activation WHERE guild_id = :guild AND user_id = :user AND license_id = :license"#)?;
-                let result = statement.query_map(
-                    named_params! {":guild": guild_id, ":user": user_id, ":license": license_id},
-                    |row| {
-                        let activation_id: String = row.get(0)?;
-                        Ok(activation_id)
-                    },
-                )?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        sqlx::query_scalar!(
+            r#"SELECT license_activation_id FROM license_activation WHERE guild_id = ? AND user_id = ? AND license_id = ?"#,
+            guild_id,
+            user_id,
+            license_id
+        )
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// Locally get all users that have activated the given license. This may be out of sync with Jinxxy!
     pub async fn get_license_users(&self, guild: GuildId, license_id: String) -> SqliteResult<Vec<u64>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                //TODO: could use an index
-                let mut statement = sqlx::query!(
-                    r#"SELECT user_id FROM license_activation WHERE guild_id = :guild AND license_id = :license"#,
-                )?;
-                let result =
-                    statement.query_map(named_params! {":guild": guild_id, ":license": license_id}, |row| {
-                        let user_id: i64 = row.get(0)?;
-                        Ok(user_id as u64)
-                    })?;
-                let mut vec = Vec::with_capacity(result.size_hint().0);
-                for row in result {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        //TODO: could use an index
+        sqlx::query!(
+            r#"SELECT user_id FROM license_activation WHERE guild_id = ? AND license_id = ?"#,
+            guild_id,
+            license_id
+        )
+        .map(|row| row.user_id as u64)
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// Get DB size in bytes
     pub async fn size(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT page_count * page_size AS "size!" FROM pragma_page_count(), pragma_page_size()"#)
+            .map(|row| row.size as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of distinct users who have activated licenses
     pub async fn distinct_user_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let result: u64 = connection.query_row("SELECT count(DISTINCT user_id) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0", [], |row| row.get(0))?;
-            Ok(result)
-        }).await
+        sqlx::query!(r#"SELECT count(DISTINCT user_id) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
+            .await
     }
 
     /// Get count of configured guilds
     pub async fn guild_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 =
-                    connection.query_row("SELECT count(*) FROM guild WHERE test = 0", [], |row| row.get(0))?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE test = 0"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of distinct bot log channels
     pub async fn log_channel_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(DISTINCT log_channel_id) FROM guild WHERE test = 0",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT count(DISTINCT log_channel_id) AS "count!" FROM guild WHERE test = 0"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of guilds with blanket role set
     pub async fn blanket_role_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(*) FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(*) FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
-            .await
+        sqlx::query!(
+            r#"SELECT count(*) AS "count!" FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#
+        )
+        .map(|row| row.count as u64)
+        .fetch_one(&self.read_only_pool)
+        .await
     }
 
     /// Get count of product+version->role mappings
     pub async fn product_version_role_count(&self) -> SqliteResult<u64> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let result: u64 = connection.query_row(
-                    "SELECT count(*) FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(result)
-            })
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
             .await
     }
 
     /// Get count of license activations in a guild
     pub async fn guild_license_activation_count(&self, guild: GuildId) -> SqliteResult<u64> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"SELECT count(*) FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = :guild"#)?;
-            let result: u64 = statement.query_row(named_params! {":guild": guild_id}, |row| row.get(0))?;
-            Ok(result)
-        }).await
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.guild_id = ?"#, guild_id)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_only_pool)
+            .await
     }
 
     /// Get bot log channel
     pub async fn get_log_channel(&self, guild: GuildId) -> SqliteResult<Option<ChannelId>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        let channel_id = self
-            .connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT log_channel_id FROM guild WHERE guild_id = ?"#)?;
-                let result: Option<Option<i64>> = statement.query_row([guild_id], |row| row.get(0)).optional()?;
-                // inner optional is for if the guild has no log channel set
-                // outer optional is for if the guild does not exist in our DB
-                Ok(result.flatten())
-            })
+
+        // inner optional is for if the guild has no log channel set
+        // outer optional is for if the guild does not exist in our DB
+        let channel_id = sqlx::query_scalar!(r#"SELECT log_channel_id FROM guild WHERE guild_id = ?"#, guild_id)
+            .fetch_optional(&self.read_only_pool)
             .await?;
-        Ok(channel_id.map(|channel_id| ChannelId::new(channel_id as u64)))
+        let channel_id = channel_id.flatten().map(|channel_id| ChannelId::new(channel_id as u64));
+        Ok(channel_id)
     }
 
     /// Get all bot log channels.
     /// If `TEST_ONLY` is true, then only returns non-production servers. Otherwise, returns all servers.
     pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> SqliteResult<Vec<ChannelId>> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = if TEST_ONLY {
-                // only non-production servers
-                sqlx::query!(r#"SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL AND guild.test != 0"#)
-            } else {
-                // all servers, including production servers
-                sqlx::query!(r#"SELECT DISTINCT log_channel_id FROM guild WHERE log_channel_id IS NOT NULL"#)
-            }?;
-            let mapped_rows = statement.query_map((), |row| row.get(0).map(|id: i64| ChannelId::new(id as u64)))?;
-            let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-            for row in mapped_rows {
-                vec.push(row?);
-            }
-            Ok(vec)
-        }).await
+        if TEST_ONLY {
+            // only non-production servers
+            sqlx::query!(
+                r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test != 0"#
+            )
+            .map(|row| ChannelId::new(row.channel_id as u64))
+            .fetch_all(&self.read_only_pool)
+            .await
+        } else {
+            // all servers, including production servers
+            sqlx::query!(
+                r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL"#
+            )
+            .map(|row| ChannelId::new(row.channel_id as u64))
+            .fetch_all(&self.read_only_pool)
+            .await
+        }
     }
 
     /// Set or unset bot log channel
     pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let channel_id = channel.map(|channel| channel.get() as i64);
-        let mut connection = self.read_write_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, log_channel_id) VALUES (:guild, :channel) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id"#)?;
-            statement.execute(named_params! {":guild": guild_id, ":channel": channel_id})?;
-            Ok(())
-        }).await
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, log_channel_id) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id"#,
+            guild_id,
+            channel_id,
+        )
+        .execute(&self.read_write_pool)
+        .await?;
+        Ok(())
     }
 
     /// Set or unset this guild as a test guild
     pub async fn set_test(&self, guild: GuildId, test: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, test) VALUES (:guild, :test) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test"#)?;
-            statement.execute(named_params! {":guild": guild_id, ":test": test})?;
-            Ok(())
-        }).await
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, test) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test"#,
+            guild_id,
+            test
+        )
+        .execute(&self.read_write_pool)
+        .await?;
+        Ok(())
     }
 
     /// Check if a guild is a test guild
     pub async fn is_test_guild(&self, guild: GuildId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT test FROM guild WHERE guild_id = :guild"#)?;
-                let test = statement
-                    .query_row(named_params! {":guild": guild_id}, |row| {
-                        let test: bool = row.get(0)?;
-                        Ok(test)
-                    })
-                    .optional()?;
-                Ok(test.unwrap_or(false))
-            })
-            .await
+        sqlx::query_scalar!(
+            r#"SELECT test AS "is_test: bool" FROM guild WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_one(&self.read_only_pool)
+        .await
     }
 
     /// Set or unset this guild as an owner guild (gets extra slash commands)
     pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let mut statement = sqlx::query!(r#"INSERT INTO guild (guild_id, owner) VALUES (:guild, :owner) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner"#)?;
-            statement.execute(named_params! {":guild": guild_id, ":owner": owner})?;
-            Ok(())
-        }).await
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, owner) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner"#,
+            guild_id,
+            owner
+        )
+        .execute(&self.read_write_pool)
+        .await?;
+        Ok(())
     }
 
     /// Check if a guild is an owner guild (gets extra slash commands)
     pub async fn is_owner_guild(&self, guild: GuildId) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT owner FROM guild WHERE guild_id = :guild"#)?;
-                let owner = statement
-                    .query_row(named_params! {":guild": guild_id}, |row| {
-                        let owner: bool = row.get(0)?;
-                        Ok(owner)
-                    })
-                    .optional()?;
-                Ok(owner.unwrap_or(false))
-            })
-            .await
+
+        let is_owner_guild = sqlx::query_scalar!(
+            r#"SELECT owner AS "is_owner: bool" FROM guild WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_optional(&self.read_only_pool)
+        .await?
+        .unwrap_or(false);
+        Ok(is_owner_guild)
     }
 
     /// Check gumroad failure count for a guild
     pub async fn get_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT gumroad_failure_count FROM guild WHERE guild_id = :guild"#)?;
-                let gumroad_failure_count = statement
-                    .query_row(named_params! {":guild": guild_id}, |row| {
-                        let gumroad_failure_count: i64 = row.get(0)?;
-                        Ok(gumroad_failure_count as u64)
-                    })
-                    .optional()?;
-                Ok(gumroad_failure_count)
-            })
-            .await
+        sqlx::query!(
+            r#"SELECT gumroad_failure_count FROM guild WHERE guild_id = ?"#,
+            guild_id
+        )
+        .map(|row| row.gumroad_failure_count as u64)
+        .fetch_optional(&self.read_only_pool)
+        .await
     }
 
     /// Increment gumroad failure count for a guild
     pub async fn increment_gumroad_failure_count(&self, guild: GuildId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(
-                    r#"UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = :guild"#,
-                )?;
-                statement.execute(named_params! {":guild": guild_id})?;
-                Ok(())
-            })
-            .await
+        sqlx::query!(
+            r#"UPDATE guild SET gumroad_failure_count = gumroad_failure_count + 1 WHERE guild_id = ?"#,
+            guild_id
+        )
+        .execute(&self.read_write_pool)
+        .await?;
+        Ok(())
     }
 
     /// Get tuples of `(guild_id, log_channel_id)` with pending gumroad nag
     pub async fn get_guilds_pending_gumroad_nag(&self) -> SqliteResult<Vec<GuildGumroadInfo>> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT guild_id, log_channel_id, gumroad_failure_count FROM guild WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10 AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)"#,
-                )?;
-                let mapped_rows = statement
-                    .query_map((), |row| {
-                        let guild_id: i64 = row.get(0)?;
-                        let log_channel_id: i64 = row.get(1)?;
-                        let gumroad_failure_count: i64 = row.get(2)?;
-                        Ok(GuildGumroadInfo {
-                            guild_id: GuildId::new(guild_id as u64),
-                            log_channel_id: ChannelId::new(log_channel_id as u64),
-                            gumroad_failure_count: gumroad_failure_count as u64,
-                        })
-                    })?;
-                let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-                for row in mapped_rows {
-                    vec.push(row?);
-                }
-                Ok(vec)
-            })
-            .await
+        sqlx::query!(
+            r#"SELECT guild_id, log_channel_id AS "log_channel_id!", gumroad_failure_count FROM guild
+               WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10
+               AND (gumroad_failure_count * 5) > (SELECT count(*) FROM license_activation WHERE license_activation.guild_id = guild.guild_id)"#
+        )
+        .map(|row| GuildGumroadInfo {
+            guild_id: GuildId::new(row.guild_id as u64),
+            log_channel_id: ChannelId::new(row.log_channel_id as u64),
+            gumroad_failure_count: row.gumroad_failure_count as u64,
+        })
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 
     /// Check gumroad nag count for a guild
     pub async fn get_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<Option<u64>> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(r#"SELECT gumroad_nag_count FROM guild WHERE guild_id = :guild"#)?;
-                let gumroad_nag_count = statement
-                    .query_row(named_params! {":guild": guild_id}, |row| {
-                        let gumroad_nag_count: i64 = row.get(0)?;
-                        Ok(gumroad_nag_count as u64)
-                    })
-                    .optional()?;
-                Ok(gumroad_nag_count)
-            })
+        sqlx::query!(r#"SELECT gumroad_nag_count FROM guild WHERE guild_id = ?"#, guild_id)
+            .map(|row| row.gumroad_nag_count as u64)
+            .fetch_optional(&self.read_only_pool)
             .await
     }
 
     /// Increment gumroad nag count for a guild
     pub async fn increment_gumroad_nag_count(&self, guild: GuildId) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
-        let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let mut statement = sqlx::query!(
-                    r#"UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = :guild"#,
-                )?;
-                statement.execute(named_params! {":guild": guild_id})?;
-                Ok(())
-            })
-            .await
+        sqlx::query!(
+            r#"UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = ?"#,
+            guild_id
+        )
+        .execute(&self.read_write_pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn get_guild_cache(&self, guild: GuildId) -> SqliteResult<GuildCache> {
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                let cache_time = JinxDb::get_cache_time(connection, guild)?;
-                let product_name_info = JinxDb::product_names_in_guild_sync(connection, guild)?;
-                let product_version_name_info = JinxDb::product_version_names_in_guild(connection, guild)?;
-                Ok(GuildCache {
-                    product_name_info,
-                    product_version_name_info,
-                    cache_time,
-                })
-            })
-            .await
+        let cache_time = get_cache_time(&mut connection, guild).await?;
+        let product_name_info = product_names_in_guild_sync(&mut connection, guild).await?;
+        let product_version_name_info = product_version_names_in_guild(&mut connection, guild).await?;
+        Ok(GuildCache {
+            product_name_info,
+            product_version_name_info,
+            cache_time,
+        })
     }
 
     pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> SqliteResult<()> {
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                JinxDb::persist_product_names(connection, guild, cache_entry.product_name_info)?;
-                JinxDb::persist_product_version_names(connection, guild, cache_entry.product_version_name_info)?;
-                JinxDb::set_cache_time(connection, guild, cache_entry.cache_time)?;
-                Ok(())
-            })
-            .await
+        persist_product_names(&mut connection, guild, cache_entry.product_name_info).await?;
+        persist_product_version_names(&mut connection, guild, cache_entry.product_version_name_info).await?;
+        set_cache_time(&mut connection, guild, cache_entry.cache_time).await?;
+        Ok(())
     }
 
     /// Delete all cache entries for all guilds
     pub async fn clear_cache(&self) -> SqliteResult<()> {
         let mut connection = self.read_write_pool.acquire().await?;
-        self.connection
-            .call(move |connection| {
-                sqlx::query!(r#"DELETE FROM product"#).execute(&mut connection).await?;
-                sqlx::query!(r#"DELETE FROM product_version"#)
-                    .execute(&mut connection)
-                    .await?;
-                sqlx::query!(r#"UPDATE guild SET cache_time_unix_ms = 0"#)
-                    .execute(&mut connection)
-                    .await?;
-                Ok(())
-            })
-            .await
+        sqlx::query!(r#"DELETE FROM product"#).execute(&mut *connection).await?;
+        sqlx::query!(r#"DELETE FROM product_version"#)
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query!(r#"UPDATE guild SET cache_time_unix_ms = 0"#)
+            .execute(&mut *connection)
+            .await?;
+        Ok(())
     }
 
     /// Get cached name info for products in a guild
     pub async fn product_names_in_guild(&self, guild: GuildId) -> SqliteResult<Vec<ProductNameInfo>> {
         let mut connection = self.read_only_pool.acquire().await?;
-        self.connection
-            .call(move |connection| Self::product_names_in_guild_sync(connection, guild))
-            .await
+        product_names_in_guild_sync(&mut connection, guild).await
     }
 
     /// Get versions for a product
@@ -1472,124 +1323,121 @@ impl JinxDb {
         guild: GuildId,
         product_id: String,
     ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
-        let mut connection = self.read_only_pool.acquire().await?;
-        self.connection.call(move |connection| {
-            let guild_id = guild.get() as i64;
-            //TODO: could use an index
-            let mut statement = sqlx::query!(r#"SELECT version_id, product_version_name FROM product_version WHERE guild_id = :guild AND product_id = :product_id"#,
-            )?;
-            let mapped_rows = statement.query_map(named_params! {":guild": guild_id, ":product_id": product_id}, |row| {
-                let id = row.get(0)?;
-                let name = row.get(1)?;
-                let info = ProductVersionNameInfo {
-                    id: ProductVersionId { product_id: product_id.clone(), product_version_id: id },
-                    product_version_name: name,
-                };
-                Ok(info)
-            })?;
-            let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-            for row in mapped_rows {
-                vec.push(row?);
-            }
-            Ok(vec)
-        }).await
+        let guild_id = guild.get() as i64;
+        //TODO: could use an index
+        sqlx::query!(
+            r#"SELECT version_id, product_version_name FROM product_version WHERE guild_id = ? AND product_id = ?"#,
+            guild_id,
+            product_id
+        )
+        .map(|row| ProductVersionNameInfo {
+            id: ProductVersionId {
+                product_id: product_id.clone(),
+                product_version_id: Some(row.version_id),
+            },
+            product_version_name: row.product_version_name,
+        })
+        .fetch_all(&self.read_only_pool)
+        .await
     }
 }
 
-async fn get_setting_sync<T>(connection: &mut Connection, key: &str) -> SqliteResult<Option<T>>
+async fn get_setting_sync<'r, T>(connection: &mut SqliteConnection, key: &str) -> SqliteResult<Option<T>>
 where
-    T: Type<Sqlite> + 'static,
+    T: Decode<'r, Sqlite> + Type<Sqlite> + Clone + 'r,
 {
-    let result = sqlx::query!(r#"SELECT value FROM settings WHERE key = ?"#, key)
+    let result = sqlx::query(r#"SELECT value FROM settings WHERE key = ?"#)
+        .bind(key)
         .fetch_optional(connection)
         .await?;
-    Ok(result.map(|r| r.0))
+    match result {
+        Some(row) => {
+            let value: &Option<T> = row.try_get(0)?;
+            Ok(value.as_ref().cloned())
+        }
+        None => Ok(None)
+    }
 }
 
-async fn set_setting_sync<T>(connection: &mut Connection, key: &str, value: T) -> SqliteResult<bool>
+async fn set_setting_sync<T>(connection: &mut SqliteConnection, key: &'static str, value: T) -> SqliteResult<bool>
 where
-    T: Type<Sqlite> + 'static,
+    T: Encode<'static, Sqlite> + Type<Sqlite> + 'static,
 {
-    let update_count = sqlx::query!(
-        r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#,
-        key,
-        value
-    )
-    .execute(connection)
-    .await?
-    .rows_affected();
+    let update_count = sqlx::query(r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#)
+        .bind(key)
+        .bind(value)
+        .execute(connection)
+        .await?
+        .rows_affected();
     Ok(update_count != 0)
 }
 
-fn get_cache_time(connection: &mut Connection, guild: GuildId) -> SqliteResult<SimpleTime> {
+async fn get_cache_time(connection: &mut SqliteConnection, guild: GuildId) -> SqliteResult<SimpleTime> {
     let guild_id = guild.get() as i64;
-    let mut statement = sqlx::query!(r#"SELECT cache_time_unix_ms FROM guild WHERE guild_id = :guild"#)?;
-    let cache_time_unix_ms = statement.query_row(named_params! {":guild": guild_id}, |row| {
-        let cache_time_unix_ms: u64 = row.get(0)?;
-        Ok(cache_time_unix_ms)
-    })?;
-    Ok(SimpleTime::from_unix_millis(cache_time_unix_ms))
+    let cache_time_unix_ms =
+        sqlx::query_scalar!(r#"SELECT cache_time_unix_ms FROM guild WHERE guild_id = ?"#, guild_id)
+            .fetch_one(connection)
+            .await?;
+    Ok(SimpleTime::from_unix_millis(cache_time_unix_ms as u64))
 }
 
-fn set_cache_time(connection: &mut Connection, guild: GuildId, time: SimpleTime) -> SqliteResult<()> {
+async fn set_cache_time(connection: &mut SqliteConnection, guild: GuildId, time: SimpleTime) -> SqliteResult<()> {
     let guild_id = guild.get() as i64;
-    let mut statement = sqlx::query!(
-        r#"INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (:guild, :time) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms"#
-    )?;
-    statement.execute(named_params! {":guild": guild_id, ":time": time.as_epoch_millis()})?;
+    let cache_time_unix_ms = time.as_epoch_millis() as i64;
+    sqlx::query!(
+        r#"INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms"#,
+        guild_id,
+        cache_time_unix_ms
+    )
+    .execute(connection)
+    .await?;
     Ok(())
 }
 
 /// Get cached name info for products in a guild
-fn product_names_in_guild_sync(connection: &mut Connection, guild: GuildId) -> SqliteResult<Vec<ProductNameInfo>> {
+async fn product_names_in_guild_sync(
+    connection: &mut SqliteConnection,
+    guild: GuildId,
+) -> SqliteResult<Vec<ProductNameInfo>> {
     let guild_id = guild.get() as i64;
-    let mut statement = sqlx::query!(r#"SELECT product_id, product_name, etag FROM product WHERE guild_id = :guild"#)?;
-    let mapped_rows = statement.query_map(named_params! {":guild": guild_id}, |row| {
-        let product_id: String = row.get(0)?;
-        let product_name: String = row.get(1)?;
-        let etag: Option<Vec<u8>> = row.get(2)?;
-        let info = ProductNameInfo {
-            id: product_id,
-            value: ProductNameInfoValue { product_name, etag },
-        };
-        Ok(info)
-    })?;
-    let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-    for row in mapped_rows {
-        vec.push(row?);
-    }
-    Ok(vec)
+    sqlx::query!(
+        r#"SELECT product_id, product_name, etag FROM product WHERE guild_id = ?"#,
+        guild_id
+    )
+    .map(|row| ProductNameInfo {
+        id: row.product_id,
+        value: ProductNameInfoValue {
+            product_name: row.product_name,
+            etag: row.etag,
+        },
+    })
+    .fetch_all(connection)
+    .await
 }
 
 /// Get name info for products versions in a guild
-fn product_version_names_in_guild(
-    connection: &mut Connection,
+async fn product_version_names_in_guild(
+    connection: &mut SqliteConnection,
     guild: GuildId,
 ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
     let guild_id = guild.get() as i64;
-    let mut statement = sqlx::query!(
-        r#"SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = :guild"#,
-    )?;
-    let mapped_rows = statement.query_map(named_params! {":guild": guild_id}, |row| {
-        let product_id: String = row.get(0)?;
-        let version_id: String = row.get(1)?;
-        let product_version_name: String = row.get(2)?;
-        let id = ProductVersionId::from_db_values(product_id, version_id);
-        let info = ProductVersionNameInfo {
-            id,
-            product_version_name,
-        };
-        Ok(info)
-    })?;
-    let mut vec = Vec::with_capacity(mapped_rows.size_hint().0);
-    for row in mapped_rows {
-        vec.push(row?);
-    }
-    Ok(vec)
+    sqlx::query!(
+        r#"SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = ?"#,
+        guild_id
+    )
+    .map(|row| ProductVersionNameInfo {
+        id: ProductVersionId {
+            product_id: row.product_id,
+            product_version_id: Some(row.version_id),
+        },
+        product_version_name: row.product_version_name,
+    })
+    .fetch_all(connection)
+    .await
 }
 
-fn persist_product_names(
-    connection: &mut Connection,
+async fn persist_product_names(
+    connection: &mut SqliteConnection,
     guild: GuildId,
     product_name_info: Vec<ProductNameInfo>,
 ) -> SqliteResult<()> {
@@ -1629,8 +1477,8 @@ fn persist_product_names(
     Ok(())
 }
 
-fn persist_product_version_names(
-    connection: &mut Connection,
+async fn persist_product_version_names(
+    connection: &mut SqliteConnection,
     guild: GuildId,
     product_version_name_info: Vec<ProductVersionNameInfo>,
 ) -> SqliteResult<()> {
@@ -1708,7 +1556,6 @@ impl ProductVersionId {
 }
 
 /// Used internally in [`JinxDb::backfill_license_info`]
-#[derive(FromRow)]
 struct LicenseRecord {
     guild_id: GuildId,
     license_id: String,
