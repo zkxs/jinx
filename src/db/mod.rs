@@ -338,15 +338,23 @@ impl JinxDb {
     }
 
     /// Set Jinxxy API key for this guild
-    pub async fn set_jinxxy_api_key(&self, guild: GuildId, api_key: String) -> SqliteResult<()> {
+    pub async fn set_jinxxy_api_key(
+        &self,
+        guild: GuildId,
+        api_key: String,
+        user_id: String,
+        username: Option<String>,
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let api_key_str = api_key.as_str();
         let mut connection = self.write_connection().await?;
         sqlx::query!(
-            r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (?, ?)
+            r#"INSERT INTO guild (guild_id, jinxxy_api_key, jinxxy_user_id, jinxxy_username) VALUES (?, ?, ?, ?)
                ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#,
             guild_id,
-            api_key_str
+            api_key_str,
+            user_id,
+            username
         )
         .execute(&mut *connection)
         .await?;

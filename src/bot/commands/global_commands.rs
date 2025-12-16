@@ -6,6 +6,7 @@ use crate::bot::util;
 use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::constants;
 use crate::error::JinxError;
+use crate::http::jinxxy::GetUsername;
 use crate::http::{jinxxy, update_checker};
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
@@ -120,11 +121,13 @@ pub(in crate::bot) async fn init(
         match jinxxy::get_own_user(api_key).await {
             Ok(auth_user) => {
                 let has_required_scopes = auth_user.has_required_scopes();
+                let user_id = auth_user.id.clone();
+                let username = auth_user.username().map(|s| s.to_string());
                 let display_name = auth_user.into_display_name();
                 context
                     .data()
                     .db
-                    .set_jinxxy_api_key(guild_id, api_key.to_string())
+                    .set_jinxxy_api_key(guild_id, api_key.to_string(), user_id, username)
                     .await?;
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
                 let reply = success_reply(
