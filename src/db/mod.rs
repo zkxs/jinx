@@ -5,7 +5,9 @@ mod schema_v1;
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetUsername, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{
+    GetUsername, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo,
+};
 use crate::time::SimpleTime;
 use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
@@ -285,7 +287,8 @@ impl JinxDb {
                         r#"UPDATE guild SET jinxxy_user_id = ?, jinxxy_username = ?"#,
                         user_id,
                         user_name
-                    ).execute(&mut *connection)
+                    )
+                    .execute(&mut *connection)
                     .await?;
                     updated += 1;
                 }
