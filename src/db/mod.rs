@@ -278,22 +278,23 @@ impl JinxDb {
             .fetch_all(&mut *connection)
             .await?;
         for row in rows {
-            let guild_id = row.guild_id as u64;
+            let guild_id = row.guild_id;
             match jinxxy::get_own_user(&row.api_key).await {
                 Ok(auth_user) => {
                     let user_id = auth_user.id.as_str();
                     let user_name = auth_user.username();
                     sqlx::query!(
-                        r#"UPDATE guild SET jinxxy_user_id = ?, jinxxy_username = ?"#,
+                        r#"UPDATE guild SET jinxxy_user_id = ?, jinxxy_username = ? WHERE guild_id = ?"#,
                         user_id,
-                        user_name
+                        user_name,
+                        guild_id
                     )
                     .execute(&mut *connection)
                     .await?;
                     updated += 1;
                 }
                 Err(e) => {
-                    warn!("Failed to get own user for {}, skipping: {}", guild_id, e);
+                    warn!("Failed to get own user for {}, skipping: {}", guild_id as u64, e);
                 }
             }
         }
