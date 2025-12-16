@@ -38,25 +38,25 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "settings" (
-                    key                    TEXT PRIMARY KEY,
-                    value                  ANY
-                ) STRICT"#,
+                         key                    TEXT PRIMARY KEY,
+                         value                  ANY
+                     ) STRICT"#,
         )
         .await?;
 
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS guild (
-                     guild_id               INTEGER PRIMARY KEY,
-                     jinxxy_api_key         TEXT,
-                     log_channel_id         INTEGER,
-                     test                   INTEGER NOT NULL DEFAULT 0,
-                     owner                  INTEGER NOT NULL DEFAULT 0,
-                     gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
-                     gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
-                     cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
-                     blanket_role_id        INTEGER
-                 ) STRICT"#,
+                         guild_id               INTEGER PRIMARY KEY,
+                         jinxxy_api_key         TEXT,
+                         log_channel_id         INTEGER,
+                         test                   INTEGER NOT NULL DEFAULT 0,
+                         owner                  INTEGER NOT NULL DEFAULT 0,
+                         gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
+                         gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
+                         cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
+                         blanket_role_id        INTEGER
+                     ) STRICT"#,
         )
         .await?;
 
@@ -64,12 +64,12 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product (
-                     guild_id               INTEGER NOT NULL,
-                     product_id             TEXT NOT NULL,
-                     product_name           TEXT NOT NULL,
-                     etag                   BLOB,
-                     PRIMARY KEY            (guild_id, product_id)
-                 ) STRICT"#,
+                         guild_id               INTEGER NOT NULL,
+                         product_id             TEXT NOT NULL,
+                         product_name           TEXT NOT NULL,
+                         etag                   BLOB,
+                         PRIMARY KEY            (guild_id, product_id)
+                     ) STRICT"#,
         )
         .await?;
     // index used for initial cache load
@@ -81,12 +81,12 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version (
-                     guild_id               INTEGER NOT NULL,
-                     product_id             TEXT NOT NULL,
-                     version_id             TEXT NOT NULL,
-                     product_version_name   TEXT NOT NULL,
-                     PRIMARY KEY            (guild_id, product_id, version_id)
-                 ) STRICT"#,
+                         guild_id               INTEGER NOT NULL,
+                         product_id             TEXT NOT NULL,
+                         version_id             TEXT NOT NULL,
+                         product_version_name   TEXT NOT NULL,
+                         PRIMARY KEY            (guild_id, product_id, version_id)
+                     ) STRICT"#,
         )
         .await?;
     // index used for initial cache load
@@ -98,11 +98,11 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_role (
-                     guild_id               INTEGER NOT NULL,
-                     product_id             TEXT NOT NULL,
-                     role_id                INTEGER NOT NULL,
-                     PRIMARY KEY            (guild_id, product_id, role_id)
-                 ) STRICT"#,
+                         guild_id               INTEGER NOT NULL,
+                         product_id             TEXT NOT NULL,
+                         role_id                INTEGER NOT NULL,
+                         PRIMARY KEY            (guild_id, product_id, role_id)
+                     ) STRICT"#,
         )
         .await?;
     connection
@@ -113,12 +113,12 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version_role (
-                     guild_id               INTEGER NOT NULL,
-                     product_id             TEXT NOT NULL,
-                     version_id             TEXT NOT NULL,
-                     role_id                INTEGER NOT NULL,
-                     PRIMARY KEY            (guild_id, product_id, version_id, role_id)
-                 ) STRICT"#,
+                         guild_id               INTEGER NOT NULL,
+                         product_id             TEXT NOT NULL,
+                         version_id             TEXT NOT NULL,
+                         role_id                INTEGER NOT NULL,
+                         PRIMARY KEY            (guild_id, product_id, version_id, role_id)
+                     ) STRICT"#,
         )
         .await?;
     // index used for initial cache load
@@ -127,14 +127,14 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS license_activation (
-                     guild_id               INTEGER NOT NULL,
-                     license_id             TEXT NOT NULL,
-                     license_activation_id  TEXT NOT NULL,
-                     user_id                INTEGER NOT NULL,
-                     product_id             TEXT,
-                     version_id             TEXT,
-                     PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id)
-                 ) STRICT"#,
+                         guild_id               INTEGER NOT NULL,
+                         license_id             TEXT NOT NULL,
+                         license_activation_id  TEXT NOT NULL,
+                         user_id                INTEGER NOT NULL,
+                         product_id             TEXT,
+                         version_id             TEXT,
+                         PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id)
+                     ) STRICT"#,
         )
         .await?;
     connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (guild_id, license_id, user_id)"#).await?;
@@ -251,114 +251,157 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     let start = Instant::now();
     let mut connection = pool.acquire().await?;
 
+    // simple key-value settings
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "settings" (
-                key                    TEXT PRIMARY KEY,
-                value                  ANY
-                ) STRICT"#,
+                         key    TEXT PRIMARY KEY,
+                         value  ANY NOT NULL
+                     ) STRICT"#,
         )
         .await?;
 
-    // TODO: allow multiple jinxxy stores per guild
+    // guild information
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS guild (
-                     guild_id               INTEGER PRIMARY KEY,
-                     jinxxy_api_key         TEXT,
-                     log_channel_id         INTEGER,
-                     test                   INTEGER NOT NULL DEFAULT 0,
-                     owner                  INTEGER NOT NULL DEFAULT 0,
-                     gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
-                     gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
-                     cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
-                     blanket_role_id        INTEGER
-                 ) STRICT"#,
+                         guild_id               INTEGER PRIMARY KEY,
+                         log_channel_id         INTEGER,
+                         test                   INTEGER NOT NULL DEFAULT 0,
+                         owner                  INTEGER NOT NULL DEFAULT 0,
+                         gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
+                         gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
+                         blanket_role_id        INTEGER,
+                         default_jinxxy_user    TEXT,
+                         FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user
+                     ) STRICT"#,
         )
         .await?;
 
-    // disk cache for product names TODO: foreign keys
+    // jinxxy store information
+    connection
+        .execute(
+            r#"CREATE TABLE IF NOT EXISTS jinxxy_user (
+                         jinxxy_user_id      TEXT PRIMARY KEY,
+                         jinxxy_username     TEXT,
+                         cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
+                     ) STRICT"#,
+        )
+        .await?;
+
+    // link between a store and a guild
+    connection
+        .execute(
+            r#"CREATE TABLE IF NOT EXISTS jinxxy_user_guild (
+                         guild_id              INTEGER NOT NULL,
+                         jinxxy_user_id        TEXT NOT NULL,
+                         jinxxy_api_key        TEXT NOT NULL,
+                         jinxxy_api_key_valid  INTEGER NOT NULL DEFAULT TRUE,
+                         PRIMARY KEY           (guild_id, jinxxy_user_id),
+                         FOREIGN KEY           (guild_id)       REFERENCES guild,
+                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
+                     ) STRICT"#,
+        )
+        .await?;
+    // guild -> stores lookup
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS store_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
+        .await?;
+    // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_store ON jinxxy_user_guild (jinxxy_user_id) WHERE jinxxy_api_key_valid"#)
+        .await?;
+
+    // disk cache for product names
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         product_name           TEXT NOT NULL,
-                         etag                   BLOB,
-                         PRIMARY KEY            (guild_id, product_id)
+                         jinxxy_user_id  TEXT NOT NULL,
+                         product_id      TEXT NOT NULL,
+                         product_name    TEXT NOT NULL,
+                         etag            BLOB,
+                         PRIMARY KEY     (jinxxy_user_id, product_id),
+                         FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
                      ) STRICT"#,
         )
         .await?;
-    // index used for initial cache load
+    // store -> products lookup
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_guild ON product (guild_id)"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_store ON product (jinxxy_user_id)"#)
         .await?;
 
-    // disk cache for product version names TODO: foreign keys
+    // disk cache for product version names
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         version_id             TEXT NOT NULL,
-                         product_version_name   TEXT NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, version_id)
+                         jinxxy_user_id        TEXT NOT NULL,
+                         product_id            TEXT NOT NULL,
+                         version_id            TEXT NOT NULL,
+                         product_version_name  TEXT NOT NULL,
+                         PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
+                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
                      ) STRICT"#,
         )
         .await?;
-    // index used for initial cache load
+    // store -> product_versions lookup
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS version_lookup_by_guild ON product_version (guild_id)"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_lookup_by_store ON product_version (jinxxy_user_id)"#)
         .await?;
 
-    // this is the "blanket" roles for any version in a product TODO: foreign keys
+    // role links for entire products (this includes any versions in the product as well!)
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_role (
                          guild_id               INTEGER NOT NULL,
+                         jinxxy_user_id         TEXT NOT NULL,
                          product_id             TEXT NOT NULL,
                          role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, role_id)
+                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
+                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
                      ) STRICT"#,
         )
         .await?;
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product ON product_role (guild_id, jinxxy_user_id, product_id)"#)
         .await?;
 
-    // this is product-version specific role grants TODO: foreign keys
+    // product_version-specific role links
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version_role (
                          guild_id               INTEGER NOT NULL,
+                         jinxxy_user_id         TEXT NOT NULL,
                          product_id             TEXT NOT NULL,
                          version_id             TEXT NOT NULL,
                          role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, version_id, role_id)
+                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
+                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
                      ) STRICT"#,
         )
         .await?;
-    // index used for initial cache load
     connection.execute(
-        r#"CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)"#
+        r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product_version ON product_version_role (guild_id, jinxxy_user_id, product_id, version_id)"#
     ).await?;
 
-    // TODO: foreign keys
+    // local mirror of license activations. Source of truth is the Jinxxy API.
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS license_activation (
-                         guild_id               INTEGER NOT NULL,
+                         jinxxy_user_id         TEXT NOT NULL,
                          license_id             TEXT NOT NULL,
                          license_activation_id  TEXT NOT NULL,
                          user_id                INTEGER NOT NULL,
                          product_id             TEXT,
                          version_id             TEXT,
-                         PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id)
+                         PRIMARY KEY            (jinxxy_user_id, license_id, license_activation_id, user_id),
+                         FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
                      ) STRICT"#,
         )
         .await?;
-    connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (guild_id, license_id, user_id)"#).await?;
+    // index to look up all license_activation_id for a license
+    connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (jinxxy_user_id, license_id, user_id)"#).await?;
 
+    // list of all discord users that are bot owners
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "owner" (
@@ -1072,7 +1115,7 @@ impl JinxDb {
 
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(*) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE NOT guild.test"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1080,7 +1123,7 @@ impl JinxDb {
 
     /// Get count of distinct users who have activated licenses
     pub async fn distinct_user_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(DISTINCT user_id) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+        sqlx::query!(r#"SELECT count(DISTINCT user_id) AS "count!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE NOT guild.test"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1088,7 +1131,7 @@ impl JinxDb {
 
     /// Get count of configured guilds
     pub async fn guild_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE test = 0"#)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE NOT test"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1096,7 +1139,7 @@ impl JinxDb {
 
     /// Get count of distinct bot log channels
     pub async fn log_channel_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(DISTINCT log_channel_id) AS "count!" FROM guild WHERE test = 0"#)
+        sqlx::query!(r#"SELECT count(DISTINCT log_channel_id) AS "count!" FROM guild WHERE NOT test"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1104,7 +1147,7 @@ impl JinxDb {
 
     /// Get count of guilds with blanket role set
     pub async fn blanket_role_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL"#)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE NOT guild.test AND blanket_role_id IS NOT NULL"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1113,7 +1156,7 @@ impl JinxDb {
     /// Get count of product->role mappings
     pub async fn product_role_count(&self) -> SqliteResult<u64> {
         sqlx::query!(
-            r#"SELECT count(*) AS "count!" FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#
+            r#"SELECT count(*) AS "count!" FROM product_role LEFT JOIN guild USING (guild_id) WHERE NOT guild.test"#
         )
         .map(|row| row.count as u64)
         .fetch_one(&self.read_only_pool)
@@ -1122,7 +1165,7 @@ impl JinxDb {
 
     /// Get count of product+version->role mappings
     pub async fn product_version_role_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(*) AS "count!" FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0"#)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM product_version_role LEFT JOIN guild USING (guild_id) WHERE NOT guild.test"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_only_pool)
             .await
@@ -1156,7 +1199,7 @@ impl JinxDb {
         if TEST_ONLY {
             // only non-production servers
             sqlx::query!(
-                r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test != 0"#
+                r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test"#
             )
             .map(|row| ChannelId::new(row.channel_id as u64))
             .fetch_all(&self.read_only_pool)
