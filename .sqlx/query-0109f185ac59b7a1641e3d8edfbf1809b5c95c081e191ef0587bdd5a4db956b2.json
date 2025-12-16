@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT guild_id, jinxxy_api_key AS \"api_key!\" FROM guild WHERE jinxxy_api_key IS NOT NULL AND jinxxy_user_id IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "api_key!",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "0109f185ac59b7a1641e3d8edfbf1809b5c95c081e191ef0587bdd5a4db956b2"
+}
