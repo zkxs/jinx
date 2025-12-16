@@ -22,7 +22,6 @@ use tracing::warn;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 //const DB_V2_FILENAME: &str = "jinx2.sqlite";
-const SCHEMA_VERSION_KEY: &str = "schema_version";
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 

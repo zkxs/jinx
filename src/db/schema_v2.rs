@@ -1,13 +1,18 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::db::{SCHEMA_VERSION_KEY, helper};
+use crate::db::helper;
 use crate::error::JinxError;
 use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
 
-const DB_V2_SCHEMA_VERSION_VALUE: i32 = 0;
+const SCHEMA_MINOR_VERSION_KEY: &str = "schema_minor_version";
+const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
+/// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
+const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
+/// Increment this if there is a backwards-compatible change, such as adding a new column
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 0;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -151,14 +156,17 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         )
         .await?;
 
-    let schema_version: i32 = helper::get_setting(connection, SCHEMA_VERSION_KEY)
+    let schema_minor_version: i32 = helper::get_setting(connection, SCHEMA_MINOR_VERSION_KEY)
         .await?
-        .unwrap_or(DB_V2_SCHEMA_VERSION_VALUE);
+        .unwrap_or(SCHEMA_PATCH_VERSION_VALUE);
+    let schema_patch_version: i32 = helper::get_setting(connection, SCHEMA_PATCH_VERSION_KEY)
+        .await?
+        .unwrap_or(SCHEMA_PATCH_VERSION_VALUE);
 
     // handle schema downgrade (or rather, DON'T handle it and throw an error)
-    if schema_version > DB_V2_SCHEMA_VERSION_VALUE {
+    if schema_minor_version > SCHEMA_MINOR_VERSION_VALUE {
         let message = format!(
-            "db schema version is v{schema_version}, which is newer than v{DB_V2_SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports."
+            "db schema version is v2.{schema_minor_version}.{schema_patch_version}, which is newer than v2.{DB_V2_SCHEMA_MINOR_VERSION_VALUE} which is the latest schema this Jinx build supports."
         );
         return Err(JinxError::new(message));
     }

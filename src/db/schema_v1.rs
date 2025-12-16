@@ -1,13 +1,14 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::db::{SCHEMA_VERSION_KEY, helper};
+use crate::db::helper;
 use crate::error::JinxError;
 use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
 
-const DB_V1_SCHEMA_VERSION_VALUE: i32 = 10;
+const SCHEMA_VERSION_KEY: &str = "schema_version";
+const SCHEMA_VERSION_VALUE: i32 = 10;
 
 /// Set up the v1 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -126,12 +127,12 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 
     let schema_version: i32 = helper::get_setting(connection, SCHEMA_VERSION_KEY)
         .await?
-        .unwrap_or(DB_V1_SCHEMA_VERSION_VALUE);
+        .unwrap_or(SCHEMA_VERSION_VALUE);
 
     // handle schema downgrade (or rather, DON'T handle it and throw an error)
-    if schema_version > DB_V1_SCHEMA_VERSION_VALUE {
+    if schema_version > SCHEMA_VERSION_VALUE {
         let message = format!(
-            "db schema version is v{schema_version}, which is newer than v{DB_V1_SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports."
+            "db schema version is v{schema_version}, which is newer than v{SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports."
         );
         return Err(JinxError::new(message));
     }
@@ -221,12 +222,12 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     }
 
     // update the schema version value persisted to the DB
-    helper::set_setting(connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(connection, SCHEMA_VERSION_KEY, SCHEMA_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
         "initialized v1.{} db in {}ms",
-        DB_V1_SCHEMA_VERSION_VALUE,
+        SCHEMA_VERSION_VALUE,
         elapsed.as_millis()
     );
 
