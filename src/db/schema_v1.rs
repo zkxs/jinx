@@ -35,7 +35,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                          cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
                          blanket_role_id        INTEGER,
                          jinxxy_user_id         TEXT,
-                         jinxxy_username        TEXT,
+                         jinxxy_username        TEXT
                      ) STRICT"#,
         )
         .await?;
