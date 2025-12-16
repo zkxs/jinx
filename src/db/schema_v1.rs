@@ -7,7 +7,7 @@ use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
 
-const DB_V1_SCHEMA_VERSION_VALUE: i32 = 9;
+const DB_V1_SCHEMA_VERSION_VALUE: i32 = 10;
 
 /// Set up the v1 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -33,7 +33,9 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                          gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
                          gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
                          cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
-                         blanket_role_id        INTEGER
+                         blanket_role_id        INTEGER,
+                         jinxxy_user_id         TEXT,
+                         jinxxy_username        TEXT,
                      ) STRICT"#,
         )
         .await?;
@@ -205,6 +207,16 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         // "etag"  needs to be added to "product"
         connection
             .execute(r#"ALTER TABLE product ADD COLUMN etag BLOB"#)
+            .await?;
+    }
+
+    // handle schema v9 -> v10 migration
+    if schema_version < 10 {
+        connection
+            .execute(r#"ALTER TABLE guild ADD COLUMN jinxxy_user_id TEXT"#)
+            .await?;
+        connection
+            .execute(r#"ALTER TABLE guild ADD COLUMN jinxxy_username TEXT"#)
             .await?;
     }
 
