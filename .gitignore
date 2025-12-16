@@ -3,7 +3,9 @@
 
 # Config files
 jinx.sqlite
-jinx.sqlite-journal
+jinx.sqlite-*
+jinx2.sqlite
+jinx2.sqlite-*
 
 # Log files
 *.log

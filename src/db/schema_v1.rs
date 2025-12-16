@@ -1,11 +1,13 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::db::{DB_V1_SCHEMA_VERSION_VALUE, SCHEMA_VERSION_KEY, helper};
+use crate::db::{SCHEMA_VERSION_KEY, helper};
 use crate::error::JinxError;
 use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
+
+const DB_V1_SCHEMA_VERSION_VALUE: i32 = 9;
 
 /// Set up the v1 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
