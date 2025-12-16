@@ -101,6 +101,22 @@ pub(in crate::bot) async fn backfill_license_info(context: Context<'_>) -> Resul
     Ok(())
 }
 
+/// Backfill missing Jinxxy account info. Needed after upgrading to schema v10.
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn backfill_jinxxy_account_info(context: Context<'_>) -> Result<(), Error> {
+    context.defer_ephemeral().await?; // gives us 15 minutes to complete our work
+    let updated = context.data().db.backfill_jinxxy_account_info().await?;
+    let reply = success_reply("Success", format!("Updated {updated} guilds."));
+    context.send(reply).await?;
+    Ok(())
+}
+
 /// Ensure all guilds are registered in the API cache, even if they previously had Jinxxy API failures.
 #[poise::command(
     slash_command,

@@ -659,7 +659,7 @@ pub struct ProductVersionNameInfo {
     pub product_version_name: String,
 }
 
-trait GetUsername {
+pub trait GetUsername {
     fn username(&self) -> Option<&str>;
 }
 

@@ -5,7 +5,7 @@ mod schema_v1;
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{GetUsername, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
@@ -18,6 +18,7 @@ use sqlx::{Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, erro
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::warn;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 //const DB_V2_FILENAME: &str = "jinx2.sqlite";
@@ -227,7 +228,7 @@ impl JinxDb {
         Ok(update_count != 0)
     }
 
-    pub async fn backfill_license_info(&self) -> Result<usize, BoxedError> {
+    pub async fn backfill_license_info(&self) -> Result<u64, BoxedError> {
         let mut connection = self.write_connection().await?;
         let license_records = sqlx::query!(r#"SELECT guild_id, license_id, license_activation_id, user_id FROM license_activation WHERE (product_id IS NULL OR version_id IS NULL) and user_id != 0"#)
             .map(|row| LicenseRecord {
@@ -239,7 +240,7 @@ impl JinxDb {
             .fetch_all(&mut *connection)
             .await?;
 
-        let mut updated: usize = 0;
+        let mut updated: u64 = 0;
         for license_record in license_records {
             if let Some(api_key) = self.get_jinxxy_api_key(license_record.guild_id).await? {
                 if let Some(license_info) =
@@ -263,6 +264,35 @@ impl JinxDb {
 
                 // delay a little bit before hitting Jinxxy again to avoid just completely spamming the hell out of it
                 tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }
+
+        Ok(updated)
+    }
+
+    pub async fn backfill_jinxxy_account_info(&self) -> Result<u64, BoxedError> {
+        let mut updated: u64 = 0;
+        let mut connection = self.write_connection().await?;
+        let rows = sqlx::query!(r#"SELECT guild_id, jinxxy_api_key AS "api_key!" FROM guild WHERE jinxxy_api_key IS NOT NULL AND jinxxy_user_id IS NULL"#)
+            .fetch_all(&mut *connection)
+            .await?;
+        for row in rows {
+            let guild_id = row.guild_id as u64;
+            match jinxxy::get_own_user(&row.api_key).await {
+                Ok(auth_user) => {
+                    let user_id = auth_user.id.as_str();
+                    let user_name = auth_user.username();
+                    sqlx::query!(
+                        r#"UPDATE guild SET jinxxy_user_id = ?, jinxxy_username = ?"#,
+                        user_id,
+                        user_name
+                    ).execute(&mut *connection)
+                    .await?;
+                    updated += 1;
+                }
+                Err(e) => {
+                    warn!("Failed to get own user for {}, skipping: {}", guild_id, e);
+                }
             }
         }
 

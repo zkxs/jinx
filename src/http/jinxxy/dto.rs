@@ -101,9 +101,11 @@ struct LicenseActivations {
 
 #[derive(Debug, Deserialize)]
 pub struct AuthUser {
-    /// No sure what this is, but it can be null or empty. I think this is custom display name?
+    /// Unique userid
+    pub id: String,
+    /// No sure what this is, but it can be null or empty (and often is). I think this is custom display name?
     name: Option<String>,
-    /// Account's username; used in profile URL
+    /// Account's username; used in profile URL. Ought to be set for all sellers.
     username: Option<String>,
     profile_image: Option<ProfileImage>,
     /// API scopes
