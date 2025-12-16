@@ -531,7 +531,6 @@ impl JinxDb {
     pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> SqliteResult<Vec<UserId>> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
-        //TODO: this could use an index, or even several indices
         sqlx::query!(
             r#"SELECT user_id AS "user_id!" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild_id = ? AND blanket_role_id = ?
                UNION SELECT user_id AS "user_id!" FROM license_activation LEFT JOIN product_role USING (guild_id, product_id) WHERE guild_id = ? AND role_id = ?
@@ -588,7 +587,6 @@ impl JinxDb {
         }
 
         // deal with product blankets
-        //TODO: could use an index
         {
             let mut product_result = sqlx::query!(
                 r#"SELECT product_id, role_id FROM product_role WHERE guild_id = ?"#,
@@ -604,7 +602,6 @@ impl JinxDb {
         }
 
         // deal with specific links
-        //TODO: could use an index
         {
             let mut product_version_result = sqlx::query!(
                 r#"SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,

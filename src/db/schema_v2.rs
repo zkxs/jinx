@@ -64,10 +64,6 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                      ) STRICT"#,
         )
         .await?;
-    // guild -> stores lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS store_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
-        .await?;
     // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
     connection
         .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_store ON jinxxy_user_guild (jinxxy_user_id) WHERE jinxxy_api_key_valid"#)
@@ -86,10 +82,6 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                      ) STRICT"#,
         )
         .await?;
-    // store -> products lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_store ON product (jinxxy_user_id)"#)
-        .await?;
 
     // disk cache for product version names
     connection
@@ -104,14 +96,6 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                      ) STRICT"#,
         )
         .await?;
-    // store -> product_versions lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_lookup_by_store ON product_version (jinxxy_user_id)"#)
-        .await?;
-    // product_id -> product_versions lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_lookup_by_product ON product_version (jinxxy_user_id, product_id)"#)
-        .await?;
 
     // role links for entire products (this includes any versions in the product as well!)
     connection
@@ -125,9 +109,6 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                          FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
                      ) STRICT"#,
         )
-        .await?;
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product ON product_role (guild_id, jinxxy_user_id, product_id)"#)
         .await?;
 
     // product_version-specific role links
@@ -144,10 +125,6 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                      ) STRICT"#,
         )
         .await?;
-    connection.execute(
-        r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product_version ON product_version_role (guild_id, jinxxy_user_id, product_id, version_id)"#
-    ).await?;
-
     // local mirror of license activations. Source of truth is the Jinxxy API.
     connection
         .execute(
@@ -155,16 +132,14 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
                          jinxxy_user_id         TEXT NOT NULL,
                          license_id             TEXT NOT NULL,
                          license_activation_id  TEXT NOT NULL,
-                         user_id                INTEGER NOT NULL,
+                         activator_user_id      INTEGER NOT NULL,
                          product_id             TEXT,
                          version_id             TEXT,
-                         PRIMARY KEY            (jinxxy_user_id, license_id, license_activation_id, user_id),
+                         PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                          FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
                      ) STRICT"#,
         )
         .await?;
-    // index to look up all license_activation_id for a license
-    connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (jinxxy_user_id, license_id, user_id)"#).await?;
 
     // list of all discord users that are bot owners
     connection
