@@ -76,6 +76,7 @@ static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
         sudo_list_links(),
         unfuck_cache(),
         verify_guild(),
+        whois(),
     ]
 });
 
@@ -139,6 +140,7 @@ pub async fn run_bot() -> Result<(), Error> {
                 user_info(),
                 verify_guild(),
                 version(),
+                whois(),
             ],
             event_handler: |ctx, event| Box::pin(event_handler(ctx, event)),
             on_error: |e| Box::pin(error_handler(e)),

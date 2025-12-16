@@ -667,6 +667,15 @@ impl JinxDb {
         .await
     }
 
+    /// Get all guilds a user has activated licenses in
+    pub async fn get_user_guilds(&self, user_id: u64) -> SqliteResult<Vec<GuildId>> {
+        let user_id = user_id as i64;
+        sqlx::query!(r#"SELECT guild_id FROM license_activation WHERE user_id = ?"#, user_id)
+            .map(|row| GuildId::new(row.guild_id as u64))
+            .fetch_all(&self.read_pool)
+            .await
+    }
+
     /// Locally check if any activations exist for this user/license combo. This may be out of sync with Jinxxy!
     pub async fn has_user_license_activations(
         &self,

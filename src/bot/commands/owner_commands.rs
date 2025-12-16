@@ -668,3 +668,59 @@ pub(in crate::bot) async fn set_cache_expiry_time(
         .await?;
     Ok(())
 }
+
+/// whois
+#[poise::command(
+    context_menu_command = "whois",
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn whois(
+    context: Context<'_>,
+    #[description = "user to look up"] user: serenity::User,
+) -> Result<(), Error> {
+    let user_id = user.id;
+    let cache = context.serenity_context().cache.as_ref();
+    let db_guilds = context.data().db.get_user_guilds(user_id.get()).await?;
+    let mut line_iter = cache
+        .guilds()
+        .into_iter()
+        .filter_map(|guild_id| {
+            if let Some(guild) = cache.guild(guild_id) {
+                let membership = if guild.owner_id == user_id {
+                    Some("owner")
+                } else if guild.members.contains_key(&user_id) {
+                    Some("member")
+                } else if db_guilds.contains(&guild_id) {
+                    Some("activator")
+                } else {
+                    None
+                };
+                let guild_id = guild_id.get();
+                let guild_name = guild.name.as_str();
+                membership.map(|membership| format!("\n- `{guild_id}` {membership} {guild_name}"))
+            } else {
+                None
+            }
+        })
+        .peekable();
+
+    let reply = if line_iter.peek().is_some() {
+        let results: String = line_iter.collect();
+        success_reply(
+            "User Found",
+            format!("User <@{}> was found in cache:{}", user_id.get(), results),
+        )
+    } else {
+        success_reply(
+            "User Not Found",
+            format!("User <@{}> was not found in cache", user_id.get()),
+        )
+    };
+
+    context.send(reply).await?;
+    Ok(())
+}
