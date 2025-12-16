@@ -1,6 +1,9 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+mod schema_v1;
+mod schema_v2;
+
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
@@ -16,7 +19,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::Instant;
 use tracing::debug;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
@@ -29,420 +31,6 @@ const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_secon
 
 type SqliteResult<T> = Result<T, SqlxError>;
 type BoxedError = Box<dyn std::error::Error + Send + Sync>;
-
-/// Set up the database
-async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
-    let start = Instant::now();
-    let mut connection = pool.acquire().await?;
-
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS "settings" (
-                         key                    TEXT PRIMARY KEY,
-                         value                  ANY
-                     ) STRICT"#,
-        )
-        .await?;
-
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS guild (
-                         guild_id               INTEGER PRIMARY KEY,
-                         jinxxy_api_key         TEXT,
-                         log_channel_id         INTEGER,
-                         test                   INTEGER NOT NULL DEFAULT 0,
-                         owner                  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
-                         cache_time_unix_ms     INTEGER NOT NULL DEFAULT 0,
-                         blanket_role_id        INTEGER
-                     ) STRICT"#,
-        )
-        .await?;
-
-    // disk cache for product names
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         product_name           TEXT NOT NULL,
-                         etag                   BLOB,
-                         PRIMARY KEY            (guild_id, product_id)
-                     ) STRICT"#,
-        )
-        .await?;
-    // index used for initial cache load
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_guild ON product (guild_id)"#)
-        .await?;
-
-    // disk cache for product version names
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_version (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         version_id             TEXT NOT NULL,
-                         product_version_name   TEXT NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, version_id)
-                     ) STRICT"#,
-        )
-        .await?;
-    // index used for initial cache load
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS version_lookup_by_guild ON product_version (guild_id)"#)
-        .await?;
-
-    // this is the "blanket" roles for any version in a product
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_role (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, role_id)
-                     ) STRICT"#,
-        )
-        .await?;
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)"#)
-        .await?;
-
-    // this is product-version specific role grants
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_version_role (
-                         guild_id               INTEGER NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         version_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, product_id, version_id, role_id)
-                     ) STRICT"#,
-        )
-        .await?;
-    // index used for initial cache load
-    connection.execute(r#"CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)"#).await?;
-
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS license_activation (
-                         guild_id               INTEGER NOT NULL,
-                         license_id             TEXT NOT NULL,
-                         license_activation_id  TEXT NOT NULL,
-                         user_id                INTEGER NOT NULL,
-                         product_id             TEXT,
-                         version_id             TEXT,
-                         PRIMARY KEY            (guild_id, license_id, license_activation_id, user_id)
-                     ) STRICT"#,
-        )
-        .await?;
-    connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (guild_id, license_id, user_id)"#).await?;
-
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS "owner" (
-                         owner_id               INTEGER PRIMARY KEY
-                     ) STRICT"#,
-        )
-        .await?;
-
-    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
-        .await?
-        .unwrap_or(DB_V1_SCHEMA_VERSION_VALUE);
-
-    // handle schema downgrade (or rather, DON'T handle it and throw an error)
-    if schema_version > DB_V1_SCHEMA_VERSION_VALUE {
-        let message = format!(
-            "db schema version is v{schema_version}, which is newer than v{DB_V1_SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports."
-        );
-        return Err(JinxError::new(message));
-    }
-
-    // handle schema v1 -> v2 migration
-    if schema_version < 2 {
-        // "log_channel_id" column needs to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN log_channel_id INTEGER"#)
-            .await?;
-        // "test" column needs to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN test INTEGER NOT NULL DEFAULT 0"#)
-            .await?;
-    }
-
-    // handle schema v2 -> v3 migration
-    if schema_version < 3 {
-        // "owner" column needs to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN owner INTEGER NOT NULL DEFAULT 0"#)
-            .await?;
-    }
-
-    // handle schema v3 -> v4 migration
-    if schema_version < 4 {
-        // "guild.id" column needs to be renamed to "guild_id"
-        connection
-            .execute(r#"ALTER TABLE guild RENAME COLUMN id TO guild_id"#)
-            .await?;
-    }
-
-    // handle schema v4 -> v5 migration
-    if schema_version < 5 {
-        // "gumroad_failure_count" and "gumroad_nag_count" columns need to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN gumroad_failure_count INTEGER NOT NULL DEFAULT 0"#)
-            .await?;
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN gumroad_nag_count INTEGER NOT NULL DEFAULT 0"#)
-            .await?;
-    }
-
-    // handle schema v5 -> v6 migration
-    if schema_version < 6 {
-        // "blanket_role_id" needs to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN blanket_role_id INTEGER"#)
-            .await?;
-    }
-
-    // handle schema v6 -> v7 migration
-    if schema_version < 7 {
-        // "cache_time_unix_ms" needs to be added to "guild"
-        connection
-            .execute(r#"ALTER TABLE guild ADD COLUMN cache_time_unix_ms INTEGER NOT NULL DEFAULT 0"#)
-            .await?;
-    }
-
-    // handle schema v7 -> v8 migration
-    if schema_version < 8 {
-        // "product_id" and "version_id" need to be added to "license_activation"
-        connection
-            .execute(r#"ALTER TABLE license_activation ADD COLUMN product_id TEXT"#)
-            .await?;
-        connection
-            .execute(r#"ALTER TABLE license_activation ADD COLUMN version_id TEXT"#)
-            .await?;
-    }
-
-    // handle schema v8 -> v9 migration
-    if schema_version < 9 {
-        // "etag"  needs to be added to "product"
-        connection
-            .execute(r#"ALTER TABLE product ADD COLUMN etag BLOB"#)
-            .await?;
-    }
-
-    // update the schema version value persisted to the DB
-    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
-
-    let elapsed = start.elapsed();
-    debug!(
-        "initialized v1.{} db in {}ms",
-        DB_V1_SCHEMA_VERSION_VALUE,
-        elapsed.as_millis()
-    );
-
-    Ok(())
-}
-
-/// Set up the v2 database
-async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
-    let start = Instant::now();
-    let mut connection = pool.acquire().await?;
-
-    // simple key-value settings
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS "settings" (
-                         key    TEXT PRIMARY KEY,
-                         value  ANY NOT NULL
-                     ) STRICT"#,
-        )
-        .await?;
-
-    // guild information
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS guild (
-                         guild_id               INTEGER PRIMARY KEY,
-                         log_channel_id         INTEGER,
-                         test                   INTEGER NOT NULL DEFAULT 0,
-                         owner                  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
-                         blanket_role_id        INTEGER,
-                         default_jinxxy_user    TEXT,
-                         FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user
-                     ) STRICT"#,
-        )
-        .await?;
-
-    // jinxxy store information
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS jinxxy_user (
-                         jinxxy_user_id      TEXT PRIMARY KEY,
-                         jinxxy_username     TEXT,
-                         cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
-                     ) STRICT"#,
-        )
-        .await?;
-
-    // link between a store and a guild
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS jinxxy_user_guild (
-                         guild_id              INTEGER NOT NULL,
-                         jinxxy_user_id        TEXT NOT NULL,
-                         jinxxy_api_key        TEXT NOT NULL,
-                         jinxxy_api_key_valid  INTEGER NOT NULL DEFAULT TRUE,
-                         PRIMARY KEY           (guild_id, jinxxy_user_id),
-                         FOREIGN KEY           (guild_id)       REFERENCES guild,
-                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
-        )
-        .await?;
-    // guild -> stores lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS store_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
-        .await?;
-    // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_store ON jinxxy_user_guild (jinxxy_user_id) WHERE jinxxy_api_key_valid"#)
-        .await?;
-
-    // disk cache for product names
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product (
-                         jinxxy_user_id  TEXT NOT NULL,
-                         product_id      TEXT NOT NULL,
-                         product_name    TEXT NOT NULL,
-                         etag            BLOB,
-                         PRIMARY KEY     (jinxxy_user_id, product_id),
-                         FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
-        )
-        .await?;
-    // store -> products lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_store ON product (jinxxy_user_id)"#)
-        .await?;
-
-    // disk cache for product version names
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_version (
-                         jinxxy_user_id        TEXT NOT NULL,
-                         product_id            TEXT NOT NULL,
-                         version_id            TEXT NOT NULL,
-                         product_version_name  TEXT NOT NULL,
-                         PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
-                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
-        )
-        .await?;
-    // store -> product_versions lookup
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_lookup_by_store ON product_version (jinxxy_user_id)"#)
-        .await?;
-
-    // role links for entire products (this includes any versions in the product as well!)
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_role (
-                         guild_id               INTEGER NOT NULL,
-                         jinxxy_user_id         TEXT NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
-                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-                     ) STRICT"#,
-        )
-        .await?;
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product ON product_role (guild_id, jinxxy_user_id, product_id)"#)
-        .await?;
-
-    // product_version-specific role links
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS product_version_role (
-                         guild_id               INTEGER NOT NULL,
-                         jinxxy_user_id         TEXT NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         version_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
-                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-                     ) STRICT"#,
-        )
-        .await?;
-    connection.execute(
-        r#"CREATE INDEX IF NOT EXISTS role_lookup_by_product_version ON product_version_role (guild_id, jinxxy_user_id, product_id, version_id)"#
-    ).await?;
-
-    // local mirror of license activations. Source of truth is the Jinxxy API.
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS license_activation (
-                         jinxxy_user_id         TEXT NOT NULL,
-                         license_id             TEXT NOT NULL,
-                         license_activation_id  TEXT NOT NULL,
-                         user_id                INTEGER NOT NULL,
-                         product_id             TEXT,
-                         version_id             TEXT,
-                         PRIMARY KEY            (jinxxy_user_id, license_id, license_activation_id, user_id),
-                         FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
-        )
-        .await?;
-    // index to look up all license_activation_id for a license
-    connection.execute(r#"CREATE INDEX IF NOT EXISTS license_activation_lookup ON license_activation (jinxxy_user_id, license_id, user_id)"#).await?;
-
-    // list of all discord users that are bot owners
-    connection
-        .execute(
-            r#"CREATE TABLE IF NOT EXISTS "owner" (
-                         owner_id               INTEGER PRIMARY KEY
-                     ) STRICT"#,
-        )
-        .await?;
-
-    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
-        .await?
-        .unwrap_or(DB_V2_SCHEMA_VERSION_VALUE);
-
-    // handle schema downgrade (or rather, DON'T handle it and throw an error)
-    if schema_version > DB_V2_SCHEMA_VERSION_VALUE {
-        let message = format!(
-            "db schema version is v{schema_version}, which is newer than v{DB_V2_SCHEMA_VERSION_VALUE} which is the latest schema this Jinx build supports."
-        );
-        return Err(JinxError::new(message));
-    }
-
-    // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
-    // All applications should run "PRAGMA optimize;" after a schema change.
-    connection.execute(r#"PRAGMA optimize = 0x10002"#).await?;
-
-    // update the schema version value persisted to the DB
-    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
-
-    let elapsed = start.elapsed();
-    debug!(
-        "initialized v2.{} db in {}ms",
-        DB_V2_SCHEMA_VERSION_VALUE,
-        elapsed.as_millis()
-    );
-
-    Ok(())
-}
-
-/// Copy all rows in the v1 db into the v2 db
-async fn copy_v1_to_v2(v1_pool: &Pool<Sqlite>, v2_pool: &Pool<Sqlite>) -> Result<(), JinxError> {
-    todo!()
-}
 
 /// Cloning is by-reference.
 #[derive(Clone)]
@@ -484,7 +72,7 @@ impl JinxDb {
         let read_write_pool = pool_options_readwrite.connect_with(connect_options_readwrite).await?;
         let read_only_pool = pool_options_readonly.connect_with(connect_options_readonly).await?;
 
-        init_v2(&read_write_pool).await?;
+        schema_v2::init(&read_write_pool).await?;
 
         if !Path::new(DB_V2_FILENAME).is_file() && Path::new(DB_V1_FILENAME).is_file() {
             // the v2 DB does not exist, so we must initialize the v1 db and migrate it to v2
@@ -503,9 +91,9 @@ impl JinxDb {
                 .pragma("trusted_schema", "OFF");
             let v1_pool = SqlitePool::connect_with(connect_options_v1).await?;
             // handle any pending migrations on the v1 db
-            init_v1(&v1_pool).await?;
+            schema_v1::init(&v1_pool).await?;
             // perform the big migration
-            copy_v1_to_v2(&v1_pool, &read_write_pool).await?;
+            schema_v2::copy_from_v1(&v1_pool, &read_write_pool).await?;
         }
 
         let db = JinxDb {
@@ -724,7 +312,6 @@ impl JinxDb {
     /// Locally check if a license is locked. This may be out of sync with Jinxxy!
     pub async fn is_license_locked(&self, guild: GuildId, license_id: String) -> SqliteResult<bool> {
         let guild_id = guild.get() as i64;
-        //TODO: could use an index
         sqlx::query_scalar!(
             r#"SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = ? AND license_id = ? AND user_id = 0) AS "is_locked: bool""#,
             guild_id,
@@ -1390,7 +977,6 @@ impl JinxDb {
         product_id: String,
     ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
         let guild_id = guild.get() as i64;
-        //TODO: could use an index
         sqlx::query!(
             r#"SELECT version_id, product_version_name FROM product_version WHERE guild_id = ? AND product_id = ?"#,
             guild_id,
@@ -1426,7 +1012,7 @@ mod helper {
         Ok(result)
     }
 
-    pub(crate) async fn set_setting<'q, T>(
+    pub(super) async fn set_setting<'q, T>(
         connection: &mut SqliteConnection,
         key: &'q str,
         value: T,
@@ -1452,7 +1038,7 @@ mod helper {
         Ok(SimpleTime::from_unix_millis(cache_time_unix_ms as u64))
     }
 
-    pub(crate) async fn set_cache_time(
+    pub(super) async fn set_cache_time(
         connection: &mut SqliteConnection,
         guild: GuildId,
         time: SimpleTime,
@@ -1471,7 +1057,7 @@ mod helper {
     }
 
     /// Get cached name info for products in a guild
-    pub(crate) async fn product_names_in_guild(
+    pub(super) async fn product_names_in_guild(
         connection: &mut SqliteConnection,
         guild: GuildId,
     ) -> SqliteResult<Vec<ProductNameInfo>> {
@@ -1492,7 +1078,7 @@ mod helper {
     }
 
     /// Get name info for products versions in a guild
-    pub(crate) async fn product_version_names_in_guild(
+    pub(super) async fn product_version_names_in_guild(
         connection: &mut SqliteConnection,
         guild: GuildId,
     ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
@@ -1512,7 +1098,7 @@ mod helper {
         .await
     }
 
-    pub(crate) async fn persist_product_names(
+    pub(super) async fn persist_product_names(
         connection: &mut SqliteConnection,
         guild: GuildId,
         product_name_info: Vec<ProductNameInfo>,
@@ -1563,7 +1149,7 @@ mod helper {
         Ok(())
     }
 
-    pub(crate) async fn persist_product_version_names(
+    pub(super) async fn persist_product_version_names(
         connection: &mut SqliteConnection,
         guild: GuildId,
         product_version_name_info: Vec<ProductVersionNameInfo>,
