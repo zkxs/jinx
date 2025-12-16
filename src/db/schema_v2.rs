@@ -3,14 +3,13 @@
 
 use crate::db::{DB_V2_SCHEMA_VERSION_VALUE, SCHEMA_VERSION_KEY, helper};
 use crate::error::JinxError;
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
 
 /// Set up the v2 database
-pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
+pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
     let start = Instant::now();
-    let mut connection = pool.acquire().await?;
 
     // simple key-value settings
     connection
@@ -150,7 +149,7 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
-    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
+    let schema_version: i32 = helper::get_setting(connection, SCHEMA_VERSION_KEY)
         .await?
         .unwrap_or(DB_V2_SCHEMA_VERSION_VALUE);
 
@@ -167,7 +166,7 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection.execute(r#"PRAGMA optimize = 0x10002"#).await?;
 
     // update the schema version value persisted to the DB
-    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
@@ -181,6 +180,9 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
 
 /// Copy all rows in the v1 db into the v2 db
 #[allow(clippy::unused_async, unused_variables)] //TODO: remove
-pub(super) async fn copy_from_v1(v1_pool: &Pool<Sqlite>, v2_pool: &Pool<Sqlite>) -> Result<(), JinxError> {
+pub(super) async fn copy_from_v1(
+    v1_pool: &mut SqliteConnection,
+    v2_pool: &mut SqliteConnection,
+) -> Result<(), JinxError> {
     todo!()
 }

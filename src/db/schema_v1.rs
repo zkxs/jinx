@@ -3,14 +3,13 @@
 
 use crate::db::{DB_V1_SCHEMA_VERSION_VALUE, SCHEMA_VERSION_KEY, helper};
 use crate::error::JinxError;
-use sqlx::{Executor, Pool, Sqlite};
+use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
 use tracing::debug;
 
-/// Set up the database
-pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
+/// Set up the v1 database
+pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
     let start = Instant::now();
-    let mut connection = pool.acquire().await?;
 
     connection
         .execute(
@@ -121,7 +120,7 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
-    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
+    let schema_version: i32 = helper::get_setting(connection, SCHEMA_VERSION_KEY)
         .await?
         .unwrap_or(DB_V1_SCHEMA_VERSION_VALUE);
 
@@ -208,7 +207,7 @@ pub(super) async fn init(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     }
 
     // update the schema version value persisted to the DB
-    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
