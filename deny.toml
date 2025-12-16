@@ -72,8 +72,9 @@ feature-depth = 1
 ignore = [
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
-    { id = "RUSTSEC-2024-0388", reason = "derivative being unmaintained is not my problem to solve. If anything it's on poise." },
-    { id = "RUSTSEC-2025-0057", reason = "fxhash being unmaintained is not my problem to solve. If anything it's on serenity." },
+    { id = "RUSTSEC-2024-0388", reason = "derivative being unmaintained is not my problem to solve: it's on poise." },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash being unmaintained is not my problem to solve: it's on serenity." },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile being unmaintained is not my problem to solve: it's on serenity for using old reqwest." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
 ]
@@ -248,7 +249,7 @@ skip = [
     { crate = "tokio-rustls@0.25", reason = "used by reqwest@0.11.27"},
     { crate = "webpki-roots@0.26", reason = "used by reqwest@0.11.27"},
     { crate = "socket2@0.5", reason = "used by reqwest@0.11.27"},
-    { crate = "hashbrown@0.15.5", reason = "used by rusqlite@0.37.0"},
+    { crate = "hashbrown@0.15.5", reason = "used by sqlx, reqwest, and poise"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
