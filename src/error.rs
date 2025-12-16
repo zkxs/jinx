@@ -24,7 +24,7 @@ pub enum JinxError {
     Serenity(SerenityError),
 }
 
-pub struct VerbatimJinxError<'a>(&'a JinxError);
+impl std::error::Error for JinxError {}
 
 impl Display for JinxError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

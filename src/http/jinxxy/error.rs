@@ -30,14 +30,16 @@ pub enum JinxxyError {
     UnsupportedPagination(u64),
 }
 
+impl std::error::Error for JinxxyError {}
+
 pub struct RedactedJinxxyError<'a>(&'a JinxxyError);
 
 impl Display for JinxxyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            JinxxyError::HttpResponse(e) => write!(f, "Jinxxy API error: {e}"),
-            JinxxyError::HttpRequest(e) => write!(f, "HTTP general failure: {e}"),
-            JinxxyError::HttpRead(e) => write!(f, "HTTP body read failed: {e}"),
+            JinxxyError::HttpResponse(e) => write!(f, "Jinxxy API error: {e:?}"),
+            JinxxyError::HttpRequest(e) => write!(f, "HTTP general failure: {e:?}"),
+            JinxxyError::HttpRead(e) => write!(f, "HTTP body read failed: {e:?}"),
             JinxxyError::JsonDeserialize(e) => write!(f, "JSON deserialization failed: {e}"),
             JinxxyError::Join(e) => write!(f, "parallel task join failed: {e}"),
             JinxxyError::Impossible304 => write!(
@@ -78,8 +80,6 @@ impl<'a> SafeDisplay<'a, RedactedJinxxyError<'a>> for JinxxyError {
         RedactedJinxxyError(self)
     }
 }
-
-impl std::error::Error for JinxxyError {}
 
 impl JinxxyError {
     /// Create a JinxxyError from raw json bytes

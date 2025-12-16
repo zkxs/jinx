@@ -5,10 +5,13 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
-use poise::futures_util::{StreamExt, TryStreamExt};
+use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
-use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow, SqliteSynchronous};
-use sqlx::{Executor, Pool, Sqlite, SqliteConnection, SqlitePool, Type, error::Error as SqlxError, Encode, Decode, Row};
+use sqlx::sqlite::{
+    SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
+    SqliteSynchronous,
+};
+use sqlx::{Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, SqlitePool, Type, error::Error as SqlxError};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -144,7 +147,7 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
-    let schema_version: i32 = get_setting_sync(&mut connection, SCHEMA_VERSION_KEY)
+    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
         .await?
         .unwrap_or(DB_V1_SCHEMA_VERSION_VALUE);
 
@@ -231,7 +234,7 @@ async fn init_v1(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     }
 
     // update the schema version value persisted to the DB
-    set_setting_sync(&mut connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V1_SCHEMA_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
@@ -362,7 +365,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
-    let schema_version: i32 = get_setting_sync(&mut connection, SCHEMA_VERSION_KEY)
+    let schema_version: i32 = helper::get_setting(&mut connection, SCHEMA_VERSION_KEY)
         .await?
         .unwrap_or(DB_V2_SCHEMA_VERSION_VALUE);
 
@@ -379,7 +382,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     connection.execute(r#"PRAGMA optimize = 0x10002"#).await?;
 
     // update the schema version value persisted to the DB
-    set_setting_sync(&mut connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(&mut connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
@@ -469,20 +472,21 @@ impl JinxDb {
         Ok(())
     }
 
-    async fn get_setting<T>(&self, key: String) -> SqliteResult<Option<T>>
+    async fn get_setting<'e, T>(&self, key: &str) -> SqliteResult<Option<T>>
     where
-        T: Type<Sqlite> + Send + 'static,
+        T: Type<Sqlite> + Send + Unpin + 'e,
+        (T,): for<'r> FromRow<'r, SqliteRow>, // what the fuck is this
     {
         let mut connection = self.read_only_pool.acquire().await?;
-        get_setting_sync(&mut connection, key.as_str()).await
+        helper::get_setting(&mut connection, key).await
     }
 
-    async fn set_setting<T>(&self, key: &str, value: T) -> SqliteResult<bool>
+    async fn set_setting<'q, T>(&self, key: &'q str, value: T) -> SqliteResult<bool>
     where
-        T: Type<Sqlite> + Send + 'static,
+        T: Encode<'q, Sqlite> + Type<Sqlite> + 'q,
     {
         let mut connection = self.read_write_pool.acquire().await?;
-        set_setting_sync(&mut connection, key, value).await
+        helper::set_setting(&mut connection, key, value).await
     }
 
     pub async fn add_owner(&self, owner_id: u64) -> SqliteResult<()> {
@@ -524,7 +528,7 @@ impl JinxDb {
     }
 
     pub async fn get_discord_token(&self) -> SqliteResult<Option<String>> {
-        self.get_setting(DISCORD_TOKEN_KEY.to_owned()).await
+        self.get_setting(DISCORD_TOKEN_KEY).await
     }
 
     pub async fn set_low_priority_cache_expiry_time(
@@ -541,7 +545,7 @@ impl JinxDb {
 
     pub async fn get_low_priority_cache_expiry_time(&self) -> SqliteResult<Option<Duration>> {
         let low_priority_cache_expiry_time = self
-            .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS.to_owned())
+            .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS)
             .await?
             .map(|secs| Duration::from_secs(secs as u64));
         Ok(low_priority_cache_expiry_time)
@@ -682,7 +686,8 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let api_key_str = api_key.as_str();
         sqlx::query!(
-            r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#,
+            r#"INSERT INTO guild (guild_id, jinxxy_api_key) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET jinxxy_api_key = excluded.jinxxy_api_key"#,
             guild_id,
             api_key_str
         )
@@ -714,9 +719,14 @@ impl JinxDb {
     pub async fn set_blanket_role_id(&self, guild: GuildId, role_id: Option<RoleId>) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role_id.map(|role_id| role_id.get() as i64);
-        sqlx::query!(r#"INSERT INTO guild (guild_id, blanket_role_id) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#, guild_id, role_id)
-            .execute(&self.read_write_pool)
-            .await?;
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, blanket_role_id) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#,
+            guild_id,
+            role_id
+        )
+        .execute(&self.read_write_pool)
+        .await?;
         Ok(())
     }
 
@@ -1157,7 +1167,8 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let channel_id = channel.map(|channel| channel.get() as i64);
         sqlx::query!(
-            r#"INSERT INTO guild (guild_id, log_channel_id) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id"#,
+            r#"INSERT INTO guild (guild_id, log_channel_id) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id"#,
             guild_id,
             channel_id,
         )
@@ -1170,7 +1181,8 @@ impl JinxDb {
     pub async fn set_test(&self, guild: GuildId, test: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         sqlx::query!(
-            r#"INSERT INTO guild (guild_id, test) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test"#,
+            r#"INSERT INTO guild (guild_id, test) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET test = excluded.test"#,
             guild_id,
             test
         )
@@ -1194,7 +1206,8 @@ impl JinxDb {
     pub async fn set_owner_guild(&self, guild: GuildId, owner: bool) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         sqlx::query!(
-            r#"INSERT INTO guild (guild_id, owner) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner"#,
+            r#"INSERT INTO guild (guild_id, owner) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET owner = excluded.owner"#,
             guild_id,
             owner
         )
@@ -1280,9 +1293,9 @@ impl JinxDb {
 
     pub async fn get_guild_cache(&self, guild: GuildId) -> SqliteResult<GuildCache> {
         let mut connection = self.read_only_pool.acquire().await?;
-        let cache_time = get_cache_time(&mut connection, guild).await?;
-        let product_name_info = product_names_in_guild_sync(&mut connection, guild).await?;
-        let product_version_name_info = product_version_names_in_guild(&mut connection, guild).await?;
+        let cache_time = helper::get_cache_time(&mut connection, guild).await?;
+        let product_name_info = helper::product_names_in_guild(&mut connection, guild).await?;
+        let product_version_name_info = helper::product_version_names_in_guild(&mut connection, guild).await?;
         Ok(GuildCache {
             product_name_info,
             product_version_name_info,
@@ -1292,9 +1305,9 @@ impl JinxDb {
 
     pub async fn persist_guild_cache(&self, guild: GuildId, cache_entry: GuildCache) -> SqliteResult<()> {
         let mut connection = self.read_write_pool.acquire().await?;
-        persist_product_names(&mut connection, guild, cache_entry.product_name_info).await?;
-        persist_product_version_names(&mut connection, guild, cache_entry.product_version_name_info).await?;
-        set_cache_time(&mut connection, guild, cache_entry.cache_time).await?;
+        helper::persist_product_names(&mut connection, guild, cache_entry.product_name_info).await?;
+        helper::persist_product_version_names(&mut connection, guild, cache_entry.product_version_name_info).await?;
+        helper::set_cache_time(&mut connection, guild, cache_entry.cache_time).await?;
         Ok(())
     }
 
@@ -1314,7 +1327,7 @@ impl JinxDb {
     /// Get cached name info for products in a guild
     pub async fn product_names_in_guild(&self, guild: GuildId) -> SqliteResult<Vec<ProductNameInfo>> {
         let mut connection = self.read_only_pool.acquire().await?;
-        product_names_in_guild_sync(&mut connection, guild).await
+        helper::product_names_in_guild(&mut connection, guild).await
     }
 
     /// Get versions for a product
@@ -1342,181 +1355,217 @@ impl JinxDb {
     }
 }
 
-async fn get_setting_sync<'r, T>(connection: &mut SqliteConnection, key: &str) -> SqliteResult<Option<T>>
-where
-    T: Decode<'r, Sqlite> + Type<Sqlite> + Clone + 'r,
-{
-    let result = sqlx::query(r#"SELECT value FROM settings WHERE key = ?"#)
-        .bind(key)
-        .fetch_optional(connection)
-        .await?;
-    match result {
-        Some(row) => {
-            let value: &Option<T> = row.try_get(0)?;
-            Ok(value.as_ref().cloned())
-        }
-        None => Ok(None)
-    }
-}
+/// Helper functions that don't access a whole pool
+mod helper {
+    use super::*;
 
-async fn set_setting_sync<T>(connection: &mut SqliteConnection, key: &'static str, value: T) -> SqliteResult<bool>
-where
-    T: Encode<'static, Sqlite> + Type<Sqlite> + 'static,
-{
-    let update_count = sqlx::query(r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#)
-        .bind(key)
-        .bind(value)
-        .execute(connection)
-        .await?
-        .rows_affected();
-    Ok(update_count != 0)
-}
-
-async fn get_cache_time(connection: &mut SqliteConnection, guild: GuildId) -> SqliteResult<SimpleTime> {
-    let guild_id = guild.get() as i64;
-    let cache_time_unix_ms =
-        sqlx::query_scalar!(r#"SELECT cache_time_unix_ms FROM guild WHERE guild_id = ?"#, guild_id)
-            .fetch_one(connection)
+    /// Get a single setting from the `settings` table. Note that if your setting is nullable you MUST read it as an
+    /// Option<T> instead of a T. This function returns None only if the entire row is absent.
+    pub(crate) async fn get_setting<'e, T>(connection: &'e mut SqliteConnection, key: &str) -> SqliteResult<Option<T>>
+    where
+        T: Type<Sqlite> + Send + Unpin + 'e,
+        (T,): for<'r> FromRow<'r, SqliteRow>, // what the fuck is this
+    {
+        let result: Option<T> = sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = ?"#)
+            .bind(key)
+            .fetch_optional(connection)
             .await?;
-    Ok(SimpleTime::from_unix_millis(cache_time_unix_ms as u64))
-}
-
-async fn set_cache_time(connection: &mut SqliteConnection, guild: GuildId, time: SimpleTime) -> SqliteResult<()> {
-    let guild_id = guild.get() as i64;
-    let cache_time_unix_ms = time.as_epoch_millis() as i64;
-    sqlx::query!(
-        r#"INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms"#,
-        guild_id,
-        cache_time_unix_ms
-    )
-    .execute(connection)
-    .await?;
-    Ok(())
-}
-
-/// Get cached name info for products in a guild
-async fn product_names_in_guild_sync(
-    connection: &mut SqliteConnection,
-    guild: GuildId,
-) -> SqliteResult<Vec<ProductNameInfo>> {
-    let guild_id = guild.get() as i64;
-    sqlx::query!(
-        r#"SELECT product_id, product_name, etag FROM product WHERE guild_id = ?"#,
-        guild_id
-    )
-    .map(|row| ProductNameInfo {
-        id: row.product_id,
-        value: ProductNameInfoValue {
-            product_name: row.product_name,
-            etag: row.etag,
-        },
-    })
-    .fetch_all(connection)
-    .await
-}
-
-/// Get name info for products versions in a guild
-async fn product_version_names_in_guild(
-    connection: &mut SqliteConnection,
-    guild: GuildId,
-) -> SqliteResult<Vec<ProductVersionNameInfo>> {
-    let guild_id = guild.get() as i64;
-    sqlx::query!(
-        r#"SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = ?"#,
-        guild_id
-    )
-    .map(|row| ProductVersionNameInfo {
-        id: ProductVersionId {
-            product_id: row.product_id,
-            product_version_id: Some(row.version_id),
-        },
-        product_version_name: row.product_version_name,
-    })
-    .fetch_all(connection)
-    .await
-}
-
-async fn persist_product_names(
-    connection: &mut SqliteConnection,
-    guild: GuildId,
-    product_name_info: Vec<ProductNameInfo>,
-) -> SqliteResult<()> {
-    let guild_id = guild.get() as i64;
-    let mut new_key_set = HashSet::with_capacity_and_hasher(product_name_info.len(), ahash::RandomState::default());
-    let mut unexpected_keys = Vec::new();
-
-    // step 1: insert all entries and keep track of their keys in a set for later
-    let mut statement = sqlx::query!(
-        r#"INSERT INTO product (guild_id, product_id, product_name, etag) VALUES (:guild, :product_id, :product_name, :etag) ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name, etag = excluded.etag"#
-    )?;
-    for info in product_name_info {
-        let product_id = info.id;
-        let product_name = info.value.product_name;
-        let etag = info.value.etag;
-        statement.execute(
-            named_params! {":guild": guild_id, ":product_id": product_id, ":product_name": product_name, ":etag": etag},
-        )?;
-        new_key_set.insert(product_id);
+        Ok(result)
     }
 
-    // step 2: query all existing keys, and record any keys that we did NOT just insert
-    let mut statement = sqlx::query!(r#"SELECT product_id FROM product WHERE guild_id = :guild"#)?;
-    let mut rows = statement.query(named_params! {":guild": guild_id})?;
-    while let Some(row) = rows.next()? {
-        let product_id: String = row.get(0)?;
-        if !new_key_set.contains(&product_id) {
-            unexpected_keys.push(product_id);
+    pub(crate) async fn set_setting<'q, T>(
+        connection: &mut SqliteConnection,
+        key: &'q str,
+        value: T,
+    ) -> SqliteResult<bool>
+    where
+        T: Encode<'q, Sqlite> + Type<Sqlite> + 'q,
+    {
+        let update_count = sqlx::query(r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#)
+            .bind(key)
+            .bind(value)
+            .execute(connection)
+            .await?
+            .rows_affected();
+        Ok(update_count != 0)
+    }
+
+    pub(crate) async fn get_cache_time(connection: &mut SqliteConnection, guild: GuildId) -> SqliteResult<SimpleTime> {
+        let guild_id = guild.get() as i64;
+        let cache_time_unix_ms =
+            sqlx::query_scalar!(r#"SELECT cache_time_unix_ms FROM guild WHERE guild_id = ?"#, guild_id)
+                .fetch_one(connection)
+                .await?;
+        Ok(SimpleTime::from_unix_millis(cache_time_unix_ms as u64))
+    }
+
+    pub(crate) async fn set_cache_time(
+        connection: &mut SqliteConnection,
+        guild: GuildId,
+        time: SimpleTime,
+    ) -> SqliteResult<()> {
+        let guild_id = guild.get() as i64;
+        let cache_time_unix_ms = time.as_epoch_millis() as i64;
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms"#,
+            guild_id,
+            cache_time_unix_ms
+        )
+        .execute(connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Get cached name info for products in a guild
+    pub(crate) async fn product_names_in_guild(
+        connection: &mut SqliteConnection,
+        guild: GuildId,
+    ) -> SqliteResult<Vec<ProductNameInfo>> {
+        let guild_id = guild.get() as i64;
+        sqlx::query!(
+            r#"SELECT product_id, product_name, etag FROM product WHERE guild_id = ?"#,
+            guild_id
+        )
+        .map(|row| ProductNameInfo {
+            id: row.product_id,
+            value: ProductNameInfoValue {
+                product_name: row.product_name,
+                etag: row.etag,
+            },
+        })
+        .fetch_all(connection)
+        .await
+    }
+
+    /// Get name info for products versions in a guild
+    pub(crate) async fn product_version_names_in_guild(
+        connection: &mut SqliteConnection,
+        guild: GuildId,
+    ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
+        let guild_id = guild.get() as i64;
+        sqlx::query!(
+            r#"SELECT product_id, version_id, product_version_name FROM product_version WHERE guild_id = ?"#,
+            guild_id
+        )
+        .map(|row| ProductVersionNameInfo {
+            id: ProductVersionId {
+                product_id: row.product_id,
+                product_version_id: Some(row.version_id),
+            },
+            product_version_name: row.product_version_name,
+        })
+        .fetch_all(connection)
+        .await
+    }
+
+    pub(crate) async fn persist_product_names(
+        connection: &mut SqliteConnection,
+        guild: GuildId,
+        product_name_info: Vec<ProductNameInfo>,
+    ) -> SqliteResult<()> {
+        let guild_id = guild.get() as i64;
+        let mut new_key_set = HashSet::with_capacity_and_hasher(product_name_info.len(), ahash::RandomState::default());
+        let mut unexpected_keys = Vec::new();
+
+        // step 1: insert all entries and keep track of their keys in a set for later
+        for info in product_name_info {
+            let product_id = info.id;
+            let product_name = info.value.product_name;
+            let etag = info.value.etag;
+            sqlx::query!(
+                r#"INSERT INTO product (guild_id, product_id, product_name, etag) VALUES (?, ?, ?, ?)
+                   ON CONFLICT (guild_id, product_id) DO UPDATE SET product_name = excluded.product_name, etag = excluded.etag"#,
+                guild_id,
+                product_id,
+                product_name,
+                etag
+            )
+                .execute(&mut *connection)
+                .await?;
+            new_key_set.insert(product_id);
         }
-    }
 
-    // step 3: delete any rows with keys that we did NOT just insert
-    let mut statement = sqlx::query!(r#"DELETE FROM product WHERE guild_id = :guild AND product_id = :product_id"#)?;
-    for product_id in unexpected_keys {
-        statement.execute(named_params! {":guild": guild_id, ":product_id": product_id})?;
-    }
-    Ok(())
-}
-
-async fn persist_product_version_names(
-    connection: &mut SqliteConnection,
-    guild: GuildId,
-    product_version_name_info: Vec<ProductVersionNameInfo>,
-) -> SqliteResult<()> {
-    let guild_id = guild.get() as i64;
-    let mut new_key_set =
-        HashSet::with_capacity_and_hasher(product_version_name_info.len(), ahash::RandomState::default());
-    let mut unexpected_keys = Vec::new();
-    // step 1: insert all entries and keep track of their keys in a set for later
-    let mut statement = sqlx::query!(
-        r#"INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (:guild, :product_id, :version_id, :product_version_name) ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name"#
-    )?;
-    for info in product_version_name_info {
-        let (product_id, version_id) = info.id.into_db_values();
-        let product_version_name = info.product_version_name;
-        statement.execute(named_params! {":guild": guild_id, ":product_id": product_id, ":version_id": version_id, ":product_version_name": product_version_name})?;
-        new_key_set.insert((product_id, version_id));
-    }
-
-    // step 2: query all existing keys, and record any keys that we did NOT just insert
-    let mut statement = sqlx::query!(r#"SELECT product_id, version_id FROM product_version WHERE guild_id = :guild"#)?;
-    let mut rows = statement.query(named_params! {":guild": guild_id})?;
-    while let Some(row) = rows.next()? {
-        let product_id: String = row.get(0)?;
-        let version_id: String = row.get(1)?;
-        let key = (product_id, version_id);
-        if !new_key_set.contains(&key) {
-            unexpected_keys.push(key);
+        // step 2: query all existing keys, and record any keys that we did NOT just insert
+        {
+            let mut rows = sqlx::query_scalar!(r#"SELECT product_id FROM product WHERE guild_id = ?"#, guild_id)
+                .fetch(&mut *connection);
+            while let Some(product_id) = rows.try_next().await? {
+                if !new_key_set.contains(&product_id) {
+                    unexpected_keys.push(product_id);
+                }
+            }
         }
+
+        // step 3: delete any rows with keys that we did NOT just insert
+        for product_id in unexpected_keys {
+            sqlx::query!(
+                r#"DELETE FROM product WHERE guild_id = ? AND product_id = ?"#,
+                guild_id,
+                product_id
+            )
+            .execute(&mut *connection)
+            .await?;
+        }
+        Ok(())
     }
 
-    // step 3: delete any rows with keys that we did NOT just insert
-    let mut statement = sqlx::query!(
-        r#"DELETE FROM product_version WHERE guild_id = :guild AND product_id = :product_id AND version_id = :version_id"#
-    )?;
-    for (product_id, version_id) in unexpected_keys {
-        statement.execute(named_params! {":guild": guild_id, ":product_id": product_id, ":version_id": version_id})?;
+    pub(crate) async fn persist_product_version_names(
+        connection: &mut SqliteConnection,
+        guild: GuildId,
+        product_version_name_info: Vec<ProductVersionNameInfo>,
+    ) -> SqliteResult<()> {
+        let guild_id = guild.get() as i64;
+        let mut new_key_set =
+            HashSet::with_capacity_and_hasher(product_version_name_info.len(), ahash::RandomState::default());
+        let mut unexpected_keys = Vec::new();
+        // step 1: insert all entries and keep track of their keys in a set for later
+        for info in product_version_name_info {
+            let (product_id, version_id) = info.id.into_db_values();
+            let product_version_name = info.product_version_name;
+            sqlx::query!(
+            r#"INSERT INTO product_version (guild_id, product_id, version_id, product_version_name) VALUES (?, ?, ?, ?)
+               ON CONFLICT (guild_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name"#,
+                guild_id,
+                product_id,
+                version_id,
+                product_version_name
+            )
+                .execute(&mut *connection)
+                .await?;
+            new_key_set.insert((product_id, version_id));
+        }
+
+        // step 2: query all existing keys, and record any keys that we did NOT just insert
+        {
+            let mut rows = sqlx::query!(
+                r#"SELECT product_id, version_id FROM product_version WHERE guild_id = ?"#,
+                guild_id
+            )
+            .fetch(&mut *connection);
+            while let Some(row) = rows.try_next().await? {
+                let product_id: String = row.product_id;
+                let version_id: String = row.version_id;
+                let key = (product_id, version_id);
+                if !new_key_set.contains(&key) {
+                    unexpected_keys.push(key);
+                }
+            }
+        }
+
+        // step 3: delete any rows with keys that we did NOT just insert
+        for (product_id, version_id) in unexpected_keys {
+            sqlx::query!(
+                r#"DELETE FROM product_version WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
+                guild_id,
+                product_id,
+                version_id
+            )
+            .execute(&mut *connection)
+            .await?;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Helper struct returned by [`JinxDb::get_guilds_pending_gumroad_nag`]
