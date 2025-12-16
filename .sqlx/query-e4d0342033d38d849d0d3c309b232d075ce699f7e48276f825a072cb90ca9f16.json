@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) AS \"count!\" FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+  "query": "SELECT count(DISTINCT log_channel_id) AS \"count!\" FROM guild WHERE NOT test",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "1955d5e57d5bc35251d512a4ea2f8e3762d88d2747ab3ecbe9dd9bcd8267b285"
+  "hash": "e4d0342033d38d849d0d3c309b232d075ce699f7e48276f825a072cb90ca9f16"
 }

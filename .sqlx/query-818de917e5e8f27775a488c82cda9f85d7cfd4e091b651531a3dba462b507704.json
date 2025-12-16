@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) AS \"count!\" FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL",
+  "query": "SELECT count(*) AS \"count!\" FROM guild WHERE NOT guild.test AND blanket_role_id IS NOT NULL",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "1c42fe0d6ac5c0fc999b3732e37e10009f2198da8f7564e7ad01014f6b35adfe"
+  "hash": "818de917e5e8f27775a488c82cda9f85d7cfd4e091b651531a3dba462b507704"
 }

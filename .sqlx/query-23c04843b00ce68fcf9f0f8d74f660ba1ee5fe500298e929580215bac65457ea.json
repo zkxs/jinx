@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) AS \"count!\" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+  "query": "SELECT count(*) AS \"count!\" FROM guild WHERE NOT test",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "7061ce4427bff47b49c09b6958359e21debaa68dc8c35e6418b7cdd925784dd9"
+  "hash": "23c04843b00ce68fcf9f0f8d74f660ba1ee5fe500298e929580215bac65457ea"
 }
