@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id, product_name, etag FROM product WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "product_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "etag",
+        "ordinal": 2,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1e00676fdbfc4737113457f244e69dab70632bf69b43e374714a65f9af31af05"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM owner WHERE owner_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "8403cdbd77880f3ee7c3c6f6603c11aeb1a05422040c7f6ca2f617ebcf7e6e92"
+}

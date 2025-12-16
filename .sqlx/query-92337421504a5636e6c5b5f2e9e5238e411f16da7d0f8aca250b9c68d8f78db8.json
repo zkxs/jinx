@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM product",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "92337421504a5636e6c5b5f2e9e5238e411f16da7d0f8aca250b9c68d8f78db8"
+}

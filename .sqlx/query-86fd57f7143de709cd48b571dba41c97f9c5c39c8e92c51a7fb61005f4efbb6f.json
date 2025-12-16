@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO guild (guild_id, cache_time_unix_ms) VALUES (?, ?)\n               ON CONFLICT (guild_id) DO UPDATE SET cache_time_unix_ms = excluded.cache_time_unix_ms",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "86fd57f7143de709cd48b571dba41c97f9c5c39c8e92c51a7fb61005f4efbb6f"
+}

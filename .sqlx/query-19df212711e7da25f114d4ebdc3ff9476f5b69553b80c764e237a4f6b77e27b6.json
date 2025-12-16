@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM owner WHERE owner_id = ?) AS \"is_owner: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_owner: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "19df212711e7da25f114d4ebdc3ff9476f5b69553b80c764e237a4f6b77e27b6"
+}

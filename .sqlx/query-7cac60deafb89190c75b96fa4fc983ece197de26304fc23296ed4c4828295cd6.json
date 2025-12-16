@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM license_activation WHERE guild_id = ? AND user_id = ? AND license_id = ?) AS \"has_activations: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has_activations: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7cac60deafb89190c75b96fa4fc983ece197de26304fc23296ed4c4828295cd6"
+}

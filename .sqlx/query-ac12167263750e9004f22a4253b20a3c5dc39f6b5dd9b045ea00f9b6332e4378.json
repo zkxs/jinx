@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT owner AS \"is_owner: bool\" FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_owner: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ac12167263750e9004f22a4253b20a3c5dc39f6b5dd9b045ea00f9b6332e4378"
+}

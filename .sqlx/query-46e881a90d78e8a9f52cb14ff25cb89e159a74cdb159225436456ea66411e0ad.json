@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT log_channel_id FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "log_channel_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "46e881a90d78e8a9f52cb14ff25cb89e159a74cdb159225436456ea66411e0ad"
+}

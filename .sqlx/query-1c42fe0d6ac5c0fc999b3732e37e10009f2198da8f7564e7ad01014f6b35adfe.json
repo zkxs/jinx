@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) AS \"count!\" FROM guild WHERE guild.test = 0 AND blanket_role_id IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1c42fe0d6ac5c0fc999b3732e37e10009f2198da8f7564e7ad01014f6b35adfe"
+}

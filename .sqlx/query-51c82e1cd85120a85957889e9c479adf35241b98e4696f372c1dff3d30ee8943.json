@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT gumroad_failure_count FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "gumroad_failure_count",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "51c82e1cd85120a85957889e9c479adf35241b98e4696f372c1dff3d30ee8943"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT license_activation_id FROM license_activation WHERE guild_id = ? AND user_id = ? AND license_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "license_activation_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9f64f90f37a897d83524b1a88b39503b0abe8158c65786d6fd23c4d72dcfcee2"
+}

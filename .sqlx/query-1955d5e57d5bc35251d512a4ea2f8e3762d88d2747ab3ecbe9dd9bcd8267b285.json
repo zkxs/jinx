@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) AS \"count!\" FROM product_role LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1955d5e57d5bc35251d512a4ea2f8e3762d88d2747ab3ecbe9dd9bcd8267b285"
+}

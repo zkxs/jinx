@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM product WHERE guild_id = ? AND product_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3c7795a6aca3ddee351f04e04e79411d438ec521f95b84f223d901a090c0647a"
+}

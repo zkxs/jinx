@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT test AS \"is_test: bool\" FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_test: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "240e8cb6d9d5a7bfdbfda8fc35f917a15947fe954db51c87ae99e32cf4b5fffc"
+}

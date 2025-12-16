@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE guild SET cache_time_unix_ms = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "dab35e7bf52ae29924906313ef618e3da4e80923e2714051132b58b2a36bd8ed"
+}

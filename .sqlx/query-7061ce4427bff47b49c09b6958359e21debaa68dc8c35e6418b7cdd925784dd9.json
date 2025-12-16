@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) AS \"count!\" FROM license_activation LEFT JOIN guild USING (guild_id) WHERE guild.test = 0",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7061ce4427bff47b49c09b6958359e21debaa68dc8c35e6418b7cdd925784dd9"
+}

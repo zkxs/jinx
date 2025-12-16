@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT log_channel_id AS \"channel_id!\" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test != 0",
+  "describe": {
+    "columns": [
+      {
+        "name": "channel_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "4e7a020c2fda152b1a315ab9081f8d219ad7d58e3e99c56daa04247c5081609b"
+}

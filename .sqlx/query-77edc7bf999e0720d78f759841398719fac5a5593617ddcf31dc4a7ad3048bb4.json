@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT page_count * page_size AS \"size!\" FROM pragma_page_count(), pragma_page_size()",
+  "describe": {
+    "columns": [
+      {
+        "name": "size!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "77edc7bf999e0720d78f759841398719fac5a5593617ddcf31dc4a7ad3048bb4"
+}

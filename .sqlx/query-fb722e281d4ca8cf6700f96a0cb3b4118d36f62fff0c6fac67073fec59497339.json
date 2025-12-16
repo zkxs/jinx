@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "role_id",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fb722e281d4ca8cf6700f96a0cb3b4118d36f62fff0c6fac67073fec59497339"
+}

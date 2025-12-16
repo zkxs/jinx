@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE guild SET blanket_role_id = NULL WHERE guild_id = ? AND blanket_role_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0712fd5722b21f760aded966b077c5dca8294fa6d40097838a035fd7009bd77a"
+}

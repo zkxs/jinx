@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT gumroad_nag_count FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "gumroad_nag_count",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3384f95675985e68c6b270c6c4e95aec7a04f8a93bfb5bda7d34d15ba3fde7bd"
+}

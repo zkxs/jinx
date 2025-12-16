@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE guild SET gumroad_nag_count = gumroad_nag_count + 1 WHERE guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0912d6e9db8a4ddac857cd96f0adafb6be34df09e0535b097011ab23fe76cb2c"
+}

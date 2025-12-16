@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id, version_id FROM product_version WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "511dd2a3c74e03954cf1920e7600e8c72863cab32d0c5ecad904671ef9a93976"
+}
