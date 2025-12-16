@@ -260,6 +260,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
+    // TODO: allow multiple jinxxy stores per guild
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS guild (
@@ -276,7 +277,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         )
         .await?;
 
-    // disk cache for product names
+    // disk cache for product names TODO: foreign keys
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product (
@@ -293,7 +294,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         .execute(r#"CREATE INDEX IF NOT EXISTS product_lookup_by_guild ON product (guild_id)"#)
         .await?;
 
-    // disk cache for product version names
+    // disk cache for product version names TODO: foreign keys
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version (
@@ -310,7 +311,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         .execute(r#"CREATE INDEX IF NOT EXISTS version_lookup_by_guild ON product_version (guild_id)"#)
         .await?;
 
-    // this is the "blanket" roles for any version in a product
+    // this is the "blanket" roles for any version in a product TODO: foreign keys
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_role (
@@ -325,7 +326,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         .execute(r#"CREATE INDEX IF NOT EXISTS role_lookup ON product_role (guild_id, product_id)"#)
         .await?;
 
-    // this is product-version specific role grants
+    // this is product-version specific role grants TODO: foreign keys
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version_role (
@@ -342,6 +343,7 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
         r#"CREATE INDEX IF NOT EXISTS version_role_lookup ON product_version_role (guild_id, product_id, version_id)"#
     ).await?;
 
+    // TODO: foreign keys
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS license_activation (
@@ -392,6 +394,11 @@ async fn init_v2(pool: &Pool<Sqlite>) -> Result<(), JinxError> {
     );
 
     Ok(())
+}
+
+/// Copy all rows in the v1 db into the v2 db
+async fn copy_v1_to_v2(v1_pool: &Pool<Sqlite>, v2_pool: &Pool<Sqlite>) -> Result<(), JinxError> {
+    todo!()
 }
 
 /// Cloning is by-reference.
@@ -452,7 +459,10 @@ impl JinxDb {
                 .page_size(4096)
                 .pragma("trusted_schema", "OFF");
             let v1_pool = SqlitePool::connect_with(connect_options_v1).await?;
-            init_v1(&v1_pool).await?; // handle any pending migrations on the v1 db
+            // handle any pending migrations on the v1 db
+            init_v1(&v1_pool).await?;
+            // perform the big migration
+            copy_v1_to_v2(&v1_pool, &read_write_pool).await?;
         }
 
         let db = JinxDb {
