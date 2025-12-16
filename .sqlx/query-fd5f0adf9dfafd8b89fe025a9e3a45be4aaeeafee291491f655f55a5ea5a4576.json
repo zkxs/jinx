@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT guild_id FROM license_activation WHERE user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fd5f0adf9dfafd8b89fe025a9e3a45be4aaeeafee291491f655f55a5ea5a4576"
+}
