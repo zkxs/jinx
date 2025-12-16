@@ -14,13 +14,10 @@ use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
     SqliteSynchronous,
 };
-use sqlx::{
-    Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, error::Error as SqlxError,
-};
+use sqlx::{Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, error::Error as SqlxError};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::debug;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 //const DB_V2_FILENAME: &str = "jinx2.sqlite";
@@ -37,12 +34,6 @@ pub struct JinxDb {
     read_pool: Pool<Sqlite>,
     write_pool: Pool<Sqlite>,
     api_key_cache: Arc<papaya::HashMap<GuildId, Option<String>, ahash::RandomState>>,
-}
-
-impl Drop for JinxDb {
-    fn drop(&mut self) {
-        debug!("Closing sqlite db…");
-    }
 }
 
 impl JinxDb {
