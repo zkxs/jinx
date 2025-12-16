@@ -22,9 +22,9 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "settings" (
-                         key    TEXT PRIMARY KEY,
-                         value  ANY NOT NULL
-                     ) STRICT"#,
+                   key    TEXT NOT NULL PRIMARY KEY,
+                   value  ANY NOT NULL
+               ) STRICT"#,
         )
         .await?;
 
@@ -32,16 +32,16 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS guild (
-                         guild_id               INTEGER PRIMARY KEY,
-                         log_channel_id         INTEGER,
-                         test                   INTEGER NOT NULL DEFAULT 0,
-                         owner                  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
-                         gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
-                         blanket_role_id        INTEGER,
-                         default_jinxxy_user    TEXT,
-                         FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user
-                     ) STRICT"#,
+                   guild_id               INTEGER NOT NULL PRIMARY KEY,
+                   log_channel_id         INTEGER,
+                   test                   INTEGER NOT NULL DEFAULT 0,
+                   owner                  INTEGER NOT NULL DEFAULT 0,
+                   gumroad_failure_count  INTEGER NOT NULL DEFAULT 0,
+                   gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
+                   blanket_role_id        INTEGER,
+                   default_jinxxy_user    TEXT,
+                   FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user
+               ) STRICT"#,
         )
         .await?;
 
@@ -49,10 +49,10 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS jinxxy_user (
-                         jinxxy_user_id      TEXT PRIMARY KEY,
-                         jinxxy_username     TEXT,
-                         cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
-                     ) STRICT"#,
+                   jinxxy_user_id      TEXT NOT NULL PRIMARY KEY,
+                   jinxxy_username     TEXT,
+                   cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
+               ) STRICT"#,
         )
         .await?;
 
@@ -60,14 +60,14 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS jinxxy_user_guild (
-                         guild_id              INTEGER NOT NULL,
-                         jinxxy_user_id        TEXT NOT NULL,
-                         jinxxy_api_key        TEXT NOT NULL,
-                         jinxxy_api_key_valid  INTEGER NOT NULL DEFAULT TRUE,
-                         PRIMARY KEY           (guild_id, jinxxy_user_id),
-                         FOREIGN KEY           (guild_id)       REFERENCES guild,
-                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
+                   guild_id              INTEGER NOT NULL,
+                   jinxxy_user_id        TEXT NOT NULL,
+                   jinxxy_api_key        TEXT NOT NULL,
+                   jinxxy_api_key_valid  INTEGER NOT NULL DEFAULT TRUE,
+                   PRIMARY KEY           (guild_id, jinxxy_user_id),
+                   FOREIGN KEY           (guild_id)       REFERENCES guild,
+                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
+               ) STRICT"#,
         )
         .await?;
     // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
@@ -79,13 +79,13 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product (
-                         jinxxy_user_id  TEXT NOT NULL,
-                         product_id      TEXT NOT NULL,
-                         product_name    TEXT NOT NULL,
-                         etag            BLOB,
-                         PRIMARY KEY     (jinxxy_user_id, product_id),
-                         FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
+                   jinxxy_user_id  TEXT NOT NULL,
+                   product_id      TEXT NOT NULL,
+                   product_name    TEXT NOT NULL,
+                   etag            BLOB,
+                   PRIMARY KEY     (jinxxy_user_id, product_id),
+                   FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
+               ) STRICT"#,
         )
         .await?;
 
@@ -93,13 +93,13 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version (
-                         jinxxy_user_id        TEXT NOT NULL,
-                         product_id            TEXT NOT NULL,
-                         version_id            TEXT NOT NULL,
-                         product_version_name  TEXT NOT NULL,
-                         PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
-                         FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
+                   jinxxy_user_id        TEXT NOT NULL,
+                   product_id            TEXT NOT NULL,
+                   version_id            TEXT NOT NULL,
+                   product_version_name  TEXT NOT NULL,
+                   PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
+                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
+               ) STRICT"#,
         )
         .await?;
 
@@ -107,13 +107,13 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_role (
-                         guild_id               INTEGER NOT NULL,
-                         jinxxy_user_id         TEXT NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
-                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-                     ) STRICT"#,
+                   guild_id               INTEGER NOT NULL,
+                   jinxxy_user_id         TEXT NOT NULL,
+                   product_id             TEXT NOT NULL,
+                   role_id                INTEGER NOT NULL,
+                   PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
+                   FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
+               ) STRICT"#,
         )
         .await?;
 
@@ -121,29 +121,29 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version_role (
-                         guild_id               INTEGER NOT NULL,
-                         jinxxy_user_id         TEXT NOT NULL,
-                         product_id             TEXT NOT NULL,
-                         version_id             TEXT NOT NULL,
-                         role_id                INTEGER NOT NULL,
-                         PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
-                         FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-                     ) STRICT"#,
+                   guild_id               INTEGER NOT NULL,
+                   jinxxy_user_id         TEXT NOT NULL,
+                   product_id             TEXT NOT NULL,
+                   version_id             TEXT NOT NULL,
+                   role_id                INTEGER NOT NULL,
+                   PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
+                   FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
+               ) STRICT"#,
         )
         .await?;
     // local mirror of license activations. Source of truth is the Jinxxy API.
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS license_activation (
-                         jinxxy_user_id         TEXT NOT NULL,
-                         license_id             TEXT NOT NULL,
-                         license_activation_id  TEXT NOT NULL,
-                         activator_user_id      INTEGER NOT NULL,
-                         product_id             TEXT,
-                         version_id             TEXT,
-                         PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
-                         FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
-                     ) STRICT"#,
+                   jinxxy_user_id         TEXT NOT NULL,
+                   license_id             TEXT NOT NULL,
+                   license_activation_id  TEXT NOT NULL,
+                   activator_user_id      INTEGER NOT NULL,
+                   product_id             TEXT,
+                   version_id             TEXT,
+                   PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
+                   FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
+               ) STRICT"#,
         )
         .await?;
 
@@ -151,8 +151,8 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "owner" (
-                         owner_id               INTEGER PRIMARY KEY
-                     ) STRICT"#,
+                   owner_id               INTEGER NOT NULL PRIMARY KEY
+               ) STRICT"#,
         )
         .await?;
 
@@ -180,8 +180,9 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 
     let elapsed = start.elapsed();
     debug!(
-        "initialized v2.{} db in {}ms",
-        DB_V2_SCHEMA_VERSION_VALUE,
+        "initialized v2.{}.{} db in {}ms",
+        SCHEMA_MINOR_VERSION_VALUE,
+        SCHEMA_PATCH_VERSION_VALUE.
         elapsed.as_millis()
     );
 

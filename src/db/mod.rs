@@ -61,10 +61,10 @@ impl JinxDb {
         let connect_options_read = connect_options_write.clone().read_only(true).create_if_missing(false);
 
         let write_pool = pool_options_write.connect_with(connect_options_write).await?;
-        let read_pool = pool_options_read.connect_with(connect_options_read).await?;
         let mut write_connection = write_pool.acquire().await?;
         schema_v1::init(&mut write_connection).await?;
 
+        let read_pool = pool_options_read.connect_with(connect_options_read).await?;
         {
             // sanity check to see if we can have multiple connections open
             let mut read_connection = read_pool.acquire().await?;
