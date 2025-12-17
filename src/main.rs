@@ -97,6 +97,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(cli_args::Command::Migrate) => {
+            init_logging();
             let db = db::JinxDb::open()
                 .await
                 .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
@@ -107,14 +108,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         None => {
-            // Init logging
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error")
-                        .expect("Failed to create EnvFilter"),
-                )
-                .init();
-
+            init_logging();
             info!(
                 "starting {} {} {}",
                 env!("CARGO_PKG_NAME"),
@@ -153,4 +147,13 @@ async fn bot_subsystem(subsystem: &mut SubsystemHandle) -> Result<(), Error> {
             result
         }
     }
+}
+
+/// Initialize logging to stdout
+fn init_logging() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_new("info,jinx=debug,serenity::gateway::shard=error").expect("Failed to create EnvFilter"),
+        )
+        .init();
 }
