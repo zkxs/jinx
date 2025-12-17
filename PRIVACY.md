@@ -1,6 +1,6 @@
 # Jinx Privacy Policy
 
-This policy explains how Jinx collects, stores, and uses the information provided when used.
+This policy explains how Jinx collects, stores, and uses data.
 
 Note that this policy applies only to the Jinx instance maintained and operated by the Jinx Team at
 https://github.com/zkxs/jinx: as Jinx is open source software other groups may host their own instances under differing
@@ -14,15 +14,18 @@ The following data is collected and stored by Jinx solely to enable Jinxxy licen
 
 - **Jinxxy API keys**: Used to connect Jinx to a creator's Jinxxy store
 - **Jinxxy Product IDs**: Uniquely identifies a product to the Jinxxy API
+- **Jinxxy Product Names**: Displayed to users when registering licenses for that product
 - **Jinxxy License IDs**: Uniquely identifies a license to the Jinxxy API
 - **Jinxxy License Activation IDs**: Uniquely identifies a license activation to the Jinxxy API
+- **Jinnxy Store ID**: Uniquely identifies a Jinxxy store
+- **Jinxxy Store Name**: Displayed to Jinx users when activating licenses for that store
 - **Discord Guild ID**: For guilds Jinx has been installed in
 - **Discord Role IDs**: For roles that Jinx can grant
 - **Discord User IDs**: For users who have activated licenses
 
 ### Error Logging
 
-The following data is collected and stored solely for the purpose of bug reproduction.
+The following data is collected and logged solely for the purpose of bug reproduction. Logs are regularly cleared.
 
 - **User Input**: Any user input that results in an internal error
 - **Jinxxy API Responses**: Any Jinxxy API responses that result in an internal error
@@ -35,6 +38,7 @@ is sold to any third party in any situation. None of this data is shared with an
 situations:
 - **Discord User IDs** are sent to the Jinxxy API in order to associate them with a license activation
 - Jinxxy creators (or other users they authorize) may export **Discord User IDs** of users who have activated licenses, allowing them to correlate your Discord and Jinxxy accounts.
+- **Jinxxy API data** (ids, urls, etc) may be shared with official Jinxxy team members solely for the purpose of reproducing and diagnosing Jinxxy API bugs.
 
 ## Changes to this Privacy Policy
 
@@ -52,4 +56,4 @@ If you have any questions or concerns about this privacy policy, please contact 
 
 ---
 
-Last updated: 2024-08-11
+Last updated: 2025-12-16

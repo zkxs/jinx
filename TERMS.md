@@ -22,7 +22,7 @@ You may stop using The Service at any time.
 
 If you are a Jinxxy creator and you would like to have your creator data deleted contact us at zkxs00@gmail.com
 with subject "JINX DATA DELETION". Note that we will have to verify that you own the relevant Discord account in this
-email exchange. We do not currently provide an option to request your Jinx data, as all data is also stored in your
+email exchange. We do not currently provide an option to request your Jinx data, as all activation data is also stored in your
 Jinxxy account and can be retrieved from it.
 
 ### Termination by the Jinx Team
@@ -57,4 +57,4 @@ If you have any questions or concerns about these terms, please contact us at zk
 
 ---
 
-Last updated: 2024-08-11
+Last updated: 2025-12-16
