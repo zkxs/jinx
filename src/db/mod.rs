@@ -288,7 +288,7 @@ impl JinxDb {
         Ok(())
     }
 
-    /// Get Jinxxy API key for this guild
+    /// Get a specific Jinxxy API key for this guild
     pub async fn get_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str) -> SqliteResult<Option<String>> {
         let guild_id = guild.get() as i64;
         let api_key = sqlx::query_scalar!(
@@ -299,6 +299,35 @@ impl JinxDb {
         .fetch_optional(&self.read_pool)
         .await?;
         Ok(api_key)
+    }
+
+    /// Get an arbitrary Jinxxy API key for this store.
+    pub async fn get_arbitrary_jinxxy_api_key(&self, jinxxy_user_id: &str) -> SqliteResult<Option<GuildApiKey>> {
+        let api_key = sqlx::query!(
+            r#"SELECT guild_id, jinxxy_api_key FROM jinxxy_user_guild WHERE jinxxy_user_id = ? AND jinxxy_api_key_valid LIMIT 1"#,
+            jinxxy_user_id
+        )
+        .map(|row| GuildApiKey {
+            guild_id: GuildId::new(row.guild_id as u64),
+            jinxxy_api_key: row.jinxxy_api_key,
+        })
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(api_key)
+    }
+
+    /// Mark an API key as invalid and excluded from use in the background cache job
+    pub async fn invalidate_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str) -> SqliteResult<()> {
+        let guild_id = guild.get() as i64;
+        let mut connection = self.write_connection().await?;
+        sqlx::query!(
+            r#"UPDATE jinxxy_user_guild SET jinxxy_api_key_valid = FALSE WHERE guild_id = ? AND jinxxy_user_id = ?"#,
+            guild_id,
+            jinxxy_user_id
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
     }
 
     /// Check if this guild has any Jinxxy stores linked
@@ -921,19 +950,19 @@ impl JinxDb {
         Ok(())
     }
 
-    pub async fn get_guild_cache(&self, jinxxy_user_id: &str) -> SqliteResult<GuildCache> {
+    pub async fn get_store_cache(&self, jinxxy_user_id: &str) -> SqliteResult<StoreCache> {
         let mut connection = self.read_pool.acquire().await?;
         let cache_time = helper::get_cache_time(&mut connection, jinxxy_user_id).await?;
         let product_name_info = helper::product_names_in_store(&mut connection, jinxxy_user_id).await?;
         let product_version_name_info = helper::product_version_names_in_store(&mut connection, jinxxy_user_id).await?;
-        Ok(GuildCache {
+        Ok(StoreCache {
             product_name_info,
             product_version_name_info,
             cache_time,
         })
     }
 
-    pub async fn persist_guild_cache(&self, jinxxy_user_id: &str, cache_entry: GuildCache) -> SqliteResult<()> {
+    pub async fn persist_store_cache(&self, jinxxy_user_id: &str, cache_entry: StoreCache) -> SqliteResult<()> {
         let mut connection = self.write_connection().await?;
         helper::persist_product_names(&mut connection, jinxxy_user_id, cache_entry.product_name_info).await?;
         helper::persist_product_version_names(&mut connection, jinxxy_user_id, cache_entry.product_version_name_info)
@@ -1213,8 +1242,8 @@ pub enum LinkSource {
     ProductVersion(ProductVersionId),
 }
 
-/// Helper struct returned by [`JinxDb::get_guild_cache`] and taken by [`JinxDb::persist_guild_cache`].
-pub struct GuildCache {
+/// Helper struct returned by [`JinxDb::get_store_cache`] and taken by [`JinxDb::persist_store_cache`].
+pub struct StoreCache {
     pub product_name_info: Vec<ProductNameInfo>,
     pub product_version_name_info: Vec<ProductVersionNameInfo>,
     pub cache_time: SimpleTime,
@@ -1248,4 +1277,10 @@ pub struct UserLicense {
     pub jinxxy_user_id: String,
     pub jinxxy_api_key: String,
     pub license_id: String,
+}
+
+/// Helper struct returned by [`JinxDb::get_arbitrary_jinxxy_api_key`]
+pub struct GuildApiKey {
+    pub guild_id: GuildId,
+    pub jinxxy_api_key: String,
 }

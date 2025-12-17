@@ -137,7 +137,7 @@ pub(in crate::bot) async fn init(
                     ),
                 );
                 if has_required_scopes {
-                    context.data().api_cache.register_guild_in_cache(guild_id).await?;
+                    context.data().api_cache.register_store_in_cache(guild_id).await?;
                     reply
                 } else {
                     debug!("nagged about API key scopes in {}", guild_id.get());

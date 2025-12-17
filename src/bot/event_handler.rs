@@ -10,7 +10,7 @@ use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
 use poise::serenity_prelude::ModalInteraction;
-use poise::{serenity_prelude as serenity, FrameworkContext};
+use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
     ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
@@ -72,7 +72,8 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             match context.user_data.db.has_jinxxy_linked(guild.id).await {
                 Ok(true) => {
                     // the guild has at least one jinxxy link
-                    let register_guild_result = context.user_data.api_cache.register_guild_in_cache(guild.id).await;
+                    //TODO: need to move this logic to the store link command
+                    let register_guild_result = context.user_data.api_cache.register_store_in_cache(guild.id).await;
                     if let Err(e) = register_guild_result {
                         error!(
                             "Error registering guild {} for background cache refresh: {:?}",
@@ -97,10 +98,11 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
         FullEvent::GuildDelete { incomplete, full } => {
             // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
             if incomplete.unavailable || full.is_some() {
+                //TODO: need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
                 let unregister_guild_result = context
                     .user_data
                     .api_cache
-                    .unregister_guild_in_cache(incomplete.id)
+                    .unregister_store_in_cache(incomplete.id)
                     .await;
                 if let Err(e) = unregister_guild_result {
                     error!(

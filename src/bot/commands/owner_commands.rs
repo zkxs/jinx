@@ -95,7 +95,7 @@ pub(in crate::bot) async fn owner_stats(
 )]
 pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Error> {
     for guild_id in context.cache().guilds() {
-        context.data().api_cache.register_guild_in_cache(guild_id).await?;
+        context.data().api_cache.register_store_in_cache(guild_id).await?;
     }
     let reply = success_reply("Success", "All guilds re-registered in cache refresh worker");
     context.send(reply).await?;

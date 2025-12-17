@@ -1,7 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-//! A guild-level cache of Jinxxy API results.
+//! A store-level cache of Jinxxy API results.
 //!
 //! This is needed because there are some cases, such as autocomplete, where we need API results
 //! however autocomplete needs results at high frequency with low latency: in other words a naive
@@ -19,7 +19,6 @@ use crate::http::jinxxy::{
     LoadedProduct, PartialProduct, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo,
 };
 use crate::time::SimpleTime;
-use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
@@ -30,7 +29,9 @@ use tracing::{debug, error, info, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type MapType = Arc<papaya::HashMap<GuildId, GuildCache, ahash::RandomState>>;
+
+/// Map of jinxxy_user_ids to their caches
+type MapType = Arc<papaya::HashMap<String, StoreCache, ahash::RandomState>>;
 
 /// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
@@ -55,7 +56,7 @@ const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 /// This cache has no retention time: instead expiry is handled by a background task which re-warms old cache entries.
 ///
 /// This admittedly unusual design is due to the Jinxxy API's extraordinarily high latencies. On a _good_ day it can
-/// take >3s to enumerate all product and version names for a guild. On a bad day it can take up to 15s, and beyond that
+/// take >3s to enumerate all product and version names for a store. On a bad day it can take up to 15s, and beyond that
 /// point the API will actually time out server-side and start returning 500s. We need product and version names for
 /// text autocompletion which absolutely _must_ be low-latency to feel usable. Sub-second latency is a must, and faster
 /// is always better, especially because network latency from the bot to the user's Discord client will already be
@@ -65,10 +66,10 @@ const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 #[derive(Clone)]
 pub struct ApiCache {
     map: MapType,
-    high_priority_tx: mpsc::Sender<GuildId>,
+    high_priority_tx: mpsc::Sender<String>,
     /// sending a None is considered a "bump", indicating we should re-check the next queued item
-    refresh_register_tx: mpsc::Sender<Option<GuildId>>,
-    refresh_unregister_tx: mpsc::Sender<GuildId>,
+    refresh_register_tx: mpsc::Sender<Option<String>>,
+    refresh_unregister_tx: mpsc::Sender<String>,
 }
 
 impl ApiCache {
@@ -76,14 +77,14 @@ impl ApiCache {
         let map: MapType = Default::default();
 
         const QUEUE_SIZE: usize = 1024;
-        let (high_priority_tx, mut high_priority_rx) = mpsc::channel(QUEUE_SIZE);
-        let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel(QUEUE_SIZE);
-        let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel(QUEUE_SIZE);
+        let (high_priority_tx, mut high_priority_rx) = mpsc::channel::<String>(QUEUE_SIZE);
+        let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel::<Option<String>>(QUEUE_SIZE);
+        let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel::<String>(QUEUE_SIZE);
 
         /* High priority refresh task.
 
         This is used when we have strong reason to believe a user will be needing the cache imminently: for example,
-        initializing the guild or linking a product is a strong hint the user will need a product list soon.
+        initializing the store or linking a product is a strong hint the user will need a product list soon.
 
         As long as the substantially shorter HIGH_PRIORITY_CACHE_EXPIRY_TIME is not exceeded, this always hits the
         Jinxxy API directly if the memory cache is cold (in comparison to the low-priority refresh which does a DB read
@@ -92,7 +93,7 @@ impl ApiCache {
         This is handled via a simple FIFO queue with no delays. The effect is that only one high-priority refresh can be
         in-flight at a time.
 
-        High-priority refreshes are moderately costly, as every single product in the guild will be queried in parallel.
+        High-priority refreshes are moderately costly, as every single product in the store will be queried in parallel.
         This has been measured to have a substantial negative impact on Jinxxy API response times, as it struggles to
         handle concurrent requests for the same API key. It is unknown if this issue is localized to an API key: it
         could be that Jinxxy simply cannot handle concurrent requests globally.
@@ -101,44 +102,48 @@ impl ApiCache {
             let db = db.clone();
             let map = map.clone();
             tokio::task::spawn(async move {
-                while let Some(guild_id) = high_priority_rx.recv().await {
+                while let Some(jinxxy_user_id) = high_priority_rx.recv().await {
                     // first, check to make sure this entry is still expired
                     let needs_refresh = map
                         .pin()
-                        .get(&guild_id)
+                        .get(&jinxxy_user_id)
                         .map(|entry| entry.is_expired_high_priority())
                         .unwrap_or(true);
 
                     if needs_refresh {
-                        match db.get_jinxxy_api_key(guild_id).await {
+                        match db.get_arbitrary_jinxxy_api_key(&jinxxy_user_id).await {
                             Ok(api_key) => match api_key {
                                 Some(api_key) => {
                                     // the high-priority API hit
-                                    match GuildCache::from_jinxxy_api::<true>(&db, &api_key, guild_id).await {
-                                        Ok(guild_cache) => {
-                                            map.pin().insert(guild_id, guild_cache);
+                                    match StoreCache::from_jinxxy_api::<true>(
+                                        &db,
+                                        &api_key.jinxxy_api_key,
+                                        &jinxxy_user_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(store_cache) => {
+                                            map.pin().insert(jinxxy_user_id, store_cache);
                                         }
                                         Err(e) => {
                                             warn!(
                                                 "Error initializing API cache during high-priority refresh for {}: {:?}",
-                                                guild_id.get(),
-                                                e
+                                                jinxxy_user_id, e
                                             );
                                         }
                                     }
                                 }
                                 None => {
                                     warn!(
-                                        "High-priority refresh was somehow triggered for guild {}, which has no api key set!",
-                                        guild_id
+                                        "High-priority refresh was somehow triggered for store {}, which has no api key set!",
+                                        jinxxy_user_id
                                     );
                                 }
                             },
                             Err(e) => {
                                 warn!(
                                     "Error retrieving API key during high-priority refresh for {}: {:?}",
-                                    guild_id.get(),
-                                    e
+                                    jinxxy_user_id, e
                                 );
                             }
                         }
@@ -151,14 +156,14 @@ impl ApiCache {
         /* Low priority refresh task
 
         Handles periodic background cache warming. We have no reason to suspect the user will need the data soon, so
-        this task works at a relaxed pace. The task will load a single guild at a time, and each product in the guild is
+        this task works at a relaxed pace. The task will load a single store at a time, and each product in the store is
         loaded serially which is far less intensive on the Jinxxy API than a parallel load.
 
-        On bot start, each guild is registered, causing a cache load in this task. This is guaranteed to miss the memory
+        On bot start, each store is registered, causing a cache load in this task. This is guaranteed to miss the memory
         cache (remember, the bot just started), so it falls back to a DB cache read. This is the mechanism by which the
         cache is re-warmed from disk.
 
-        This is a priority queue, where the oldest cache line is at the head of the queue. The task wakes when a guild
+        This is a priority queue, where the oldest cache line is at the head of the queue. The task wakes when a store
         is registered, unregistered, or after the calculated delay to the queue head expiring. This delay is updated
         every time the task wakes. Additionally, the task is required to sleep a certain minimum interval every time it
         finishes work in order to prevent API spam and spinning in the case of bugs... there is a lot of fiddly
@@ -170,10 +175,10 @@ impl ApiCache {
             let db = db;
             let map = map.clone();
             tokio::task::spawn(async move {
-                // set of all registered guilds ids
-                let mut guild_set = HashSet::with_hasher(ahash::RandomState::default());
+                // set of all registered store ids
+                let mut store_set = HashSet::with_hasher(ahash::RandomState::default());
 
-                // priority queue of all registered guilds. Returns oldest entry first.
+                // priority queue of all registered stores. Returns oldest entry first.
                 let mut queue = BinaryHeap::new();
 
                 // time we wait on a new entry to show up before we run the timeout task, which pops the queue
@@ -209,11 +214,11 @@ impl ApiCache {
                         }
                     };
                     match received_event {
-                        Ok(Some(Some(guild_id))) => {
-                            // new guild has appeared; insert it into the queue (as long as it isn't a duplicate)
-                            if guild_set.insert(guild_id) {
-                                queue.push(GuildQueueRef {
-                                    guild_id,
+                        Ok(Some(Some(jinxxy_user_id))) => {
+                            // new store has appeared; insert it into the queue (as long as it isn't a duplicate)
+                            if store_set.insert(jinxxy_user_id.clone()) {
+                                queue.push(StoreQueueRef {
+                                    jinxxy_user_id: jinxxy_user_id.clone(),
                                     create_time: SimpleTime::UNIX_EPOCH, // some arbitrarily old placeholder value
                                 });
 
@@ -227,8 +232,8 @@ impl ApiCache {
                                 );
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
                                 debug!(
-                                    "new guild {} registered; low-priority worker will sleep for {}s",
-                                    guild_id,
+                                    "new store {} registered; low-priority worker will sleep for {}s",
+                                    jinxxy_user_id,
                                     remaining.as_secs()
                                 );
                                 sleep_duration = Some(remaining);
@@ -262,9 +267,9 @@ impl ApiCache {
                             // first, handle deregistration in an inner loop
                             'inner: loop {
                                 match refresh_unregister_rx.try_recv() {
-                                    Ok(guild_id) => {
-                                        if guild_set.remove(&guild_id) {
-                                            queue.retain(|queue_entry| queue_entry.guild_id != guild_id);
+                                    Ok(jinxxy_user_id) => {
+                                        if store_set.remove(&jinxxy_user_id) {
+                                            queue.retain(|queue_entry| queue_entry.jinxxy_user_id != jinxxy_user_id);
                                         }
                                     }
                                     Err(TryRecvError::Empty) => {
@@ -278,15 +283,15 @@ impl ApiCache {
                                 }
                             }
                             // end of inner loop
-                            // the event processing is now done, so process guilds until none are expired in a "work loop"
+                            // the event processing is now done, so process stores until none are expired in a "work loop"
 
                             let mut now = SimpleTime::now(); // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
                             let mut work_counter = 0;
-                            let mut touched_guild_set = HashSet::with_hasher(ahash::RandomState::default());
+                            let mut touched_store_set = HashSet::with_hasher(ahash::RandomState::default());
                             const MAX_WORK_COUNT: u16 = 250;
                             while work_remaining {
-                                // find the first guild that needs a refresh. This is a simple queue pop.
+                                // find the first store that needs a refresh. This is a simple queue pop.
                                 if let Some(mut queue_entry) = queue.pop() {
                                     work_counter += 1;
 
@@ -300,8 +305,8 @@ impl ApiCache {
                                     }
                                     work_remaining &= !queue_empty;
 
-                                    // record that we've touched this guild ID in the work loop
-                                    touched_guild_set.insert(queue_entry.guild_id.get());
+                                    // record that we've touched this store ID in the work loop
+                                    touched_store_set.insert(queue_entry.jinxxy_user_id.clone());
 
                                     // update the current time: we'll need it a couple of times and I want it to keep the same reading
                                     now = SimpleTime::now();
@@ -309,7 +314,7 @@ impl ApiCache {
                                     // figure out what state this entry is in
                                     let (load, try_db_load) = map
                                         .pin()
-                                        .get(&queue_entry.guild_id)
+                                        .get(&queue_entry.jinxxy_user_id)
                                         .map(|cache_entry| {
                                             // sync our thread-local copy of the create time with the source of truth (the cache)
                                             queue_entry.create_time = cache_entry.create_time;
@@ -322,27 +327,28 @@ impl ApiCache {
                                             } else {
                                                 // entry exists and was not expired
                                                 // this can happen if that entry was touched externally (e.g. a high priority refresh) before we saw it
-                                                debug!("skipping unexpired guild {}", queue_entry.guild_id.get());
+                                                debug!("skipping unexpired store {}", queue_entry.jinxxy_user_id);
                                                 (false, false)
                                             }
                                         })
                                         .unwrap_or((true, true)); // or else entry did NOT exist in memory, so it's worth trying a db load
 
-                                    let guild_valid = if load {
-                                        // refresh that guild
-                                        match db.get_jinxxy_api_key(queue_entry.guild_id).await {
+                                    let store_valid = if load {
+                                        // refresh that store
+                                        match db.get_arbitrary_jinxxy_api_key(&queue_entry.jinxxy_user_id).await {
                                             Ok(api_key) => {
                                                 match api_key {
                                                     Some(api_key) => {
                                                         debug!(
                                                             "starting low priority refresh of cache for {}",
-                                                            queue_entry.guild_id.get()
+                                                            queue_entry.jinxxy_user_id
                                                         );
 
-                                                        let guild_cache = if try_db_load {
+                                                        let store_cache = if try_db_load {
                                                             // try a DB load instead of an API load
                                                             let db_result =
-                                                                GuildCache::from_db(&db, queue_entry.guild_id).await;
+                                                                StoreCache::from_db(&db, &queue_entry.jinxxy_user_id)
+                                                                    .await;
                                                             match db_result {
                                                                 Ok(Some(cache_entry)) => {
                                                                     // DB read worked: just return it
@@ -351,8 +357,8 @@ impl ApiCache {
                                                                         now,
                                                                     ) {
                                                                         debug!(
-                                                                            "DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the guild list again.",
-                                                                            queue_entry.guild_id.get()
+                                                                            "DB cache hit trying to initialize API cache for {}, but was expired. It will be refreshed once we loop around the store list again.",
+                                                                            queue_entry.jinxxy_user_id
                                                                         );
                                                                     }
                                                                     Ok(cache_entry)
@@ -361,12 +367,12 @@ impl ApiCache {
                                                                     // DB had no data
                                                                     debug!(
                                                                         "DB cache miss trying to initialize API cache for {}. Falling back to API load.",
-                                                                        queue_entry.guild_id.get()
+                                                                        queue_entry.jinxxy_user_id
                                                                     );
-                                                                    GuildCache::from_jinxxy_api::<false>(
+                                                                    StoreCache::from_jinxxy_api::<false>(
                                                                         &db,
-                                                                        &api_key,
-                                                                        queue_entry.guild_id,
+                                                                        &api_key.jinxxy_api_key,
+                                                                        &queue_entry.jinxxy_user_id,
                                                                     )
                                                                     .await
                                                                 }
@@ -375,27 +381,26 @@ impl ApiCache {
                                                                     // fall back to an API load anyways
                                                                     error!(
                                                                         "DB read failed when trying to initialize API cache for {}. Falling back to API load: {:?}",
-                                                                        queue_entry.guild_id.get(),
-                                                                        e
+                                                                        queue_entry.jinxxy_user_id, e
                                                                     );
-                                                                    GuildCache::from_jinxxy_api::<false>(
+                                                                    StoreCache::from_jinxxy_api::<false>(
                                                                         &db,
-                                                                        &api_key,
-                                                                        queue_entry.guild_id,
+                                                                        &api_key.jinxxy_api_key,
+                                                                        &queue_entry.jinxxy_user_id,
                                                                     )
                                                                     .await
                                                                 }
                                                             }
                                                         } else {
-                                                            GuildCache::from_jinxxy_api::<false>(
+                                                            StoreCache::from_jinxxy_api::<false>(
                                                                 &db,
-                                                                &api_key,
-                                                                queue_entry.guild_id,
+                                                                &api_key.jinxxy_api_key,
+                                                                &queue_entry.jinxxy_user_id,
                                                             )
                                                             .await
                                                         };
 
-                                                        match guild_cache {
+                                                        match store_cache {
                                                             Ok(cache_entry) => {
                                                                 // we got a new cache entry from either db or jinxxy!
 
@@ -403,14 +408,16 @@ impl ApiCache {
                                                                 queue_entry.create_time = cache_entry.create_time;
 
                                                                 // actually update the dang cache!
-                                                                map.pin().insert(queue_entry.guild_id, cache_entry);
+                                                                map.pin().insert(
+                                                                    queue_entry.jinxxy_user_id.clone(),
+                                                                    cache_entry,
+                                                                );
                                                                 true
                                                             }
                                                             Err(e) => {
                                                                 warn!(
                                                                     "Error initializing API cache during low-priority refresh for {}, will unregister now: {:?}",
-                                                                    queue_entry.guild_id.get(),
-                                                                    e
+                                                                    queue_entry.jinxxy_user_id, e
                                                                 );
                                                                 false
                                                             }
@@ -418,8 +425,8 @@ impl ApiCache {
                                                     }
                                                     None => {
                                                         info!(
-                                                            "low-priority refresh was triggered for guild {}, which has no api key set! Unregistering now.",
-                                                            queue_entry.guild_id.get()
+                                                            "low-priority refresh was triggered for store {}, which has no api key set! Unregistering now.",
+                                                            queue_entry.jinxxy_user_id
                                                         );
                                                         false
                                                     }
@@ -428,35 +435,34 @@ impl ApiCache {
                                             Err(e) => {
                                                 warn!(
                                                     "Error retrieving API key during low-priority refresh for {}. Unregistering now: {:?}",
-                                                    queue_entry.guild_id.get(),
-                                                    e
+                                                    queue_entry.jinxxy_user_id, e
                                                 );
                                                 false
                                             }
                                         }
                                     } else {
-                                        // if we didn't need to load the guild, then treat it as still valid
+                                        // if we didn't need to load the store, then treat it as still valid
                                         true
                                     };
 
-                                    if guild_valid {
-                                        // done loading the guild; time to put it back in the queue
+                                    if store_valid {
+                                        // done loading the store; time to put it back in the queue
                                         queue.push(queue_entry);
                                     } else {
-                                        // something about the guild was screwed up so we're just going to unregister it
-                                        guild_set.remove(&queue_entry.guild_id);
+                                        // something about the store was screwed up so we're just going to unregister it
+                                        store_set.remove(&queue_entry.jinxxy_user_id);
                                     }
 
-                                    // if we haven't touched the next guild ID yet, then go again (true)
-                                    // if there is no next guild, then do not go again (false)
-                                    let next_guild_pending_work = queue
+                                    // if we haven't touched the next store ID yet, then go again (true)
+                                    // if there is no next store, then do not go again (false)
+                                    let next_store_pending_work = queue
                                         .peek()
-                                        .map(|next_guild| !touched_guild_set.contains(&next_guild.guild_id.get()))
+                                        .map(|next_store| !touched_store_set.contains(&next_store.jinxxy_user_id))
                                         .unwrap_or(false);
-                                    if !next_guild_pending_work {
-                                        debug!("stopping work loop because next guild has already been touched");
+                                    if !next_store_pending_work {
+                                        debug!("stopping work loop because next store has already been touched");
                                     }
-                                    work_remaining &= next_guild_pending_work;
+                                    work_remaining &= next_store_pending_work;
                                 } else {
                                     warn!("ended low-priority work loop due to empty work queue!");
                                     work_remaining = false;
@@ -478,7 +484,7 @@ impl ApiCache {
                                     debug!(
                                         "low-priority worker caught up; will sleep for {}s. Next up is {}",
                                         remaining.as_secs(),
-                                        next_queue_entry.guild_id.get()
+                                        next_queue_entry.jinxxy_user_id
                                     );
                                 }
 
@@ -506,15 +512,15 @@ impl ApiCache {
         }
     }
 
-    /// Trigger a one-time high-priority refresh of this guild in the cache.
-    async fn refresh_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
-        self.high_priority_tx.send(guild_id).await?;
+    /// Trigger a one-time high-priority refresh of this store in the cache.
+    async fn refresh_store_in_cache(&self, jinxxy_user_id: String) -> Result<(), Error> {
+        self.high_priority_tx.send(jinxxy_user_id).await?;
         Ok(())
     }
 
-    /// Register a guild in the cache. The guild will have its cache entry periodically warmed automatically.
-    pub async fn register_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
-        self.refresh_register_tx.send(Some(guild_id)).await?;
+    /// Register a store in the cache. The store will have its cache entry periodically warmed automatically.
+    pub async fn register_store_in_cache(&self, jinxxy_user_id: String) -> Result<(), Error> {
+        self.refresh_register_tx.send(Some(jinxxy_user_id)).await?;
         Ok(())
     }
 
@@ -524,20 +530,20 @@ impl ApiCache {
         Ok(())
     }
 
-    /// Unregister a guild in the cache. The guild will no longer have its cache entry periodically warmed automatically.
-    pub async fn unregister_guild_in_cache(&self, guild_id: GuildId) -> Result<(), Error> {
-        self.refresh_unregister_tx.send(guild_id).await?;
+    /// Unregister a store in the cache. The store will no longer have its cache entry periodically warmed automatically.
+    pub async fn unregister_store_in_cache(&self, jinxxy_user_id: String) -> Result<(), Error> {
+        self.refresh_unregister_tx.send(jinxxy_user_id).await?;
         Ok(())
     }
 
     /// Get a cache line and run some process on it, returning the result.
     ///
     /// If the cache is empty or expired, the underlying API will be hit.
-    pub async fn get<F, T>(&self, db: &JinxDb, guild_id: GuildId, f: F) -> Result<T, Error>
+    pub async fn get<F, T>(&self, db: &JinxDb, jinxxy_user_id: &str, f: F) -> Result<T, Error>
     where
-        F: FnOnce(&GuildCache) -> T,
+        F: FnOnce(&StoreCache) -> T,
     {
-        let (result, expired) = if let Some(entry) = self.map.pin().get(&guild_id) {
+        let (result, expired) = if let Some(entry) = self.map.pin().get(jinxxy_user_id) {
             // got an entry; return it immediately, even if it's expired
             let result = f(entry);
             let expired = entry.is_expired_high_priority();
@@ -545,35 +551,35 @@ impl ApiCache {
         } else {
             info!(
                 "cache missed! Falling back to direct API request for {}",
-                guild_id.get()
+                jinxxy_user_id
             );
             let api_key = db
-                .get_jinxxy_api_key(guild_id)
+                .get_arbitrary_jinxxy_api_key(jinxxy_user_id)
                 .await?
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
 
             // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
-            let guild_cache = GuildCache::from_jinxxy_api::<true>(db, api_key.as_str(), guild_id).await?;
-            let result = f(&guild_cache);
+            let store_cache = StoreCache::from_jinxxy_api::<true>(db, &api_key.jinxxy_api_key, jinxxy_user_id).await?;
+            let result = f(&store_cache);
 
             // update the cache
-            self.map.pin().insert(guild_id, guild_cache);
+            self.map.pin().insert(jinxxy_user_id.to_string(), store_cache);
 
             // it is nonsensical for a freshly-created entry to be expired, so hardcode expired=false
             (result, false)
         };
 
-        // ensure expired guild gets a priority refresh, as it has a very high chance of having get() called again soon
+        // ensure expired store gets a priority refresh, as it has a very high chance of having get() called again soon
         if expired {
             debug!(
                 "queuing priority product cache refresh for {} due to expiry",
-                guild_id.get()
+                jinxxy_user_id
             );
-            self.refresh_guild_in_cache(guild_id).await?;
+            self.refresh_store_in_cache(jinxxy_user_id.to_string()).await?;
         }
 
-        // ensure this guild is registered in the cache
-        self.register_guild_in_cache(guild_id).await?;
+        // ensure this store is registered in the cache
+        self.register_store_in_cache(jinxxy_user_id.to_string()).await?;
 
         Ok(result)
     }
@@ -584,13 +590,13 @@ impl ApiCache {
 
     pub fn product_count(&self) -> usize {
         let map = self.map.pin();
-        map.values().map(|guild_cache| guild_cache.product_count()).sum()
+        map.values().map(|store_cache| store_cache.product_count()).sum()
     }
 
     pub fn product_version_count(&self) -> usize {
         let map = self.map.pin();
         map.values()
-            .map(|guild_cache| guild_cache.product_version_count())
+            .map(|store_cache| store_cache.product_version_count())
             .sum()
     }
 
@@ -604,10 +610,10 @@ impl ApiCache {
     pub async fn autocomplete_product_names_with_prefix(
         &self,
         db: &JinxDb,
-        guild_id: GuildId,
+        jinxxy_user_id: &str,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(db, guild_id, |cache_entry| {
+        self.get(db, jinxxy_user_id, |cache_entry| {
             cache_entry
                 .product_names_with_prefix(prefix)
                 .take(AUTOCOMPLETE_RESULT_LIMIT)
@@ -620,10 +626,10 @@ impl ApiCache {
     pub async fn autocomplete_product_version_names_with_prefix(
         &self,
         db: &JinxDb,
-        guild_id: GuildId,
+        jinxxy_user_id: &str,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(db, guild_id, |cache_entry| {
+        self.get(db, jinxxy_user_id, |cache_entry| {
             cache_entry
                 .product_version_names_with_prefix(prefix)
                 .take(AUTOCOMPLETE_RESULT_LIMIT)
@@ -635,10 +641,10 @@ impl ApiCache {
     pub async fn product_name_to_ids(
         &self,
         db: &JinxDb,
-        guild_id: GuildId,
+        jinxxy_user_id: &str,
         product_name: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(db, guild_id, |cache_entry| {
+        self.get(db, jinxxy_user_id, |cache_entry| {
             cache_entry.product_name_to_ids(product_name).to_vec()
         })
         .await
@@ -647,50 +653,50 @@ impl ApiCache {
     pub async fn product_version_name_to_version_ids(
         &self,
         db: &JinxDb,
-        guild_id: GuildId,
+        jinxxy_user_id: &str,
         product_name: &str,
     ) -> Result<Vec<ProductVersionId>, Error> {
-        self.get(db, guild_id, |cache_entry| {
+        self.get(db, jinxxy_user_id, |cache_entry| {
             cache_entry.product_version_name_to_version_ids(product_name).to_vec()
         })
         .await
     }
 }
 
-/// A reference to a guild cache entry to be kept in a max-heap. This is NOT the actual cache entry!
-struct GuildQueueRef {
-    /// ID of the guild in the actual cache
-    guild_id: GuildId,
+/// A reference to a store cache entry to be kept in a max-heap. This is NOT the actual cache entry!
+struct StoreQueueRef {
+    /// ID of the store in the actual cache
+    jinxxy_user_id: String,
     /// A copy of the last-known create time for this cache entry. This is NOT the actual cache entry create time, so it may desync!
     create_time: SimpleTime,
 }
 
 /// We want lower create_time to have higher priority, so we reverse the ord.
 /// This will cause BinaryHeap to yield the smallest create_time, aka the earliest create_time
-impl Ord for GuildQueueRef {
+impl Ord for StoreQueueRef {
     fn cmp(&self, other: &Self) -> Ordering {
         other
             .create_time
             .cmp(&self.create_time)
-            .then(other.guild_id.cmp(&self.guild_id))
+            .then(other.jinxxy_user_id.cmp(&self.jinxxy_user_id))
     }
 }
 
-impl PartialOrd<Self> for GuildQueueRef {
+impl PartialOrd<Self> for StoreQueueRef {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq<Self> for GuildQueueRef {
+impl PartialEq<Self> for StoreQueueRef {
     fn eq(&self, other: &Self) -> bool {
-        self.create_time == other.create_time && self.guild_id == other.guild_id
+        self.create_time == other.create_time && self.jinxxy_user_id == other.jinxxy_user_id
     }
 }
 
-impl Eq for GuildQueueRef {}
+impl Eq for StoreQueueRef {}
 
-impl GuildQueueRef {
+impl StoreQueueRef {
     /// remaining time until the entry hits the expiration time, or 0 if it's already expired
     fn remaining_time_until_low_priority_expiry(
         &self,
@@ -704,7 +710,7 @@ impl GuildQueueRef {
     }
 }
 
-pub struct GuildCache {
+pub struct StoreCache {
     /// id to name
     product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     /// name to id
@@ -725,20 +731,20 @@ pub struct GuildCache {
     create_time: SimpleTime,
 }
 
-impl GuildCache {
+impl StoreCache {
     /// Create a cache entry by hitting the Jinxxy API. This is very costly and involves a lot of API hits.
     /// Upon success, it will automatically persist the retrieved data to the DB.
     async fn from_jinxxy_api<const PARALLEL: bool>(
         db: &JinxDb,
         api_key: &str,
-        guild_id: GuildId,
-    ) -> Result<GuildCache, Error> {
+        jinxxy_user_id: &str,
+    ) -> Result<StoreCache, Error> {
         // list products
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
 
         // get details for each product
         let mut products: Vec<LoadedProduct> =
-            jinxxy::get_full_products::<PARALLEL>(db, api_key, guild_id, partial_products)
+            jinxxy::get_full_products::<PARALLEL>(db, api_key, jinxxy_user_id, partial_products)
                 .await?
                 .into_iter()
                 .filter(|product| {
@@ -804,7 +810,7 @@ impl GuildCache {
 
         Self::persist(
             db,
-            guild_id,
+            jinxxy_user_id,
             product_name_info.clone(),
             product_version_name_info.clone(),
             create_time,
@@ -814,8 +820,8 @@ impl GuildCache {
     }
 
     /// Attempt to create a cache entry from the DB. This is quite cheap compared to hitting Jinxxy.
-    async fn from_db(db: &JinxDb, guild_id: GuildId) -> Result<Option<GuildCache>, Error> {
-        let db_cache_entry = db.get_guild_cache(guild_id).await?;
+    async fn from_db(db: &JinxDb, jinxxy_user_id: &str) -> Result<Option<StoreCache>, Error> {
+        let db_cache_entry = db.get_store_cache(jinxxy_user_id).await?;
 
         if db_cache_entry.product_name_info.is_empty()
             && db_cache_entry.product_version_name_info.is_empty()
@@ -835,17 +841,17 @@ impl GuildCache {
     /// Persist cache state to DB. This needs owned values, because they're being moved into a different thread.
     async fn persist(
         db: &JinxDb,
-        guild_id: GuildId,
+        jinxxy_user_id: &str,
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
         cache_time: SimpleTime,
     ) -> Result<(), Error> {
-        let db_cache_entry = db::GuildCache {
+        let db_cache_entry = db::StoreCache {
             product_name_info,
             product_version_name_info,
             cache_time,
         };
-        db.persist_guild_cache(guild_id, db_cache_entry).await?;
+        db.persist_store_cache(jinxxy_user_id, db_cache_entry).await?;
         Ok(())
     }
 
@@ -854,7 +860,7 @@ impl GuildCache {
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
         create_time: SimpleTime,
-    ) -> Result<GuildCache, Error> {
+    ) -> Result<StoreCache, Error> {
         let product_count = product_name_info.len();
         let product_version_count = product_version_name_info.len();
 
@@ -909,7 +915,7 @@ impl GuildCache {
                 .push(name_info.id);
         }
 
-        Ok(GuildCache {
+        Ok(StoreCache {
             product_id_to_name_map,
             product_name_to_id_map,
             product_name_trie,
