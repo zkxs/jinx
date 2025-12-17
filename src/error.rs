@@ -19,6 +19,7 @@ where
 #[allow(unused)] // these are debug printed frequently
 pub enum JinxError {
     Message(String),
+    Sensitive { public: String, private: String },
     Jinxxy(JinxxyError),
     Sqlite(SqlxError),
     Serenity(SerenityError),
@@ -30,6 +31,7 @@ impl Display for JinxError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             JinxError::Message(message) => f.write_str(message.as_str()),
+            JinxError::Sensitive { public, private } => write!(f, "{public}: {private}"),
             JinxError::Jinxxy(e) => write!(f, "{}", e),
             JinxError::Sqlite(e) => write!(f, "DB error: {e}"),
             JinxError::Serenity(e) => write!(f, "Discord API error: {e}"),
@@ -44,6 +46,7 @@ impl<'a> Display for RedactedJinxError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.0 {
             JinxError::Message(message) => f.write_str(message.as_str()),
+            JinxError::Sensitive { public, private: _ } => f.write_str(public.as_str()),
             JinxError::Jinxxy(e) => write!(f, "{}", e.safe_display()),
             JinxError::Sqlite(_) => write!(f, "DB error"),
             JinxError::Serenity(_) => write!(f, "Discord API error"),
@@ -78,7 +81,16 @@ impl From<SerenityError> for JinxError {
 
 impl JinxError {
     /// `message` is a message that is safe to display to a user
-    pub fn new<T: Into<String>>(message: T) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self::Message(message.into())
+    }
+
+    /// `public` is a message that is safe to display to a user.
+    /// `private` is a message that may contain sensitive information.
+    pub fn sensitive(public: impl Into<String>, private: impl Into<String>) -> Self {
+        Self::Sensitive {
+            public: public.into(),
+            private: private.into(),
+        }
     }
 }

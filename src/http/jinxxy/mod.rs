@@ -13,10 +13,8 @@ use crate::error::JinxError;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use poise::serenity_prelude as serenity;
 use reqwest::{Response, header};
 use serde::de::DeserializeOwned;
-use serenity::GuildId;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
@@ -462,14 +460,14 @@ pub enum LoadedProduct {
 pub async fn get_full_products<const PARALLEL: bool>(
     db: &JinxDb,
     api_key: &str,
-    guild_id: GuildId,
+    jinxxy_user_id: &str,
     partial_products: Vec<PartialProduct>,
 ) -> Result<Vec<LoadedProduct>, JinxError> {
     let mut products = Vec::with_capacity(partial_products.len());
 
     // get cached data (including etags) from db
     let cached_products: HashMap<String, ProductNameInfoValue, ahash::RandomState> = db
-        .product_names_in_guild(guild_id)
+        .product_names_in_store(jinxxy_user_id)
         .await?
         .into_iter()
         .map(|info| (info.id, info.value))
@@ -499,7 +497,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
             } else if let ParallelFullProductResult::NotModified { product_id } = result
                 && let Some(cached_product) = cached_products.get(&product_id)
             {
-                let versions = db.product_versions(guild_id, product_id.clone()).await?;
+                let versions = db.product_versions(jinxxy_user_id, &product_id).await?;
                 LoadedProduct::Cached {
                     product_info: Some(ProductNameInfo {
                         id: product_id,
@@ -527,7 +525,7 @@ pub async fn get_full_products<const PARALLEL: bool>(
                 if let Some(full_product) = full_product {
                     LoadedProduct::Api(full_product)
                 } else {
-                    let versions = db.product_versions(guild_id, product_id.clone()).await?;
+                    let versions = db.product_versions(jinxxy_user_id, &product_id).await?;
                     LoadedProduct::Cached {
                         product_info: Some(ProductNameInfo {
                             id: product_id,

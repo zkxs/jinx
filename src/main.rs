@@ -46,7 +46,7 @@ async fn main() -> ExitCode {
                 let db = db::JinxDb::open()
                     .await
                     .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
-                db.set_discord_token(discord_token)
+                db.set_discord_token(&discord_token)
                     .await
                     .expect("Failed to set discord token");
                 db.close().await;

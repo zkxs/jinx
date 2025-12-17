@@ -241,21 +241,37 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
         FullEvent::InteractionCreate {
             interaction: Interaction::Component(component_interaction),
         } => {
+            // our custom ids are a static prefix followed by a ':', and then some dynamic value
+            let custom_id = component_interaction.data.custom_id.as_str();
+            let custom_id = match custom_id.split_once(':') {
+                Some((key, value)) => (key, Some(value)),
+                None => (custom_id, None),
+            };
             #[allow(clippy::single_match)]
             // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
-            match component_interaction.data.custom_id.as_str() {
+            match custom_id {
                 // create the register form when a user presses the register button
-                REGISTER_BUTTON_ID => {
+                (REGISTER_BUTTON_ID, jinxxy_user_id) => {
                     let components = vec![CreateActionRow::InputText(
                         CreateInputText::new(InputTextStyle::Short, "Jinxxy License Key", LICENSE_KEY_ID)
                             .placeholder("XXXX-cd071c534191"),
                     )];
-                    let modal =
-                        CreateModal::new(REGISTER_MODAL_ID, "Jinxxy License Registration").components(components);
-                    let response = CreateInteractionResponse::Modal(modal);
-                    component_interaction
-                        .create_response(context.serenity_context, response)
-                        .await?;
+                    // proxy the jinxxy_user_id from the register button into the modal
+                    // note that custom id can be AT MOST 100 characters long or Discord will explode
+                    let custom_id = if let Some(jinxxy_user_id) = jinxxy_user_id {
+                        format!("{REGISTER_MODAL_ID}:{jinxxy_user_id}")
+                    } else {
+                        REGISTER_MODAL_ID.to_string()
+                    };
+                    if custom_id.len() <= 100 {
+                        let modal = CreateModal::new(custom_id, "Jinxxy License Registration").components(components);
+                        let response = CreateInteractionResponse::Modal(modal);
+                        component_interaction
+                            .create_response(context.serenity_context, response)
+                            .await?;
+                    } else {
+                        Err(JinxError::new("Tried to create a custom ID longer than "))?;
+                    }
                 }
                 _ => {}
             }
@@ -267,11 +283,17 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
             modal_interaction.defer_ephemeral(context.serenity_context).await?;
 
+            // our custom ids are a static prefix followed by a ':', and then some dynamic value
+            let custom_id = modal_interaction.data.custom_id.as_str();
+            let custom_id = match custom_id.split_once(':') {
+                Some((key, value)) => (key, Some(value)),
+                None => (custom_id, None),
+            };
             // likely to add more matches later, so I'm suppressing this lint because it's obnoxious to switch between `if let` and `match`
             #[allow(clippy::single_match)]
-            match modal_interaction.data.custom_id.as_str() {
+            match custom_id {
                 // this is the code that handles a user submitting the register form. All the license activation logic lives here.
-                REGISTER_MODAL_ID => {
+                (REGISTER_MODAL_ID, jinxxy_user_id) => {
                     let start_time = Instant::now();
                     if let Err(e) = handle_license_registration(context, modal_interaction).await {
                         let elapsed_ms = start_time.elapsed().as_millis();

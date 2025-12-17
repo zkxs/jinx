@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2024 jinx contributors.
+// This file is part of jinx. Copyright © 2024-2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 //! GitHub Releases-based update checking
@@ -93,11 +93,10 @@ async fn get_latest_release() -> Result<RemoteVersion, Error> {
 
     let status = response.status();
     let result = response.json::<RemoteVersion>().await.map_err(|e| {
-        JinxError::new(format!(
-            "error parsing github release {} response: {}",
-            status.as_str(),
-            e
-        ))
+        JinxError::sensitive(
+            format!("error parsing github release {} response", status.as_str()),
+            format!("{e}"),
+        )
     })?;
     Ok(result)
 }

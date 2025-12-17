@@ -132,6 +132,7 @@ pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Erro
 
     let channel = context.channel_id();
 
+    // note that custom id can be AT MOST 100 characters long or Discord will explode
     let components = vec![CreateActionRow::Buttons(vec![
         CreateButton::new(REGISTER_BUTTON_ID)
             .label("Register")

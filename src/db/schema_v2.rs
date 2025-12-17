@@ -117,6 +117,10 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                ) STRICT"#,
         )
         .await?;
+    // for joining by jinxxy_user_id
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_role_lookup_by_jinxxy_user_id ON product_role (jinxxy_user_id)"#)
+        .await?;
 
     // product_version-specific role links
     connection
@@ -132,6 +136,11 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                ) STRICT"#,
         )
         .await?;
+    // for joining by jinxxy_user_id
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_jinxxy_user_id ON product_version_role (jinxxy_user_id)"#)
+        .await?;
+
     // local mirror of license activations. Source of truth is the Jinxxy API.
     connection
         .execute(
