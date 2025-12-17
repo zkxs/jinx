@@ -711,7 +711,12 @@ impl JinxDb {
 
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> SqliteResult<u64> {
-        sqlx::query!(r#"SELECT count(DISTINCT license_activation.rowid) AS "count!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE NOT guild.test"#)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM (
+                            SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                            INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                            INNER JOIN guild USING (guild_id)
+                            WHERE NOT guild.test
+                        )"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_pool)
             .await
@@ -770,7 +775,12 @@ impl JinxDb {
     /// Get count of license activations in a guild
     pub async fn guild_license_activation_count(&self, guild: GuildId) -> SqliteResult<u64> {
         let guild_id = guild.get() as i64;
-        sqlx::query!(r#"SELECT count(DISTINCT license_activation.rowid) AS "count!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE guild.guild_id = ?"#, guild_id)
+        sqlx::query!(r#"SELECT count(*) AS "count!" FROM (
+                            SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                            INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                            INNER JOIN guild USING (guild_id)
+                            WHERE guild.guild_id = ?
+                        )"#, guild_id)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_pool)
             .await
@@ -914,9 +924,11 @@ impl JinxDb {
             r#"SELECT guild_id, log_channel_id AS "log_channel_id!", gumroad_failure_count FROM guild AS "outer"
                WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10
                AND (gumroad_failure_count * 5) > (
-                   SELECT count(DISTINCT license_activation.rowid) FROM license_activation
-                   INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
-                   WHERE jinxxy_user_guild.guild_id = "outer".guild_id
+                   SELECT count(*) FROM (
+                       SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                       INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                       WHERE jinxxy_user_guild.guild_id = "outer".guild_id
+                   )
                )"#
         )
         .map(|row| GuildGumroadInfo {

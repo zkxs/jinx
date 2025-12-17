@@ -25,11 +25,12 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
             r#"CREATE TABLE IF NOT EXISTS "settings" (
                    key    TEXT NOT NULL PRIMARY KEY,
                    value  ANY NOT NULL
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
 
     // guild information
+    // we intentionally use rowid as we have an integer pk
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS guild (
@@ -53,7 +54,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    jinxxy_user_id      TEXT NOT NULL PRIMARY KEY,
                    jinxxy_username     TEXT,
                    cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
 
@@ -68,7 +69,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    PRIMARY KEY           (guild_id, jinxxy_user_id),
                    FOREIGN KEY           (guild_id)       REFERENCES guild,
                    FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
     // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
@@ -86,7 +87,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    etag            BLOB,
                    PRIMARY KEY     (jinxxy_user_id, product_id),
                    FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
 
@@ -100,7 +101,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    product_version_name  TEXT NOT NULL,
                    PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
                    FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
 
@@ -114,7 +115,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    role_id                INTEGER NOT NULL,
                    PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
                    FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
     // for joining by jinxxy_user_id
@@ -133,7 +134,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    role_id                INTEGER NOT NULL,
                    PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
                    FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
     // for joining by jinxxy_user_id
@@ -153,11 +154,12 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    version_id             TEXT,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
-               ) STRICT"#,
+               ) STRICT WITHOUT ROWID"#,
         )
         .await?;
 
     // list of all discord users that are bot owners
+    // we intentionally use rowid as we have an integer pk
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS "owner" (
