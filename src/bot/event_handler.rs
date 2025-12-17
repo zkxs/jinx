@@ -10,12 +10,13 @@ use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
 use poise::serenity_prelude::ModalInteraction;
-use poise::{FrameworkContext, serenity_prelude as serenity};
+use poise::{serenity_prelude as serenity, FrameworkContext};
 use regex::Regex;
 use serenity::{
     ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
     CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
 };
+use std::borrow::Cow;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -68,9 +69,9 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                 error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
             }
 
-            match context.user_data.db.get_jinxxy_api_key(guild.id).await {
-                Ok(Some(_)) => {
-                    // the guild has an API key
+            match context.user_data.db.has_jinxxy_linked(guild.id).await {
+                Ok(true) => {
+                    // the guild has at least one jinxxy link
                     let register_guild_result = context.user_data.api_cache.register_guild_in_cache(guild.id).await;
                     if let Err(e) = register_guild_result {
                         error!(
@@ -80,7 +81,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                         );
                     }
                 }
-                Ok(None) => {
+                Ok(false) => {
                     // guild had no API key set; do nothing
                 }
                 Err(e) => {
@@ -295,7 +296,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                 // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                 (REGISTER_MODAL_ID, jinxxy_user_id) => {
                     let start_time = Instant::now();
-                    if let Err(e) = handle_license_registration(context, modal_interaction).await {
+                    if let Err(e) = handle_license_registration(context, modal_interaction, jinxxy_user_id).await {
                         let elapsed_ms = start_time.elapsed().as_millis();
                         let nonce: u64 = util::generate_nonce();
                         let nonce = format!("{nonce:016X}");
@@ -357,6 +358,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
 async fn handle_license_registration<'a>(
     context: FrameworkContext<'a, Data, Error>,
     modal_interaction: &ModalInteraction,
+    jinxxy_user_id: Option<&str>,
 ) -> Result<(), JinxError> {
     let start_time = Instant::now();
     let license_key = modal_interaction
@@ -383,6 +385,19 @@ async fn handle_license_registration<'a>(
         let guild_id = modal_interaction
             .guild_id
             .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+        let jinxxy_user_id = match jinxxy_user_id {
+            Some(jinxxy_user_id) => Cow::Borrowed(jinxxy_user_id),
+            None => {
+                // handle the case where we got a legacy button and therefore don't have an included jinxxy user id
+                // we try and load it from the DB (which should work) and bitch if it fails
+                let default_id = context.user_data.db.get_default_jinxxy_user_id(guild_id).await?;
+                let default_id = default_id
+                    .ok_or_else(|| JinxError::new("legacy register button did not have a default store set"))?;
+                Cow::Owned(default_id)
+            }
+        };
+
         let user_id = modal_interaction.user.id;
         let license_type = license::identify_license(license_key);
 
@@ -449,7 +464,7 @@ async fn handle_license_registration<'a>(
         if let Some(api_key) = context
             .user_data
             .db
-            .get_jinxxy_api_key(guild_id)
+            .get_jinxxy_api_key(guild_id, &jinxxy_user_id)
             .await
             .map_err(JinxError::from)?
         {
@@ -534,7 +549,7 @@ async fn handle_license_registration<'a>(
                     let activation_present_in_db = context
                         .user_data
                         .db
-                        .has_user_license_activations(guild_id, user_id.get(), license_info.license_id.clone())
+                        .has_user_license_activations(&jinxxy_user_id, user_id.get(), &license_info.license_id)
                         .await?;
 
                     // calculate if we should grant roles
@@ -547,12 +562,12 @@ async fn handle_license_registration<'a>(
                                     .user_data
                                     .db
                                     .activate_license(
-                                        guild_id,
-                                        license_info.license_id.clone(),
-                                        activation.id.clone(),
+                                        &jinxxy_user_id,
+                                        &license_info.license_id,
+                                        &activation.id,
                                         user_id.get(),
-                                        Some(license_info.product_id.clone()),
-                                        license_info.version_id().map(|str| str.to_string()),
+                                        Some(&license_info.product_id),
+                                        license_info.version_id(),
                                     )
                                     .await?;
                                 warn!(
@@ -579,12 +594,12 @@ async fn handle_license_registration<'a>(
                             .user_data
                             .db
                             .activate_license(
-                                guild_id,
-                                license_info.license_id.clone(),
-                                new_activation_id.clone(),
+                                &jinxxy_user_id,
+                                &license_info.license_id,
+                                &new_activation_id,
                                 user_id.get(),
-                                Some(license_info.product_id.clone()),
-                                license_info.version_id().map(|str| str.to_string()),
+                                Some(&license_info.product_id),
+                                license_info.version_id(),
                             )
                             .await?;
                         let activations =

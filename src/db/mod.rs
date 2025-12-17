@@ -19,7 +19,6 @@ use sqlx::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
@@ -35,7 +34,6 @@ type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub struct JinxDb {
     read_pool: Pool<Sqlite>,
     write_pool: Pool<Sqlite>,
-    api_key_cache: Arc<papaya::HashMap<(GuildId, String), Option<String>, ahash::RandomState>>,
     new_db: bool,
 }
 
@@ -71,7 +69,6 @@ impl JinxDb {
         let db = JinxDb {
             read_pool,
             write_pool,
-            api_key_cache: Default::default(),
             new_db,
         };
         Ok(db)
@@ -288,31 +285,42 @@ impl JinxDb {
         )
         .execute(&mut *connection)
         .await?;
-        let api_key_cache = self.api_key_cache.pin();
-        api_key_cache.insert((guild, jinxxy_user_id.to_string()), Some(api_key.to_string()));
         Ok(())
     }
 
     /// Get Jinxxy API key for this guild
-    pub async fn get_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: String) -> SqliteResult<Option<String>> {
-        let key = (guild, jinxxy_user_id);
-        if let Some(api_key) = self.api_key_cache.pin().get(&key) {
-            // cache hit
-            Ok(api_key.clone())
-        } else {
-            // cache miss
-            let guild_id = guild.get() as i64;
-            let jinxxy_user_id = key.1.as_str();
-            let api_key = sqlx::query_scalar!(
-                r#"SELECT jinxxy_api_key FROM jinxxy_user_guild WHERE guild_id = ? AND jinxxy_user_id = ?"#,
-                guild_id,
-                jinxxy_user_id
-            )
-            .fetch_optional(&self.read_pool)
-            .await?;
-            self.api_key_cache.pin().insert(key, api_key.clone());
-            Ok(api_key)
-        }
+    pub async fn get_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str) -> SqliteResult<Option<String>> {
+        let guild_id = guild.get() as i64;
+        let api_key = sqlx::query_scalar!(
+            r#"SELECT jinxxy_api_key FROM jinxxy_user_guild WHERE guild_id = ? AND jinxxy_user_id = ?"#,
+            guild_id,
+            jinxxy_user_id
+        )
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(api_key)
+    }
+
+    /// Check if this guild has any Jinxxy stores linked
+    pub async fn has_jinxxy_linked(&self, guild: GuildId) -> SqliteResult<bool> {
+        let guild_id = guild.get() as i64;
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT * FROM jinxxy_user_guild WHERE guild_id = ?) AS "has_key: bool""#,
+            guild_id
+        )
+        .fetch_one(&self.read_pool)
+        .await
+    }
+
+    /// Get the default Jinxxy user id for a guild. For legacy guilds this **should** be set, and is used for legacy
+    /// buttons without Jinxxy user id embedded.
+    pub async fn get_default_jinxxy_user_id(&self, guild: GuildId) -> SqliteResult<Option<String>> {
+        let guild_id = guild.get() as i64;
+        let jinxxy_user_id =
+            sqlx::query_scalar!(r#"SELECT default_jinxxy_user FROM guild WHERE guild_id = ?"#, guild_id)
+                .fetch_optional(&self.read_pool)
+                .await?;
+        Ok(jinxxy_user_id.flatten())
     }
 
     /// Set or unset blanket role

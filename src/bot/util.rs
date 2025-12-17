@@ -35,6 +35,10 @@ pub(super) async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
 /// Set (or reset) guild commands for this guild.
 ///
 /// There is a global rate limit of 200 application command creates per day, per guild.
+///
+/// If `force_owner` or `force_creator` are None, it infers using DB state. If they are Some(bool), the bool
+/// will be used to forcibly set or unset the owner/creator flags for the purpose of installing (or uninstalling!)
+/// commands.
 pub async fn set_guild_commands(
     http: impl AsRef<Http>,
     db: &JinxDb,
@@ -50,7 +54,7 @@ pub async fn set_guild_commands(
     let creator = if let Some(creator) = force_creator {
         creator
     } else {
-        db.get_jinxxy_api_key(guild_id).await?.is_some()
+        db.has_jinxxy_linked(guild_id).await?
     };
     let owner_commands = owner.then_some(OWNER_COMMANDS.iter()).into_iter().flatten();
     let creator_commands = creator.then_some(CREATOR_COMMANDS.iter()).into_iter().flatten();
