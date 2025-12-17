@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::Bot;
 use crate::cli_args::{JinxArgs, OwnerCommand};
 use clap::Parser;
 use std::process::ExitCode;
@@ -48,6 +49,7 @@ async fn main() -> ExitCode {
                 db.set_discord_token(discord_token)
                     .await
                     .expect("Failed to set discord token");
+                db.close().await;
                 ExitCode::SUCCESS
             } else {
                 eprintln!(
@@ -91,6 +93,17 @@ async fn main() -> ExitCode {
                     owners.into_iter().for_each(|id| println!("{id}"));
                 }
             }
+            db.close().await;
+            ExitCode::SUCCESS
+        }
+        Some(cli_args::Command::Migrate) => {
+            let db = db::JinxDb::open()
+                .await
+                .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
+            db.migrate()
+                .await
+                .unwrap_or_else(|e| panic!("Error migrating database: {e:?}"));
+            db.close().await;
             ExitCode::SUCCESS
         }
         None => {
@@ -128,13 +141,15 @@ async fn main() -> ExitCode {
 }
 
 async fn bot_subsystem(subsystem: &mut SubsystemHandle) -> Result<(), Error> {
+    let mut bot = Bot::new().await?;
     tokio::select! {
         _ = subsystem.on_shutdown_requested() => {
-            info!("shutdown requested");
+            info!("external shutdown requested");
+            bot.close().await;
             Ok(())
         },
-        result = bot::run_bot() => {
-            subsystem.request_shutdown();
+        result = bot.start() => {
+            info!("bot subsystem stopped itself");
             result
         }
     }

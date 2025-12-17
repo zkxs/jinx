@@ -40,6 +40,7 @@ pub struct JinxDb {
     read_pool: Pool<Sqlite>,
     write_pool: Pool<Sqlite>,
     api_key_cache: Arc<papaya::HashMap<GuildId, Option<String>, ahash::RandomState>>,
+    new_db: bool,
 }
 
 impl JinxDb {
@@ -64,46 +65,61 @@ impl JinxDb {
             .pragma("trusted_schema", "OFF"); // all applications are encouraged to switch this setting off on every database connection as soon as that connection is opened
         let connect_options_read = connect_options_write.clone().read_only(true).create_if_missing(false);
 
-        let v2_db_exists = Path::new(DB_V2_FILENAME).is_file();
+        let new_db = !Path::new(DB_V2_FILENAME).is_file();
         let write_pool = pool_options_write.connect_with(connect_options_write).await?;
         let mut write_connection = write_pool.acquire().await?;
         schema_v2::init(&mut write_connection).await?;
 
         let read_pool = pool_options_read.connect_with(connect_options_read).await?;
-        {
-            // sanity check to see if we can have multiple connections open
-            let mut read_connection = read_pool.acquire().await?;
-            read_connection.execute("SELECT name FROM sqlite_schema").await?;
-        }
-
-        if !v2_db_exists && Path::new(DB_V1_FILENAME).is_file() {
-            // the v2 DB does not exist, so we must initialize the v1 db and migrate it to v2
-            let connect_options_v1 = SqliteConnectOptions::new()
-                .filename(DB_V1_FILENAME)
-                .foreign_keys(false)
-                .in_memory(false)
-                .shared_cache(false)
-                .journal_mode(SqliteJournalMode::Delete)
-                .locking_mode(SqliteLockingMode::Normal)
-                .read_only(false)
-                .create_if_missing(false)
-                .synchronous(SqliteSynchronous::Full)
-                .auto_vacuum(SqliteAutoVacuum::None)
-                .page_size(4096)
-                .pragma("trusted_schema", "OFF");
-            let mut v1_connection = connect_options_v1.connect().await?;
-            // handle any pending migrations on the v1 db
-            schema_v1::init(&mut v1_connection).await?;
-            // perform the big migration
-            schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await?;
-        }
 
         let db = JinxDb {
             read_pool,
             write_pool,
             api_key_cache: Default::default(),
+            new_db,
         };
         Ok(db)
+    }
+
+    pub async fn migrate(&self) -> Result<(), JinxError> {
+        if Path::new(DB_V1_FILENAME).is_file() {
+            if self.new_db {
+                // the v2 DB does not exist, so we must initialize the v1 db and migrate it to v2
+                let connect_options_v1 = SqliteConnectOptions::new()
+                    .filename(DB_V1_FILENAME)
+                    .foreign_keys(false)
+                    .in_memory(false)
+                    .shared_cache(false)
+                    .journal_mode(SqliteJournalMode::Delete)
+                    .locking_mode(SqliteLockingMode::Normal)
+                    .read_only(false)
+                    .create_if_missing(false)
+                    .synchronous(SqliteSynchronous::Full)
+                    .auto_vacuum(SqliteAutoVacuum::None)
+                    .page_size(4096)
+                    .pragma("trusted_schema", "OFF");
+                let mut v1_connection = connect_options_v1.connect().await?;
+                // handle any pending migrations on the v1 db
+                schema_v1::init(&mut v1_connection).await?;
+                // perform the big migration
+                let mut write_connection = self.write_pool.acquire().await?;
+                schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await
+            } else {
+                Err(JinxError::new(
+                    "attempted to perform v1->v2 DB migration into an existing v2 DB",
+                ))
+            }
+        } else {
+            Err(JinxError::new(
+                "attempted to perform v1->v2 DB migration when v1 DB does not exist",
+            ))
+        }
+    }
+
+    /// Gracefully the database connections and wait for the close to complete
+    pub async fn close(&self) {
+        self.read_pool.close().await;
+        self.write_pool.close().await;
     }
 
     /// Get something that we can DerefMut as SqliteConnection

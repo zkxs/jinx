@@ -3,9 +3,10 @@
 
 use crate::db::helper;
 use crate::error::JinxError;
+use poise::futures_util::TryStreamExt;
 use sqlx::{Executor, SqliteConnection};
 use tokio::time::Instant;
-use tracing::debug;
+use tracing::{debug, info};
 
 const SCHEMA_MINOR_VERSION_KEY: &str = "schema_minor_version";
 const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
@@ -196,5 +197,131 @@ pub(super) async fn copy_from_v1(
     v1_pool: &mut SqliteConnection,
     v2_pool: &mut SqliteConnection,
 ) -> Result<(), JinxError> {
-    todo!()
+    // settings migration
+    {
+        info!("starting settings migration");
+        let discord_token: Option<String> =
+            sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = 'discord_token'"#)
+                .fetch_optional(&mut *v1_pool)
+                .await?;
+        if let Some(discord_token) = discord_token {
+            sqlx::query!(
+                r#"INSERT INTO settings (key, value) VALUES ('discord_token', ?)"#,
+                discord_token
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
+
+        let low_priority_cache_expiry_seconds: Option<i64> =
+            sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = 'low_priority_cache_expiry_seconds'"#)
+                .fetch_optional(&mut *v1_pool)
+                .await?;
+        if let Some(low_priority_cache_expiry_seconds) = low_priority_cache_expiry_seconds {
+            sqlx::query!(
+                r#"INSERT INTO settings (key, value) VALUES ('low_priority_cache_expiry_seconds', ?)"#,
+                low_priority_cache_expiry_seconds
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
+    }
+
+    // guild migration
+    /*
+    {
+        info!("starting guild migration");
+        let mut rows = sqlx::query(
+            r#"SELECT guild_id, jinxxy_api_key, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count,
+                   cache_time_unix_ms, blanket_role_id, jinxxy_user_id, jinxxy_username FROM guild"#,
+        )
+        .fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: &str = row.get("guild_id");
+            let jinxxy_api_key: &str = row.get("jinxxy_api_key");
+            let log_channel_id: i64 = row.get("log_channel_id");
+            let test: i64 = row.get("test");
+            let owner: i64 = row.get("owner");
+            let gumroad_failure_count: i64 = row.get("gumroad_failure_count");
+            let gumroad_nag_count: i64 = row.get("gumroad_nag_count");
+            let cache_time_unix_ms: i64 = row.get("cache_time_unix_ms");
+            let blanket_role_id: i64 = row.get("blanket_role_id");
+            let jinxxy_user_id: &str = row.get("jinxxy_user_id");
+            let jinxxy_username: &str = row.get("jinxxy_username");
+            sqlx::query!(
+                r#"INSERT INTO guild (guild_id, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count, blanket_role_id, default_jinxxy_user)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+                guild_id,
+                log_channel_id,
+                test,
+                owner,
+                gumroad_failure_count,
+                gumroad_nag_count,
+                blanket_role_id,
+                default_jinxy_user,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
+        //TODO: implement
+    }
+     */
+
+    // jinxxy_user migration
+    {
+        info!("starting jinxxy_user migration");
+        //TODO: implement
+    }
+
+    // jinxxy_user_guild migration
+    {
+        info!("starting jinxxy_user_guild migration");
+        //TODO: implement
+    }
+
+    // product migration
+    {
+        info!("starting product migration");
+        //TODO: implement
+    }
+
+    // product_version migration
+    {
+        info!("starting product_version migration");
+        //TODO: implement
+    }
+
+    // product_role migration
+    {
+        info!("starting product_role migration");
+        //TODO: implement
+    }
+
+    // product_version_role migration
+    {
+        info!("starting product_version_role migration");
+        //TODO: implement
+    }
+
+    // license_activation migration
+    {
+        info!("starting license_activation migration");
+        //TODO: implement
+    }
+
+    // owner migration
+    {
+        info!("starting owner migration");
+        let mut rows = sqlx::query_scalar(r#"SELECT owner_id FROM owner"#).fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let owner_id: i64 = row;
+            sqlx::query!(r#"INSERT INTO owner (owner_id) VALUES (?)"#, owner_id)
+                .execute(&mut *v2_pool)
+                .await?;
+        }
+    }
+
+    info!("migration complete");
+
+    Ok(())
 }

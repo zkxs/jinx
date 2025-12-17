@@ -25,6 +25,8 @@ pub enum Command {
     UpdateCheck,
     /// Modify bot owners
     Owner(OwnerArgs),
+    /// Migrate v1 -> v2 database, and then exit
+    Migrate,
 }
 
 #[derive(Args)]
