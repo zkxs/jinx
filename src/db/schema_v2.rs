@@ -158,7 +158,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 
     let schema_minor_version: i32 = helper::get_setting(connection, SCHEMA_MINOR_VERSION_KEY)
         .await?
-        .unwrap_or(SCHEMA_PATCH_VERSION_VALUE);
+        .unwrap_or(SCHEMA_MINOR_VERSION_VALUE);
     let schema_patch_version: i32 = helper::get_setting(connection, SCHEMA_PATCH_VERSION_KEY)
         .await?
         .unwrap_or(SCHEMA_PATCH_VERSION_VALUE);
@@ -166,7 +166,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     // handle schema downgrade (or rather, DON'T handle it and throw an error)
     if schema_minor_version > SCHEMA_MINOR_VERSION_VALUE {
         let message = format!(
-            "db schema version is v2.{schema_minor_version}.{schema_patch_version}, which is newer than v2.{DB_V2_SCHEMA_MINOR_VERSION_VALUE} which is the latest schema this Jinx build supports."
+            "db schema version is v2.{schema_minor_version}.{schema_patch_version}, which is newer than v2.{SCHEMA_MINOR_VERSION_VALUE} which is the latest schema this Jinx build supports."
         );
         return Err(JinxError::new(message));
     }
@@ -176,13 +176,14 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection.execute(r#"PRAGMA optimize = 0x10002"#).await?;
 
     // update the schema version value persisted to the DB
-    helper::set_setting(connection, SCHEMA_VERSION_KEY, DB_V2_SCHEMA_VERSION_VALUE).await?;
+    helper::set_setting(connection, SCHEMA_MINOR_VERSION_KEY, SCHEMA_MINOR_VERSION_VALUE).await?;
+    helper::set_setting(connection, SCHEMA_PATCH_VERSION_KEY, SCHEMA_PATCH_VERSION_VALUE).await?;
 
     let elapsed = start.elapsed();
     debug!(
         "initialized v2.{}.{} db in {}ms",
         SCHEMA_MINOR_VERSION_VALUE,
-        SCHEMA_PATCH_VERSION_VALUE.
+        SCHEMA_PATCH_VERSION_VALUE,
         elapsed.as_millis()
     );
 

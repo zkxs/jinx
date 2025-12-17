@@ -2,6 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 mod schema_v1;
+mod schema_v2;
 
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -16,14 +17,17 @@ use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
     SqliteSynchronous,
 };
-use sqlx::{Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, error::Error as SqlxError};
+use sqlx::{
+    ConnectOptions, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, error::Error as SqlxError,
+};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::warn;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
-//const DB_V2_FILENAME: &str = "jinx2.sqlite";
+const DB_V2_FILENAME: &str = "jinx2.sqlite";
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 
@@ -44,11 +48,11 @@ impl JinxDb {
         let pool_options_write = SqlitePoolOptions::new().min_connections(1).max_connections(1);
         let pool_options_read = SqlitePoolOptions::new().min_connections(1).max_connections(4);
         let connect_options_write = SqliteConnectOptions::new()
-            .filename(DB_V1_FILENAME)
+            .filename(DB_V2_FILENAME)
             .foreign_keys(true)
             .in_memory(false)
             .shared_cache(false) // superseded by WAL mode
-            .journal_mode(SqliteJournalMode::Delete)
+            .journal_mode(SqliteJournalMode::Wal)
             .locking_mode(SqliteLockingMode::Normal) // must be Normal to have multiple connections
             .read_only(false)
             .create_if_missing(true)
@@ -60,15 +64,38 @@ impl JinxDb {
             .pragma("trusted_schema", "OFF"); // all applications are encouraged to switch this setting off on every database connection as soon as that connection is opened
         let connect_options_read = connect_options_write.clone().read_only(true).create_if_missing(false);
 
+        let v2_db_exists = Path::new(DB_V2_FILENAME).is_file();
         let write_pool = pool_options_write.connect_with(connect_options_write).await?;
         let mut write_connection = write_pool.acquire().await?;
-        schema_v1::init(&mut write_connection).await?;
+        schema_v2::init(&mut write_connection).await?;
 
         let read_pool = pool_options_read.connect_with(connect_options_read).await?;
         {
             // sanity check to see if we can have multiple connections open
             let mut read_connection = read_pool.acquire().await?;
             read_connection.execute("SELECT name FROM sqlite_schema").await?;
+        }
+
+        if !v2_db_exists && Path::new(DB_V1_FILENAME).is_file() {
+            // the v2 DB does not exist, so we must initialize the v1 db and migrate it to v2
+            let connect_options_v1 = SqliteConnectOptions::new()
+                .filename(DB_V1_FILENAME)
+                .foreign_keys(false)
+                .in_memory(false)
+                .shared_cache(false)
+                .journal_mode(SqliteJournalMode::Delete)
+                .locking_mode(SqliteLockingMode::Normal)
+                .read_only(false)
+                .create_if_missing(false)
+                .synchronous(SqliteSynchronous::Full)
+                .auto_vacuum(SqliteAutoVacuum::None)
+                .page_size(4096)
+                .pragma("trusted_schema", "OFF");
+            let mut v1_connection = connect_options_v1.connect().await?;
+            // handle any pending migrations on the v1 db
+            schema_v1::init(&mut v1_connection).await?;
+            // perform the big migration
+            schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await?;
         }
 
         let db = JinxDb {
