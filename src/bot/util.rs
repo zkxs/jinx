@@ -9,14 +9,13 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::JinxxyError;
 use crate::license;
-use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use poise::{CreateReply, serenity_prelude as serenity};
 use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serenity::{
-    CacheHttp, ChannelId, Colour, CreateEmbed, GuildId, Http, Message, MessageFlags, MessageType, MessageUpdateEvent,
-    Role, RoleId,
+    AutocompleteChoice, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, GuildId, Http, Message,
+    MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;

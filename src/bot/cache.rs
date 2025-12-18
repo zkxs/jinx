@@ -60,7 +60,7 @@ const MIN_SLEEP_DURATION: Duration = Duration::from_millis(2000);
 #[derive(Clone)]
 pub struct ApiCache {
     map: MapType,
-    high_priority_tx: mpsc::Sender<String>,
+    high_priority_tx: mpsc::Sender<(GuildId, String)>,
     /// sending a None is considered a "bump", indicating we should re-check the next queued item
     refresh_register_tx: mpsc::Sender<Option<String>>,
     refresh_unregister_tx: mpsc::Sender<String>,
@@ -71,7 +71,7 @@ impl ApiCache {
         let map: MapType = Default::default();
 
         const QUEUE_SIZE: usize = 1024;
-        let (high_priority_tx, mut high_priority_rx) = mpsc::channel::<String>(QUEUE_SIZE);
+        let (high_priority_tx, mut high_priority_rx) = mpsc::channel::<(GuildId, String)>(QUEUE_SIZE);
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel::<Option<String>>(QUEUE_SIZE);
         let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel::<String>(QUEUE_SIZE);
 
@@ -96,7 +96,7 @@ impl ApiCache {
             let db = db.clone();
             let map = map.clone();
             tokio::task::spawn(async move {
-                while let Some(jinxxy_user_id) = high_priority_rx.recv().await {
+                while let Some((guild, jinxxy_user_id)) = high_priority_rx.recv().await {
                     // first, check to make sure this entry is still expired
                     let needs_refresh = map
                         .pin()
@@ -105,29 +105,32 @@ impl ApiCache {
                         .unwrap_or(true);
 
                     if needs_refresh {
-                        match db.get_arbitrary_jinxxy_api_key(&jinxxy_user_id).await {
+                        match db.get_jinxxy_api_key(guild, &jinxxy_user_id).await {
                             Ok(api_key) => match api_key {
                                 Some(api_key) => {
                                     // the high-priority API hit
-                                    match StoreCache::from_jinxxy_api::<true>(
-                                        &db,
-                                        &api_key.jinxxy_api_key,
-                                        &jinxxy_user_id,
-                                    )
-                                    .await
-                                    {
+                                    match StoreCache::from_jinxxy_api::<true>(&db, &api_key, &jinxxy_user_id).await {
                                         Ok(store_cache) => {
+                                            if let Err(e) =
+                                                db.set_jinxxy_api_key_validity(guild, &jinxxy_user_id, true).await
+                                            {
+                                                warn!(
+                                                    "Error re-validating API key for guild {} store {}: {:?}",
+                                                    guild.get(),
+                                                    jinxxy_user_id,
+                                                    e
+                                                );
+                                            }
                                             map.pin().insert(jinxxy_user_id, store_cache);
                                         }
                                         Err(e) => {
                                             if e.is_api_key_invalid()
-                                                && let Err(e) = db
-                                                    .invalidate_jinxxy_api_key(api_key.guild_id, &jinxxy_user_id)
-                                                    .await
+                                                && let Err(e) =
+                                                    db.set_jinxxy_api_key_validity(guild, &jinxxy_user_id, false).await
                                             {
                                                 warn!(
                                                     "Error invalidating API key for guild {} store {}: {:?}",
-                                                    api_key.guild_id.get(),
+                                                    guild.get(),
                                                     jinxxy_user_id,
                                                     e
                                                 );
@@ -424,9 +427,10 @@ impl ApiCache {
                                                             Err(e) => {
                                                                 if e.is_api_key_invalid()
                                                                     && let Err(e) = db
-                                                                        .invalidate_jinxxy_api_key(
+                                                                        .set_jinxxy_api_key_validity(
                                                                             api_key.guild_id,
                                                                             &queue_entry.jinxxy_user_id,
+                                                                            false,
                                                                         )
                                                                         .await
                                                                 {
@@ -535,8 +539,8 @@ impl ApiCache {
     }
 
     /// Trigger a one-time high-priority refresh of this store in the cache.
-    async fn refresh_store_in_cache(&self, jinxxy_user_id: String) -> Result<(), Error> {
-        self.high_priority_tx.send(jinxxy_user_id).await?;
+    async fn refresh_store_in_cache(&self, guild: GuildId, jinxxy_user_id: String) -> Result<(), Error> {
+        self.high_priority_tx.send((guild, jinxxy_user_id)).await?;
         Ok(())
     }
 
@@ -566,7 +570,7 @@ impl ApiCache {
         // I actually cannot believe the compiler is letting me call a FnMut across awaits, this is beautiful.
         // So this is the true power of the &mut access rules, huh.
         for store_link in db.get_store_links(guild).await? {
-            self.get(db, store_link.jinxxy_user_id.as_str(), |store_cache| {
+            self.get(db, guild, store_link.jinxxy_user_id.as_str(), |store_cache| {
                 f(&store_link, store_cache)
             })
             .await?;
@@ -577,7 +581,7 @@ impl ApiCache {
     /// Get a cache line and run some process on it, returning the result.
     ///
     /// If the cache is empty or expired, the underlying API will be hit.
-    pub async fn get<F, T>(&self, db: &JinxDb, jinxxy_user_id: &str, f: F) -> Result<T, Error>
+    pub async fn get<F, T>(&self, db: &JinxDb, guild: GuildId, jinxxy_user_id: &str, f: F) -> Result<T, Error>
     where
         F: FnOnce(&StoreCache) -> T,
     {
@@ -592,22 +596,34 @@ impl ApiCache {
                 jinxxy_user_id
             );
             let api_key = db
-                .get_arbitrary_jinxxy_api_key(jinxxy_user_id)
+                .get_jinxxy_api_key(guild, jinxxy_user_id)
                 .await?
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
 
             // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
-            let api_result = StoreCache::from_jinxxy_api::<true>(db, &api_key.jinxxy_api_key, jinxxy_user_id).await;
-            if let Err(e) = &api_result
-                && e.is_api_key_invalid()
-                && let Err(e) = db.invalidate_jinxxy_api_key(api_key.guild_id, jinxxy_user_id).await
-            {
-                warn!(
-                    "Error invalidating API key for guild {} store {}: {:?}",
-                    api_key.guild_id.get(),
-                    jinxxy_user_id,
-                    e
-                );
+            let api_result = StoreCache::from_jinxxy_api::<true>(db, &api_key, jinxxy_user_id).await;
+            match &api_result {
+                Ok(_) => {
+                    if let Err(e) = db.set_jinxxy_api_key_validity(guild, jinxxy_user_id, true).await {
+                        warn!(
+                            "Error re-validating API key for guild {} store {}: {:?}",
+                            guild.get(),
+                            jinxxy_user_id,
+                            e
+                        );
+                    }
+                }
+                Err(e) if e.is_api_key_invalid() => {
+                    if let Err(e) = db.set_jinxxy_api_key_validity(guild, jinxxy_user_id, false).await {
+                        warn!(
+                            "Error invalidating API key for guild {} store {}: {:?}",
+                            guild.get(),
+                            jinxxy_user_id,
+                            e
+                        );
+                    }
+                }
+                _ => (),
             }
             let store_cache = api_result?;
 
@@ -626,7 +642,7 @@ impl ApiCache {
                 "queuing priority product cache refresh for {} due to expiry",
                 jinxxy_user_id
             );
-            self.refresh_store_in_cache(jinxxy_user_id.to_string()).await?;
+            self.refresh_store_in_cache(guild, jinxxy_user_id.to_string()).await?;
         }
 
         // ensure this store is registered in the cache
@@ -671,7 +687,7 @@ impl ApiCache {
         let mut remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT;
         let stores = db.get_store_link_user_ids(guild_id).await?;
         for jinxxy_user_id in stores {
-            self.get(db, &jinxxy_user_id, |cache_entry| {
+            self.get(db, guild_id, &jinxxy_user_id, |cache_entry| {
                 result.extend(cache_entry.product_names_with_prefix(prefix).take(remaining_capacity));
                 remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT - result.len();
             })
@@ -694,7 +710,7 @@ impl ApiCache {
         let mut remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT;
         let stores = db.get_store_link_user_ids(guild_id).await?;
         for jinxxy_user_id in stores {
-            self.get(db, &jinxxy_user_id, |cache_entry| {
+            self.get(db, guild_id, &jinxxy_user_id, |cache_entry| {
                 result.extend(
                     cache_entry
                         .product_version_names_with_prefix(prefix)
@@ -719,7 +735,7 @@ impl ApiCache {
         let mut result = Vec::with_capacity(1);
         let stores = db.get_store_link_user_ids(guild_id).await?;
         for jinxxy_user_id in stores {
-            self.get(db, &jinxxy_user_id, |cache_entry| {
+            self.get(db, guild_id, &jinxxy_user_id, |cache_entry| {
                 result.extend_from_slice(cache_entry.product_name_to_ids(product_name))
             })
             .await?;
@@ -736,7 +752,7 @@ impl ApiCache {
         let mut result = Vec::with_capacity(1);
         let stores = db.get_store_link_user_ids(guild_id).await?;
         for jinxxy_user_id in stores {
-            self.get(db, &jinxxy_user_id, |cache_entry| {
+            self.get(db, guild_id, &jinxxy_user_id, |cache_entry| {
                 result.extend_from_slice(cache_entry.product_version_name_to_version_ids(product_name))
             })
             .await?;

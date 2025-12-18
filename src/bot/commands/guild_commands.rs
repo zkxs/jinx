@@ -1135,7 +1135,7 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
             context
                 .data()
                 .api_cache
-                .get(&context.data().db, &store.jinxxy_user_id, |cache| {
+                .get(&context.data().db, guild_id, &store.jinxxy_user_id, |cache| {
                     let mut first_line = true;
                     for role in &linked_roles {
                         if first_line {

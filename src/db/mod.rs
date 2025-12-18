@@ -485,12 +485,18 @@ impl JinxDb {
         Ok(result)
     }
 
-    /// Mark an API key as invalid and excluded from use in the background cache job
-    pub async fn invalidate_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str) -> JinxResult<()> {
+    /// Mark an API key as valid, or invalid and excluded from use in the background cache job
+    pub async fn set_jinxxy_api_key_validity(
+        &self,
+        guild: GuildId,
+        jinxxy_user_id: &str,
+        valid: bool,
+    ) -> JinxResult<()> {
         let guild_id = guild.get() as i64;
         let mut connection = self.write_connection().await?;
         sqlx::query!(
-            r#"UPDATE jinxxy_user_guild SET jinxxy_api_key_valid = FALSE WHERE guild_id = ? AND jinxxy_user_id = ?"#,
+            r#"UPDATE jinxxy_user_guild SET jinxxy_api_key_valid = ? WHERE guild_id = ? AND jinxxy_user_id = ?"#,
+            valid,
             guild_id,
             jinxxy_user_id
         )

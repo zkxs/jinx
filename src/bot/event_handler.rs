@@ -9,12 +9,12 @@ use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
 use crate::license;
 use crate::license::LicenseType;
-use poise::serenity_prelude::ModalInteraction;
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
     ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
     CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
+    ModalInteraction,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
