@@ -854,17 +854,17 @@ pub(in crate::bot) async fn link_product(
         }
 
         let mut roles_set = HashSet::with_hasher(ahash::RandomState::new());
-        for product_id in product_ids {
+        for id in product_ids {
             context
                 .data()
                 .db
-                .link_product(guild_id, product_id.clone(), role)
+                .link_product(&id.jinxxy_user_id, guild_id, &id.product_id, role)
                 .await?;
 
             let roles = context
                 .data()
                 .db
-                .get_linked_roles_for_product(guild_id, product_id)
+                .get_linked_roles_for_product(&id.jinxxy_user_id, guild_id, &id.product_id)
                 .await?;
             roles_set.extend(roles);
         }
@@ -996,17 +996,17 @@ pub(in crate::bot) async fn link_product_version(
         }
 
         let mut roles_set = HashSet::with_hasher(ahash::RandomState::new());
-        for product_version_id in product_version_ids {
+        for id in product_version_ids {
             context
                 .data()
                 .db
-                .link_product_version(guild_id, product_version_id.clone(), role)
+                .link_product_version(&id.jinxxy_user_id, guild_id, &id.product_version_id, role)
                 .await?;
 
             let roles = context
                 .data()
                 .db
-                .get_linked_roles_for_product_version(guild_id, product_version_id)
+                .get_linked_roles_for_product_version(&id.jinxxy_user_id, guild_id, &id.product_version_id)
                 .await?;
             roles_set.extend(roles);
         }
