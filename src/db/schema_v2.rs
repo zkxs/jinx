@@ -25,7 +25,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
             r#"CREATE TABLE IF NOT EXISTS "settings" (
                    key    TEXT NOT NULL PRIMARY KEY,
                    value  ANY NOT NULL
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
 
@@ -54,7 +54,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    jinxxy_user_id      TEXT NOT NULL PRIMARY KEY,
                    jinxxy_username     TEXT,
                    cache_time_unix_ms  INTEGER NOT NULL DEFAULT 0
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
 
@@ -69,7 +69,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    PRIMARY KEY           (jinxxy_user_id, guild_id),
                    FOREIGN KEY           (guild_id)       REFERENCES guild ON DELETE CASCADE,
                    FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
     // Index needed to look up all links by guild
@@ -87,7 +87,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    etag            BLOB,
                    PRIMARY KEY     (jinxxy_user_id, product_id),
                    FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
 
@@ -101,7 +101,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    product_version_name  TEXT NOT NULL,
                    PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
                    FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
 
@@ -115,7 +115,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    role_id                INTEGER NOT NULL,
                    PRIMARY KEY            (jinxxy_user_id, guild_id, product_id, role_id),
                    FOREIGN KEY            (jinxxy_user_id, guild_id) REFERENCES jinxxy_user_guild ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
     // for joining by guild
@@ -134,7 +134,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    role_id                INTEGER NOT NULL,
                    PRIMARY KEY            (jinxxy_user_id, guild_id, product_id, version_id, role_id),
                    FOREIGN KEY            (jinxxy_user_id, guild_id) REFERENCES jinxxy_user_guild ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
     // for joining by guild
@@ -156,7 +156,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    version_id             TEXT,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
-               ) STRICT WITHOUT ROWID"#,
+               ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
 

@@ -27,7 +27,7 @@ pub mod constants {
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-const DB_OPEN_ERROR_MESSAGE: &str = "Failed to open jinx.sqlite";
+const DB_OPEN_ERROR_MESSAGE: &str = "Failed to open jinx2.sqlite";
 const DB_READ_ERROR_MESSAGE: &str = "Failed to read from database";
 const DB_WRITE_ERROR_MESSAGE: &str = "Failed to write to database";
 const DISCORD_ID_PARSE_ERROR_MESSAGE: &str = "Failed to parse Discord ID";
