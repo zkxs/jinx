@@ -657,24 +657,26 @@ pub struct ProductVersionNameInfo {
     pub product_version_name: String,
 }
 
-pub trait GetUsername {
-    fn username(&self) -> Option<&str>;
-}
+/// Wrapper struct around username references to provide some additional functions
+pub struct Username<'a>(Option<&'a str>);
 
-impl GetUsername for LicenseInfo {
-    fn username(&self) -> Option<&str> {
-        self.username.as_deref()
+impl Username<'_> {
+    pub fn profile_url(&self) -> Option<String> {
+        self.0.map(Self::format_profile_url)
+    }
+
+    pub fn format_profile_url(username: &str) -> String {
+        format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC))
     }
 }
 
-pub trait GetProfileUrl {
-    fn profile_url(&self) -> Option<String>;
+pub trait GetUsername {
+    fn username(&self) -> Username;
 }
 
-impl<T: GetUsername> GetProfileUrl for T {
-    fn profile_url(&self) -> Option<String> {
-        self.username()
-            .map(|username| format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC)))
+impl GetUsername for LicenseInfo {
+    fn username(&self) -> Username {
+        Username(self.username.as_deref())
     }
 }
 

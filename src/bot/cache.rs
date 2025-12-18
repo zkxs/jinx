@@ -548,7 +548,8 @@ impl ApiCache {
         for store_link in db.get_store_links(guild).await? {
             self.get(db, store_link.jinxxy_user_id.as_str(), |store_cache| {
                 f(&store_link, store_cache)
-            }).await?;
+            })
+            .await?;
         }
         Ok(())
     }

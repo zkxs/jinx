@@ -2,12 +2,12 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::util;
-use crate::bot::util::{error_reply, success_reply};
+use crate::bot::util::{error_reply, license_to_id, success_reply};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
+use crate::http::jinxxy::{GetProfileImageUrl as _, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use poise::CreateReply;
@@ -210,124 +210,132 @@ pub async fn user_info(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        // look up licenses from the local DB, which is the only way we can do this without scraping every license activation from Jinxxy
-        let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
-        let message = if license_ids.is_empty() {
-            format!("<@{}> has no license activations.", user.id.get())
-        } else {
-            let license_id_count = license_ids.len();
-
-            // start looking up each license in jinxxy to get the associated product info
-            // TODO: this is static data, so backfill it into the local DB to save some API calls here
-            let mut license_check_join_set = JoinSet::new();
-            for license_id in license_ids {
-                let api_key = api_key.clone();
-                let license_id = license_id.clone();
-                license_check_join_set.spawn(async move {
-                    jinxxy::check_license_id(&api_key, &license_id, false)
-                        .await
-                        .map(|option| option.ok_or(license_id))
-                });
-            }
-
-            // figure out which product versions we need version names for and start those requests in the background
-            let mut product_lookup_join_set = JoinSet::new();
-            let mut products_requiring_lookup = HashSet::with_hasher(ahash::RandomState::default());
-            let mut license_infos: Vec<_> = Vec::with_capacity(license_id_count);
-            while let Some(result) = license_check_join_set.join_next().await {
-                let license_info = result??;
-                if let Ok(license_info) = &license_info
-                    && license_info.product_version_info.is_some()
-                {
-                    let newly_inserted = products_requiring_lookup.insert(license_info.product_id.clone());
-                    if newly_inserted {
-                        let api_key = api_key.clone();
-                        let product_id = license_info.product_id.clone();
-                        product_lookup_join_set
-                            .spawn(async move { jinxxy::get_product_uncached(&api_key, &product_id).await });
-                    }
-                }
-                license_infos.push(license_info);
-            }
-
-            // for each product that we needed version info for extract version name into a map
-            // map structure: {product_id -> version_id -> version_name}
-            let mut product_version_name_cache: HashMap<
-                String,
-                HashMap<String, String, ahash::RandomState>,
-                ahash::RandomState,
-            > = Default::default();
-            while let Some(result) = product_lookup_join_set.join_next().await {
-                let product = result??;
-                for version in product.versions {
-                    product_version_name_cache
-                        .entry(product.id.clone())
-                        .or_default()
-                        .insert(version.id, version.name);
-                }
-            }
-
-            let mut message = format!("Licenses for <@{}>:", user.id.get());
-            for license_info in license_infos {
-                match license_info {
-                    Ok(license_info) => {
-                        let product_version_name = license_info
-                            .product_version_info
-                            .as_ref()
-                            .map(|version| {
-                                product_version_name_cache
-                                    .get(license_info.product_id.as_str())
-                                    .and_then(|inner| inner.get(&version.product_version_id))
-                                    .map(|string| string.as_str())
-                                    .unwrap_or("`ERROR`")
-                            })
-                            .unwrap_or("`null`");
-
-                        let locked = context
-                            .data()
-                            .db
-                            .is_license_locked(guild_id, license_info.license_id.clone())
-                            .await?;
-
-                        let username = if let Some(username) = &license_info.username {
-                            format!(
-                                "[{}](<{}>)",
-                                username,
-                                license_info.profile_url().ok_or_else(|| JinxError::new(
-                                    "expected profile_url to exist when username is set"
-                                ))?
-                            )
-                        } else {
-                            format!("`{}`", license_info.user_id)
-                        };
-
-                        message.push_str(
-                            format!(
-                                "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
-                                license_info.short_key,
-                                license_info.activations, // this field came from Jinxxy and is up to date
-                                locked,                   // this field came from the local DB and may be out of sync
-                                username,
-                                license_info.product_name,
-                                product_version_name
-                            )
-                            .as_str(),
-                        );
-                    }
-                    Err(license_id) => {
-                        // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
-                        message.push_str(format!("\n- ID=`{license_id}` (no data found)").as_str());
-                    }
-                }
-            }
-            message
-        };
-        success_reply("User Info", message)
+    // look up licenses from the local DB, which is the only way we can do this without scraping every license activation from Jinxxy
+    let license_ids = context.data().db.get_user_licenses(guild_id, user.id.get()).await?;
+    let message = if license_ids.is_empty() {
+        format!("<@{}> has no license activations.", user.id.get())
     } else {
-        error_reply("Error Getting User Info", MISSING_API_KEY_MESSAGE)
-    };
+        let license_id_count = license_ids.len();
 
+        /*
+        start looking up each license in jinxxy to get the associated product info
+        this SEEMS like static data, we could backfill it into the local DB to save some API calls here, however
+        in the case where a license has been deleted from Jinxxy but is known to the bot, it's nice to display it here
+        */
+        let mut license_check_join_set = JoinSet::new();
+        for license_id in license_ids {
+            license_check_join_set.spawn(async move {
+                jinxxy::check_license_id(
+                    license_id.jinxxy_api_key.as_str(),
+                    license_id.license_id.as_str(),
+                    false,
+                )
+                .await
+                .map(|license_info| (license_id, license_info))
+            });
+        }
+
+        // figure out which product versions we need version names for and start those requests in the background
+        let mut product_lookup_join_set = JoinSet::new();
+        let mut products_requiring_lookup = HashSet::with_hasher(ahash::RandomState::default());
+        let mut license_infos: Vec<_> = Vec::with_capacity(license_id_count);
+        while let Some(result) = license_check_join_set.join_next().await {
+            let tuple = result??;
+            let (license_id, license_info) = &tuple;
+            if let Some(license_info) = license_info
+                && license_info.product_version_info.is_some()
+            {
+                let key = (license_id.jinxxy_user_id.clone(), license_info.product_id.clone());
+                let newly_inserted = products_requiring_lookup.insert(key);
+                if newly_inserted {
+                    let api_key = license_id.jinxxy_api_key.clone();
+                    let jinxxy_user_id = license_id.jinxxy_user_id.clone();
+                    let product_id = license_info.product_id.clone();
+                    product_lookup_join_set.spawn(async move {
+                        jinxxy::get_product_uncached(&api_key, &product_id)
+                            .await
+                            .map(|product_info| (jinxxy_user_id, product_info))
+                    });
+                }
+            }
+            license_infos.push(tuple);
+        }
+
+        // for each product that we needed version info for extract version name into a map
+        // map structure: {store+product_id -> version_id -> version_name}
+        let mut product_version_name_cache: HashMap<
+            (String, String),
+            HashMap<String, String, ahash::RandomState>,
+            ahash::RandomState,
+        > = Default::default();
+        while let Some(result) = product_lookup_join_set.join_next().await {
+            let (jinxxy_user_id, product) = result??;
+            for version in product.versions {
+                product_version_name_cache
+                    .entry((jinxxy_user_id.clone(), product.id.clone()))
+                    .or_default()
+                    .insert(version.id, version.name);
+            }
+        }
+
+        let mut message = format!("Licenses for <@{}>:", user.id.get());
+        for license_info in license_infos {
+            match license_info {
+                (license_id, Some(license_info)) => {
+                    let map_key = (license_id.jinxxy_user_id, license_info.product_id);
+                    let (jinxxy_user_id, _product_id) = &map_key;
+                    let product_version_name = license_info
+                        .product_version_info
+                        .as_ref()
+                        .map(|version| {
+                            product_version_name_cache
+                                .get(&map_key)
+                                .and_then(|inner| inner.get(&version.product_version_id))
+                                .map(|string| string.as_str())
+                                .unwrap_or("`ERROR`")
+                        })
+                        .unwrap_or("`null`");
+
+                    let locked = context
+                        .data()
+                        .db
+                        .is_license_locked(jinxxy_user_id.as_str(), license_info.license_id.as_str())
+                        .await?;
+
+                    let username = if let Some(username) = &license_info.username {
+                        format!("[{}](<{}>)", username, Username::format_profile_url(username))
+                    } else {
+                        format!("`{}`", license_info.user_id)
+                    };
+
+                    message.push_str(
+                        format!(
+                            "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
+                            license_info.short_key,
+                            license_info.activations, // this field came from Jinxxy and is up to date
+                            locked,                   // this field came from the local DB and may be out of sync
+                            username,
+                            license_info.product_name,
+                            product_version_name
+                        )
+                        .as_str(),
+                    );
+                }
+                (license_id, None) => {
+                    // we had a license ID in our local DB, but could not find info on it in the Jinxxy API
+                    message.push_str(
+                        format!(
+                            "\n- store=`{}` id=`{}` (no data found)",
+                            license_id.jinxxy_user_id, license_id.license_id
+                        )
+                        .as_str(),
+                    );
+                }
+            }
+        }
+        message
+    };
+    let reply = success_reply("User Info", message);
     context.send(reply).await?;
     Ok(())
 }

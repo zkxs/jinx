@@ -7,7 +7,7 @@ use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::bot::{Context, HOURS_PER_DAY, SECONDS_PER_HOUR, util};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetProfileUrl as _};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername};
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
@@ -379,7 +379,7 @@ pub(in crate::bot) async fn verify_guild(
                                 };
 
                                 let scopes = format!("{:?}", auth_user.scopes);
-                                let profile_url = auth_user.profile_url();
+                                let profile_url = auth_user.username().profile_url();
                                 let display_name = auth_user.into_display_name();
                                 let message = if let Some(profile_url) = profile_url {
                                     format!("[{display_name}]({profile_url}) has scopes {scopes}")

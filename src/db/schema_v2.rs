@@ -139,7 +139,9 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         .await?;
     // for joining by guild
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_guild ON product_version_role (guild_id)"#)
+        .execute(
+            r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_guild ON product_version_role (guild_id)"#,
+        )
         .await?;
 
     // local mirror of license activations. Source of truth is the Jinxxy API.

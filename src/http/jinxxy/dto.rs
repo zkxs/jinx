@@ -3,7 +3,7 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, ProductVersionInfo};
+use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, ProductVersionInfo, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use regex::Regex;
@@ -157,8 +157,8 @@ impl AuthUser {
 }
 
 impl GetUsername for AuthUser {
-    fn username(&self) -> Option<&str> {
-        self.username.as_deref()
+    fn username(&self) -> Username {
+        Username(self.username.as_deref())
     }
 }
 
