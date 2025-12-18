@@ -125,13 +125,26 @@ impl JinxxyError {
         Self::Join(join_error)
     }
 
+    /// Check if an error looks like a 401.
+    ///
+    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
+    pub fn looks_like_401(&self) -> bool {
+        match self {
+            Self::HttpResponse(response) => match &response.body {
+                HttpBody::JsonErrorResponse(body) => response.status_code == 401 || body.looks_like_401(),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Check if an error looks like a 403.
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
     pub fn looks_like_403(&self) -> bool {
         match self {
             Self::HttpResponse(response) => match &response.body {
-                HttpBody::JsonErrorResponse(response) => response.status_code == 403 || response.looks_like_403(),
+                HttpBody::JsonErrorResponse(body) => response.status_code == 403 || body.looks_like_403(),
                 _ => false,
             },
             _ => false,
@@ -144,7 +157,7 @@ impl JinxxyError {
     pub fn looks_like_404(&self) -> bool {
         match self {
             Self::HttpResponse(response) => match &response.body {
-                HttpBody::JsonErrorResponse(response) => response.status_code == 404 || response.looks_like_404(),
+                HttpBody::JsonErrorResponse(body) => response.status_code == 404 || body.looks_like_404(),
                 _ => false,
             },
             _ => false,
@@ -222,6 +235,13 @@ pub struct JinxxyErrorResponse {
 }
 
 impl JinxxyErrorResponse {
+    /// Check if an error looks like a 401.
+    ///
+    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
+    pub fn looks_like_401(&self) -> bool {
+        self.status_code == 401 || (self.error == "Bad Request" && self.message.matches("Invalid or expired API key"))
+    }
+
     /// Check if an error looks like a 403.
     ///
     /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.

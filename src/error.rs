@@ -67,6 +67,13 @@ impl From<JinxxyError> for JinxError {
     }
 }
 
+// no clue why this isn't implied, but whatever
+impl From<JinxxyError> for Box<JinxError> {
+    fn from(e: JinxxyError) -> Self {
+        Box::new(JinxError::Jinxxy(e))
+    }
+}
+
 impl From<SqlxError> for JinxError {
     fn from(e: SqlxError) -> Self {
         Self::Sqlite(e)
@@ -92,5 +99,10 @@ impl JinxError {
             public: public.into(),
             private: private.into(),
         }
+    }
+
+    /// Check if this error was caused by an invalid Jinxxy API key
+    pub fn is_api_key_invalid(&self) -> bool {
+        matches!(self, JinxError::Jinxxy(jinx_error) if jinx_error.looks_like_401())
     }
 }

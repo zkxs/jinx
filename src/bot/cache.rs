@@ -120,6 +120,19 @@ impl ApiCache {
                                             map.pin().insert(jinxxy_user_id, store_cache);
                                         }
                                         Err(e) => {
+                                            if e.is_api_key_invalid() {
+                                                if let Err(e) = db
+                                                    .invalidate_jinxxy_api_key(api_key.guild_id, &jinxxy_user_id)
+                                                    .await
+                                                {
+                                                    warn!(
+                                                        "Error invalidating API key for guild {} store {}: {:?}",
+                                                        api_key.guild_id.get(),
+                                                        jinxxy_user_id,
+                                                        e
+                                                    );
+                                                }
+                                            }
                                             warn!(
                                                 "Error initializing API cache during high-priority refresh for {}: {:?}",
                                                 jinxxy_user_id, e
@@ -410,6 +423,22 @@ impl ApiCache {
                                                                 true
                                                             }
                                                             Err(e) => {
+                                                                if e.is_api_key_invalid() {
+                                                                    if let Err(e) = db
+                                                                        .invalidate_jinxxy_api_key(
+                                                                            api_key.guild_id,
+                                                                            &queue_entry.jinxxy_user_id,
+                                                                        )
+                                                                        .await
+                                                                    {
+                                                                        warn!(
+                                                                            "Error invalidating API key for guild {} store {}: {:?}",
+                                                                            api_key.guild_id.get(),
+                                                                            queue_entry.jinxxy_user_id,
+                                                                            e
+                                                                        );
+                                                                    }
+                                                                }
                                                                 warn!(
                                                                     "Error initializing API cache during low-priority refresh for {}, will unregister now: {:?}",
                                                                     queue_entry.jinxxy_user_id, e
@@ -570,7 +599,21 @@ impl ApiCache {
                 .ok_or_else(|| JinxError::new(MISSING_API_KEY_MESSAGE))?;
 
             // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
-            let store_cache = StoreCache::from_jinxxy_api::<true>(db, &api_key.jinxxy_api_key, jinxxy_user_id).await?;
+            let api_result = StoreCache::from_jinxxy_api::<true>(db, &api_key.jinxxy_api_key, jinxxy_user_id).await;
+            if let Err(e) = &api_result {
+                if e.is_api_key_invalid() {
+                    if let Err(e) = db.invalidate_jinxxy_api_key(api_key.guild_id, &jinxxy_user_id).await {
+                        warn!(
+                            "Error invalidating API key for guild {} store {}: {:?}",
+                            api_key.guild_id.get(),
+                            jinxxy_user_id,
+                            e
+                        );
+                    }
+                }
+            }
+            let store_cache = api_result?;
+
             let result = f(&store_cache);
 
             // update the cache
@@ -780,7 +823,7 @@ impl StoreCache {
         db: &JinxDb,
         api_key: &str,
         jinxxy_user_id: &str,
-    ) -> Result<StoreCache, Error> {
+    ) -> Result<StoreCache, Box<JinxError>> {
         // list products
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
 
@@ -858,12 +901,12 @@ impl StoreCache {
             create_time,
         )
         .await?;
-        Self::from_products(
+        Ok(Self::from_products(
             jinxxy_user_id,
             product_name_info,
             product_version_name_info,
             create_time,
-        )
+        ))
     }
 
     /// Attempt to create a cache entry from the DB. This is quite cheap compared to hitting Jinxxy.
@@ -882,7 +925,7 @@ impl StoreCache {
                 db_cache_entry.product_name_info,
                 db_cache_entry.product_version_name_info,
                 db_cache_entry.cache_time,
-            )?))
+            )))
         }
     }
 
@@ -893,7 +936,7 @@ impl StoreCache {
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
         cache_time: SimpleTime,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Box<JinxError>> {
         let db_cache_entry = db::StoreCache {
             product_name_info,
             product_version_name_info,
@@ -909,7 +952,7 @@ impl StoreCache {
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
         create_time: SimpleTime,
-    ) -> Result<StoreCache, Error> {
+    ) -> StoreCache {
         let product_count = product_name_info.len();
         let product_version_count = product_version_name_info.len();
 
@@ -970,7 +1013,7 @@ impl StoreCache {
                 });
         }
 
-        Ok(StoreCache {
+        StoreCache {
             product_id_to_name_map,
             product_name_to_id_map,
             product_name_trie,
@@ -980,7 +1023,7 @@ impl StoreCache {
             product_version_name_trie,
             product_version_count,
             create_time,
-        })
+        }
     }
 
     fn product_names_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = String> + 'a {
