@@ -433,9 +433,7 @@ pub(in crate::bot) async fn verify_guild(
                         }
                     };
 
-                    let mut reply = CreateReply::default()
-                        .embed(verify_embed)
-                        .embed(guild_embed);
+                    let mut reply = CreateReply::default().embed(verify_embed).embed(guild_embed);
                     for api_embed in api_embeds {
                         reply = reply.embed(api_embed);
                     }
@@ -578,12 +576,19 @@ pub(in crate::bot) async fn debug_product_cache(
                 context
                     .data()
                     .api_cache
-                    .get(&context.data().db, guild_id, |cache| {
+                    .for_all_in_guild(&context.data().db, guild_id, |linked_store, cache| {
+                        let unique_store_name = linked_store
+                            .jinxxy_username
+                            .as_ref()
+                            .map(|s| s.as_str())
+                            .unwrap_or(linked_store.jinxxy_user_id.as_str());
                         for (index, product_name) in cache.product_name_iter().enumerate() {
                             if index != 0 {
                                 message.push('\n');
                             }
                             message.push_str("- ");
+                            message.push_str(unique_store_name);
+                            message.push_str(": ");
                             message.push_str(product_name);
                         }
                     })

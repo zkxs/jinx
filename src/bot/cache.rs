@@ -12,13 +12,14 @@
 use crate::bot::MISSING_API_KEY_MESSAGE;
 use crate::bot::{SECONDS_PER_DAY, util};
 use crate::db;
-use crate::db::JinxDb;
+use crate::db::{JinxDb, LinkedStore};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{
     LoadedProduct, PartialProduct, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo,
 };
 use crate::time::SimpleTime;
+use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
@@ -534,6 +535,21 @@ impl ApiCache {
     /// Unregister a store in the cache. The store will no longer have its cache entry periodically warmed automatically.
     pub async fn unregister_store_in_cache(&self, jinxxy_user_id: String) -> Result<(), Error> {
         self.refresh_unregister_tx.send(jinxxy_user_id).await?;
+        Ok(())
+    }
+
+    /// Get all cache lines for this guild's linked stores and run some process each one
+    pub async fn for_all_in_guild<F>(&self, db: &JinxDb, guild: GuildId, mut f: F) -> Result<(), Error>
+    where
+        F: FnMut(&LinkedStore, &StoreCache),
+    {
+        // I actually cannot believe the compiler is letting me call a FnMut across awaits, this is beautiful.
+        // So this is the true power of the &mut access rules, huh.
+        for store_link in db.get_store_links(guild).await? {
+            self.get(db, store_link.jinxxy_user_id.as_str(), |store_cache| {
+                f(&store_link, store_cache)
+            }).await?;
+        }
         Ok(())
     }
 
