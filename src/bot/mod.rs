@@ -22,6 +22,18 @@ use tracing::{debug, error, info};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+/// Number of items to limit lists used in autocompletion to.
+///
+/// Exceeding the limit results in:
+/// ```
+/// WARN poise::dispatch::slash: couldn't send autocomplete response: Invalid Form Body (data.choices: Must be 25 or fewer in length.)
+/// ```
+pub const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
+/// Maximum character length in a single autocompletion result. Discord docs are ambiguous if this is characters or bytes.
+pub const AUTOCOMPLETE_CHARACTER_LIMIT: usize = 100;
+/// Maximum character length in a `custom_id` field. Discord docs are ambiguous if this is characters or bytes.
+pub const CUSTOM_ID_CHARACTER_LIMIT: usize = 100;
+
 const SECONDS_PER_MINUTE: u64 = 60;
 const MINUTES_PER_HOUR: u64 = 60;
 const HOURS_PER_DAY: u64 = 24;

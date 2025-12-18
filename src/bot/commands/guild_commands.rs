@@ -5,9 +5,9 @@ use crate::bot::util;
 use crate::bot::util::{error_reply, license_to_id, success_reply};
 use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
 use crate::db::LinkSource;
-use crate::error::JinxError;
+use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, Username};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use poise::CreateReply;
@@ -119,6 +119,30 @@ pub(in crate::bot) async fn set_log_channel(
     Ok(())
 }
 
+/// Initializes autocomplete data, and then does the store name autocomplete
+async fn store_name_autocomplete(context: Context<'_>, store_name_prefix: &str) -> CreateAutocompleteResponse {
+    match context.guild_id() {
+        Some(guild_id) => {
+            match context
+                .data()
+                .db
+                .autocomplete_jinxxy_username(guild_id, store_name_prefix)
+                .await
+            {
+                Ok(result) => util::create_autocomplete_response(result.into_iter()),
+                Err(e) => {
+                    warn!("Failed to autocomplete Jinxxy username: {:?}", e);
+                    CreateAutocompleteResponse::new()
+                }
+            }
+        }
+        None => {
+            error!("someone is somehow doing store name autocomplete without being in a guild");
+            CreateAutocompleteResponse::new()
+        }
+    }
+}
+
 /// Create post with buttons to register product keys
 #[poise::command(
     slash_command,
@@ -127,63 +151,105 @@ pub(in crate::bot) async fn set_log_channel(
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn create_post(context: Context<'_>) -> Result<(), Error> {
+pub(in crate::bot) async fn create_post(
+    context: Context<'_>,
+    #[autocomplete = "store_name_autocomplete"] store_name: String,
+) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
     let channel = context.channel_id();
 
-    // note that custom id can be AT MOST 100 characters long or Discord will explode
-    let components = vec![CreateActionRow::Buttons(vec![
-        CreateButton::new(REGISTER_BUTTON_ID)
-            .label("Register")
-            .style(ButtonStyle::Primary),
-    ])];
+    let guild = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let api_key = context
-        .data()
-        .db
-        .get_jinxxy_api_key(
-            context
-                .guild_id()
-                .ok_or_else(|| JinxError::new("expected to be in a guild"))?,
-        )
-        .await?
-        .ok_or_else(|| JinxError::new("Jinxxy API key is not set"))?;
-    let reply = match jinxxy::get_own_user(&api_key).await {
-        Ok(jinxxy_user) => {
-            let profile_url = jinxxy_user.profile_url();
-            let jinxxy_user: jinxxy::DisplayUser = jinxxy_user.into(); // convert into just the data we need for this command
-            let display_name = jinxxy_user.name_possessive();
-            let display_name = if let Some(profile_url) = profile_url {
-                format!("[{display_name}](<{profile_url}>)")
-            } else {
-                display_name
-            };
-            let embed = CreateEmbed::default()
-                .title("Jinxxy Product Registration")
-                .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
-            let embed = if let Some(profile_image_url) = jinxxy_user.profile_image_url() {
-                embed.thumbnail(profile_image_url)
-            } else {
-                embed
-            };
+    let reply = match context.data().db.get_store_link(guild, &store_name).await {
+        Ok(Some(store_link)) => {
+            match jinxxy::get_own_user(&store_link.jinxxy_api_key).await {
+                Ok(jinxxy_user) => {
+                    // might as well do a sanity check while I've got the data in scope. This shouldn't ever fail.
+                    if jinxxy_user.id != store_link.jinxxy_user_id {
+                        /*
+                        Hello, dear reader. If you're here it means that somehow an API key in the database currently has a user ID
+                        that does not match the user ID stored alongside that API key in the database. This should not be possible,
+                        as the user ID is assumed to be immutable and the database is assumed to be uncorruptible.
+                         */
+                        let nonce: u64 = util::generate_nonce();
+                        error!(
+                            "NONCE[{}] ID MISMATCH MAJOR FUCKUP!!! API user_id: \"{}\" DB jinxxy_user_id: \"{}\"",
+                            nonce, jinxxy_user.id, store_link.jinxxy_user_id
+                        );
+                        // if it DOES somehow fail, we should stop here.
+                        Err(JinxError::new(format!(
+                            "A critical sanity-check has failed. Please report this to the bot developer with error code `{}`",
+                            nonce
+                        )))?;
+                    }
 
-            let message = CreateMessage::default().embed(embed).components(components);
+                    let display_user = jinxxy::DisplayUser::from(&jinxxy_user); // convert into just the data we need for this command
+                    let display_name = display_user.name_possessive();
+                    let display_name = if let Some(profile_url) = jinxxy_user.username().profile_url() {
+                        format!("[{display_name}](<{profile_url}>)")
+                    } else {
+                        display_name
+                    };
+                    let embed = CreateEmbed::default()
+                        .title("Jinxxy Product Registration")
+                        .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
+                    let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
+                        embed.thumbnail(profile_image_url)
+                    } else {
+                        embed
+                    };
 
-            if let Err(e) = channel.send_message(context, message).await {
-                warn!("Error in /create_post when sending message: {:?}", e);
-                error_reply(
+                    // embed the store ID into the register button
+                    // note that custom id can be AT MOST 100 characters long or Discord will explode
+                    let components = vec![CreateActionRow::Buttons(vec![
+                        CreateButton::new(format!("{}:{}", REGISTER_BUTTON_ID, jinxxy_user.id))
+                            .label("Register")
+                            .style(ButtonStyle::Primary),
+                    ])];
+                    let message = CreateMessage::default().embed(embed).components(components);
+
+                    if let Err(e) = channel.send_message(context, message).await {
+                        warn!("Error in /create_post when sending message: {:?}", e);
+                        error_reply(
+                            "Error Creating Post",
+                            "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.",
+                        )
+                    } else {
+                        success_reply("Success", "Registration post created!")
+                    }
+                }
+                Err(e) => error_reply(
                     "Error Creating Post",
-                    "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.",
-                )
-            } else {
-                success_reply("Success", "Registration post created!")
+                    format!("Could not get info for your Jinxxy user: {e}"),
+                ),
             }
         }
-        Err(e) => error_reply(
-            "Error Creating Post",
-            format!("Could not get info for your Jinxxy user: {e}"),
-        ),
+        Ok(None) => {
+            // happens if we couldn't find a linked store with that username
+            error_reply("Error Creating Post", "No linked store with that username was found.")
+        }
+        Err(e) => {
+            // happens if the DB errored
+            let nonce: u64 = util::generate_nonce();
+            warn!(
+                "NONCE[{}] Error lookup up Jinxxy user \"{}\" in guild {}: {:?}",
+                nonce,
+                store_name,
+                guild.get(),
+                e
+            );
+            error_reply(
+                "Error Creating Post",
+                format!(
+                    "Error looking up Jinxxy user: {}. Please report this to the bot developer with error code `{}`",
+                    e.safe_display(),
+                    nonce
+                ),
+            )
+        }
     };
 
     context.send(reply).await?;

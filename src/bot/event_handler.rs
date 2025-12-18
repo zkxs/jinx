@@ -2,8 +2,8 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
-use crate::bot::util;
 use crate::bot::util::MessageExtensions;
+use crate::bot::{CUSTOM_ID_CHARACTER_LIMIT, util};
 use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
@@ -238,7 +238,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                     } else {
                         REGISTER_MODAL_ID.to_string()
                     };
-                    if custom_id.len() <= 100 {
+                    if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
                         let modal = CreateModal::new(custom_id, "Jinxxy License Registration").components(components);
                         let response = CreateInteractionResponse::Modal(modal);
                         component_interaction

@@ -9,7 +9,7 @@
 //!
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 
-use crate::bot::MISSING_API_KEY_MESSAGE;
+use crate::bot::{AUTOCOMPLETE_RESULT_LIMIT, MISSING_API_KEY_MESSAGE};
 use crate::bot::{SECONDS_PER_DAY, util};
 use crate::db;
 use crate::db::{JinxDb, LinkedStore};
@@ -43,13 +43,6 @@ const DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(SEC
 const LOW_PRIORITY_CACHE_EXPIRY_TIME_FUDGE_FACTOR: Duration = Duration::from_secs(60);
 /// Minimum time the low priority worker will use as its poll timeout
 const MIN_SLEEP_DURATION: Duration = Duration::from_millis(2000);
-/// Number of items to limit lists used in autocompletion to.
-///
-/// Exceeding the limit results in:
-/// ```
-/// WARN poise::dispatch::slash: couldn't send autocomplete response: Invalid Form Body (data.choices: Must be 25 or fewer in length.)
-/// ```
-const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 
 /// Missless cache for Jinxxy product and version names.
 ///

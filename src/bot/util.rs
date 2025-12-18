@@ -3,7 +3,7 @@
 
 //! Utils used by bot commands.
 
-use crate::bot::{CREATOR_COMMANDS, Context, OWNER_COMMANDS};
+use crate::bot::{AUTOCOMPLETE_CHARACTER_LIMIT, CREATOR_COMMANDS, Context, OWNER_COMMANDS};
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -211,7 +211,7 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
         Some(product_version_name) => {
             // we're going to delimit with a single space, so I use 1 char
             // this leaves 99 chars to work with
-            const MAX_LENGTH: usize = 100 - 1;
+            const MAX_LENGTH: usize = AUTOCOMPLETE_CHARACTER_LIMIT - 1;
 
             // only used in some cases :/
             const PRODUCT_VERSION_MAX_LENGTH: usize = 33;
@@ -253,7 +253,7 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
         }
         None => {
             // I use 15 chars
-            const MAX_LENGTH: usize = 100 - 15;
+            const MAX_LENGTH: usize = AUTOCOMPLETE_CHARACTER_LIMIT - 15;
             if product_name.chars().count() > MAX_LENGTH {
                 let truncated_product_name: String = product_name.chars().take(MAX_LENGTH).collect();
                 format!("{truncated_product_name} (null version)")
@@ -266,9 +266,9 @@ pub fn product_display_name(product_name: &str, product_version_name: Option<&st
 
 /// truncate a string to meet Discord's 100 character autocomplete limit
 pub fn truncate_string_for_discord_autocomplete(string: &str) -> String {
-    if string.chars().count() > 100 {
+    if string.chars().count() > AUTOCOMPLETE_CHARACTER_LIMIT {
         debug!("\"{}\".chars().count() > 100; truncating…", string);
-        string.chars().take(100).collect()
+        string.chars().take(AUTOCOMPLETE_CHARACTER_LIMIT).collect()
     } else {
         string.to_string()
     }
