@@ -380,7 +380,7 @@ pub(in crate::bot) async fn verify_guild(
 
                                 let scopes = format!("{:?}", auth_user.scopes);
                                 let profile_url = auth_user.username().profile_url();
-                                let display_name = auth_user.into_display_name();
+                                let display_name = auth_user.as_display_name();
                                 let message = if let Some(profile_url) = profile_url {
                                     format!("[{display_name}]({profile_url}) has scopes {scopes}")
                                 } else {
@@ -579,8 +579,7 @@ pub(in crate::bot) async fn debug_product_cache(
                     .for_all_in_guild(&context.data().db, guild_id, |linked_store, cache| {
                         let unique_store_name = linked_store
                             .jinxxy_username
-                            .as_ref()
-                            .map(|s| s.as_str())
+                            .as_deref()
                             .unwrap_or(linked_store.jinxxy_user_id.as_str());
                         for (index, product_name) in cache.product_name_iter().enumerate() {
                             if index != 0 {

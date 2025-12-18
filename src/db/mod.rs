@@ -279,7 +279,13 @@ impl JinxDb {
     }
 
     /// Set Jinxxy API key for this guild. This creates a guild link, and if the guild does not exist it creates the guild.
-    pub async fn set_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str, api_key: &str) -> SqliteResult<()> {
+    pub async fn set_jinxxy_api_key(
+        &self,
+        guild: GuildId,
+        jinxxy_user_id: &str,
+        jinxxy_username: Option<&str>,
+        api_key: &str,
+    ) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut connection = self.write_connection().await?;
         let mut transaction = connection.begin().await?;
@@ -290,6 +296,18 @@ impl JinxDb {
                VALUES (?)
                ON CONFLICT (guild_id) DO NOTHING"#,
             guild_id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // ensure the jinxxy user exists, and also make sure the stored username is fully up to date
+        sqlx::query!(
+            r#"INSERT INTO jinxxy_user (jinxxy_user_id, jinxxy_username)
+               VALUES (?, ?)
+               ON CONFLICT (jinxxy_user_id) DO UPDATE
+               SET jinxxy_username = excluded.jinxxy_username"#,
+            jinxxy_user_id,
+            jinxxy_username
         )
         .execute(&mut *transaction)
         .await?;
@@ -1346,7 +1364,7 @@ impl ProductVersionId {
     fn as_db_values(&self) -> (&str, &str) {
         (
             self.product_id.as_str(),
-            self.product_version_id.as_ref().map(|s| s.as_str()).unwrap_or_default(),
+            self.product_version_id.as_deref().unwrap_or_default(),
         )
     }
 

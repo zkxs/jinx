@@ -34,7 +34,7 @@ pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please us
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
 /// commands to be installed globally
-static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| vec![help(), init(), version()]);
+static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| vec![add_store(), help(), version()]);
 
 /// commands to be installed only after successful Jinxxy init
 static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
@@ -113,6 +113,7 @@ impl Bot {
                 // all commands must appear in this list otherwise poise won't recognize interactions for them
                 // this vec is terribly redundant, but because we can't clone Command and it ONLY takes a Vec<Command>, this is the only option.
                 commands: vec![
+                    add_store(),
                     announce(),
                     announce_test(),
                     clear_cache(),
@@ -122,7 +123,6 @@ impl Bot {
                     exit(),
                     grant_missing_roles(),
                     help(),
-                    init(),
                     license_info(),
                     link_product(),
                     link_product_version(),
@@ -137,10 +137,10 @@ impl Bot {
                     set_wildcard_role(),
                     stats(),
                     sudo_list_links(),
+                    unfuck_cache(),
                     unlink_product(),
                     unlink_product_version(),
                     unlock_license(),
-                    unfuck_cache(),
                     unset_wildcard_role(),
                     user_info(),
                     verify_guild(),

@@ -547,13 +547,13 @@ pub async fn get_full_products<const PARALLEL: bool>(
 }
 
 /// Not part of the Jinxxy API: this is an internal DTO that is only used for `/create_post`
-pub struct DisplayUser {
+pub struct DisplayUser<'a> {
     /// Custom display name, or username if no display name is set.
-    pub display_name: String,
-    profile_image_url: Option<String>,
+    pub display_name: &'a str,
+    profile_image_url: Option<&'a str>,
 }
 
-impl DisplayUser {
+impl DisplayUser<'_> {
     /// Get possessive form of this user's display name
     pub fn name_possessive(&self) -> String {
         if self.display_name.ends_with('s') {
@@ -564,9 +564,9 @@ impl DisplayUser {
     }
 }
 
-impl GetProfileImageUrl for DisplayUser {
+impl GetProfileImageUrl for DisplayUser<'_> {
     fn profile_image_url(&self) -> Option<&str> {
-        self.profile_image_url.as_deref()
+        self.profile_image_url
     }
 }
 
@@ -667,6 +667,14 @@ impl Username<'_> {
 
     pub fn format_profile_url(username: &str) -> String {
         format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC))
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        self.0
+    }
+
+    pub fn to_owned(&self) -> Option<String> {
+        self.0.map(|s| s.to_owned())
     }
 }
 

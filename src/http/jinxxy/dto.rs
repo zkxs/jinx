@@ -113,10 +113,10 @@ pub struct AuthUser {
 }
 
 impl AuthUser {
-    pub fn into_display_name(self) -> String {
-        match self.name {
+    pub fn as_display_name(&self) -> &str {
+        match &self.name {
             Some(name) if !name.is_empty() && !name.trim().is_empty() => name,
-            _ => self.username.unwrap_or_else(|| "`null`".to_string()),
+            _ => self.username.as_deref().unwrap_or_else(|| "`null`"),
         }
     }
 
@@ -171,15 +171,15 @@ impl GetProfileImageUrl for AuthUser {
     }
 }
 
-impl From<AuthUser> for super::DisplayUser {
-    fn from(mut auth_user: AuthUser) -> Self {
+impl<'a> From<&'a AuthUser> for super::DisplayUser<'a> {
+    fn from(auth_user: &'a AuthUser) -> Self {
         let profile_image_url = auth_user
             .profile_image
-            .take()
-            .map(|profile_image| profile_image.url)
+            .as_ref()
+            .map(|profile_image| profile_image.url.as_str())
             .filter(|url| !url.is_empty());
         Self {
-            display_name: auth_user.into_display_name(),
+            display_name: auth_user.as_display_name(),
             profile_image_url,
         }
     }

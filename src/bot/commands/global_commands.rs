@@ -70,7 +70,7 @@ pub(in crate::bot) async fn version(context: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Set up Jinx for this Discord server
+/// Link a Jinxxy store to this Discord server
 #[poise::command(
     slash_command,
     guild_only,
@@ -78,7 +78,7 @@ pub(in crate::bot) async fn version(context: Context<'_>) -> Result<(), Error> {
     install_context = "Guild",
     interaction_context = "Guild"
 )]
-pub(in crate::bot) async fn init(
+pub(in crate::bot) async fn add_store(
     context: Context<'_>,
     #[description = "Jinxxy API key"] api_key: String,
 ) -> Result<(), Error> {
@@ -121,13 +121,12 @@ pub(in crate::bot) async fn init(
         match jinxxy::get_own_user(api_key).await {
             Ok(auth_user) => {
                 let has_required_scopes = auth_user.has_required_scopes();
-                let user_id = auth_user.id.clone();
-                let username = auth_user.username().map(|s| s.to_string());
-                let display_name = auth_user.into_display_name();
+                let username = auth_user.username();
+                let display_name = auth_user.as_display_name();
                 context
                     .data()
                     .db
-                    .set_jinxxy_api_key(guild_id, api_key.to_string(), user_id, username)
+                    .set_jinxxy_api_key(guild_id, &auth_user.id, username.as_str(), api_key)
                     .await?;
                 util::set_guild_commands(&context, &context.data().db, guild_id, None, Some(true)).await?;
                 let reply = success_reply(
@@ -137,7 +136,7 @@ pub(in crate::bot) async fn init(
                     ),
                 );
                 if has_required_scopes {
-                    context.data().api_cache.register_store_in_cache(guild_id).await?;
+                    context.data().api_cache.register_store_in_cache(auth_user.id).await?;
                     reply
                 } else {
                     debug!("nagged about API key scopes in {}", guild_id.get());
