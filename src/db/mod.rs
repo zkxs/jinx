@@ -590,7 +590,7 @@ impl JinxDb {
         &self,
         jinxxy_user_id: &str,
         guild: GuildId,
-        product_version_id: ProductVersionId,
+        product_version_id: &ProductVersionId,
         role: RoleId,
     ) -> JinxResult<()> {
         let guild_id = guild.get() as i64;
@@ -615,7 +615,7 @@ impl JinxDb {
         &self,
         jinxxy_user_id: &str,
         guild: GuildId,
-        product_version_id: ProductVersionId,
+        product_version_id: &ProductVersionId,
         role: RoleId,
     ) -> JinxResult<bool> {
         let guild_id = guild.get() as i64;
@@ -678,7 +678,7 @@ impl JinxDb {
     pub async fn get_role_grants(
         &self,
         guild: GuildId,
-        product_version_id: ProductVersionId,
+        product_version_id: &ProductVersionId,
     ) -> JinxResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
@@ -724,7 +724,7 @@ impl JinxDb {
         &self,
         jinxxy_user_id: &str,
         guild: GuildId,
-        product_version_id: ProductVersionId,
+        product_version_id: &ProductVersionId,
     ) -> JinxResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
