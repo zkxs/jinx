@@ -15,7 +15,8 @@ use sqlx::sqlite::{
     SqliteSynchronous,
 };
 use sqlx::{
-    ConnectOptions, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type, error::Error as SqlxError,
+    ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type,
+    error::Error as SqlxError,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -270,10 +271,30 @@ impl JinxDb {
         .await
     }
 
-    /// Set Jinxxy API key for this guild
+    /// this returns a `jinxxy_user_id: String` for all stores
+    pub async fn get_all_stores(&self) -> SqliteResult<Vec<String>> {
+        sqlx::query_scalar!(r#"SELECT jinxxy_user_id FROM jinxxy_user"#)
+            .fetch_all(&self.read_pool)
+            .await
+    }
+
+    /// Set Jinxxy API key for this guild. This creates a guild link, and if the guild does not exist it creates the guild.
     pub async fn set_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str, api_key: &str) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
         let mut connection = self.write_connection().await?;
+        let mut transaction = connection.begin().await?;
+
+        // ensure the guild exists
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id)
+               VALUES (?)
+               ON CONFLICT (guild_id) DO NOTHING"#,
+            guild_id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // set the api key
         sqlx::query!(
             r#"INSERT INTO jinxxy_user_guild (guild_id, jinxxy_user_id, jinxxy_api_key, jinxxy_api_key_valid)
                VALUES (?, ?, ?, TRUE)
@@ -283,9 +304,53 @@ impl JinxDb {
             jinxxy_user_id,
             api_key
         )
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await?;
-        Ok(())
+
+        transaction.commit().await
+    }
+
+    /// This deletes MOST of a guild's data:
+    ///
+    /// - all guild:store links for this guild, represented as rows in the `jinxxy_user_guild` table
+    /// - most guild settings in the `guild` table *except* certain values that should persist forever in case the guild
+    ///   is restored later, including:
+    ///   - gumroad_failure_count and gumroad_nag_count, as your sins must not be forgotten
+    ///   - default_jinxxy_user, as we cannot guarantee you've destroyed all your legacy register buttons
+    /// - all `product_role` and `product_version_role` entries referencing the removed `jinxxy_user_guild` entries
+    ///   (handled automatically by ON DELETE CASCADE)
+    /// - all `jinxxy_user` entries that are no longer linked to any guild via `jinxxy_user_guild`
+    ///
+    /// Finally, this returns `jinxxy_user_id: String` for all stores that have been deleted. These store IDs must be
+    /// subsequently unregistered from the cache background job.
+    pub async fn delete_guild(&self, guild: GuildId) -> SqliteResult<Vec<String>> {
+        let guild_id = guild.get() as i64;
+        let mut connection = self.write_connection().await?;
+        let mut transaction = connection.begin().await?;
+
+        // delete guild:store links. This cascades to role setups.
+        sqlx::query!(r#"DELETE FROM jinxxy_user_guild WHERE guild_id = ?"#, guild_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        // note that if the guild's row is somehow not present, this is a no-op, which is totally fine.
+        sqlx::query!(
+            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL
+               WHERE guild_id = ?"#,
+            guild_id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        let deleted_users = sqlx::query_scalar!(
+            r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
+        )
+        .fetch_all(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(deleted_users)
     }
 
     /// Get a specific Jinxxy API key for this guild

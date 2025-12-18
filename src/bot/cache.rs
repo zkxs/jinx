@@ -270,6 +270,7 @@ impl ApiCache {
                                     Ok(jinxxy_user_id) => {
                                         if store_set.remove(&jinxxy_user_id) {
                                             queue.retain(|queue_entry| queue_entry.jinxxy_user_id != jinxxy_user_id);
+                                            map.pin().remove(&jinxxy_user_id);
                                         }
                                     }
                                     Err(TryRecvError::Empty) => {
@@ -589,21 +590,24 @@ impl ApiCache {
     }
 
     pub fn product_count(&self) -> usize {
-        let map = self.map.pin();
-        map.values().map(|store_cache| store_cache.product_count()).sum()
+        self.map
+            .pin()
+            .values()
+            .map(|store_cache| store_cache.product_count())
+            .sum()
     }
 
     pub fn product_version_count(&self) -> usize {
-        let map = self.map.pin();
-        map.values()
+        self.map
+            .pin()
+            .values()
             .map(|store_cache| store_cache.product_version_count())
             .sum()
     }
 
     /// Remove all cache entries
     pub fn clear(&self) {
-        let map = self.map.pin();
-        map.clear();
+        self.map.pin().clear();
     }
 
     /// Get product names with prefix, up to Discord's limit

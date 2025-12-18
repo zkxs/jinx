@@ -42,7 +42,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
                    blanket_role_id        INTEGER,
                    default_jinxxy_user    TEXT,
-                   FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user
+                   FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT"#,
         )
         .await?;
@@ -62,19 +62,19 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS jinxxy_user_guild (
-                   guild_id              INTEGER NOT NULL,
                    jinxxy_user_id        TEXT NOT NULL,
+                   guild_id              INTEGER NOT NULL,
                    jinxxy_api_key        TEXT NOT NULL,
                    jinxxy_api_key_valid  INTEGER NOT NULL DEFAULT TRUE,
-                   PRIMARY KEY           (guild_id, jinxxy_user_id),
-                   FOREIGN KEY           (guild_id)       REFERENCES guild,
-                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
+                   PRIMARY KEY           (jinxxy_user_id, guild_id),
+                   FOREIGN KEY           (guild_id)       REFERENCES guild ON DELETE CASCADE,
+                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;
-    // store -> api_key lookup. This is needed to get an arbitrary API key for the cache warming job.
+    // Index needed to look up all links by guild
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_store ON jinxxy_user_guild (jinxxy_user_id) WHERE jinxxy_api_key_valid"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
         .await?;
 
     // disk cache for product names
@@ -86,7 +86,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    product_name    TEXT NOT NULL,
                    etag            BLOB,
                    PRIMARY KEY     (jinxxy_user_id, product_id),
-                   FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user
+                   FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;
@@ -100,7 +100,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    version_id            TEXT NOT NULL,
                    product_version_name  TEXT NOT NULL,
                    PRIMARY KEY           (jinxxy_user_id, product_id, version_id),
-                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user
+                   FOREIGN KEY           (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;
@@ -109,37 +109,37 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_role (
-                   guild_id               INTEGER NOT NULL,
                    jinxxy_user_id         TEXT NOT NULL,
+                   guild_id               INTEGER NOT NULL,
                    product_id             TEXT NOT NULL,
                    role_id                INTEGER NOT NULL,
-                   PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, role_id),
-                   FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
+                   PRIMARY KEY            (jinxxy_user_id, guild_id, product_id, role_id),
+                   FOREIGN KEY            (jinxxy_user_id, guild_id) REFERENCES jinxxy_user_guild ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;
-    // for joining by jinxxy_user_id
+    // for joining by guild
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_role_lookup_by_jinxxy_user_id ON product_role (jinxxy_user_id)"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_role_lookup_by_guild ON product_role (guild_id)"#)
         .await?;
 
     // product_version-specific role links
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS product_version_role (
-                   guild_id               INTEGER NOT NULL,
                    jinxxy_user_id         TEXT NOT NULL,
+                   guild_id               INTEGER NOT NULL,
                    product_id             TEXT NOT NULL,
                    version_id             TEXT NOT NULL,
                    role_id                INTEGER NOT NULL,
-                   PRIMARY KEY            (guild_id, jinxxy_user_id, product_id, version_id, role_id),
-                   FOREIGN KEY            (guild_id, jinxxy_user_id) REFERENCES jinxxy_user_guild
+                   PRIMARY KEY            (jinxxy_user_id, guild_id, product_id, version_id, role_id),
+                   FOREIGN KEY            (jinxxy_user_id, guild_id) REFERENCES jinxxy_user_guild ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;
-    // for joining by jinxxy_user_id
+    // for joining by guild
     connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_jinxxy_user_id ON product_version_role (jinxxy_user_id)"#)
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_guild ON product_version_role (guild_id)"#)
         .await?;
 
     // local mirror of license activations. Source of truth is the Jinxxy API.
@@ -153,7 +153,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    product_id             TEXT,
                    version_id             TEXT,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
-                   FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user
+                   FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT WITHOUT ROWID"#,
         )
         .await?;

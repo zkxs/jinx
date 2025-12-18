@@ -88,6 +88,7 @@ struct Data {
 pub struct Bot {
     client: Client,
     db: JinxDb,
+    api_cache: ApiCache,
 }
 
 impl Bot {
@@ -105,6 +106,8 @@ impl Bot {
             .union(GatewayIntents::DIRECT_MESSAGES);
 
         let framework_db_clone = db.clone();
+        let api_cache = ApiCache::new(db.clone());
+        let framework_api_cache_clone = api_cache.clone();
         let framework = poise::Framework::builder()
             .options(poise::FrameworkOptions {
                 // all commands must appear in this list otherwise poise won't recognize interactions for them
@@ -169,6 +172,8 @@ impl Bot {
             .setup(|ctx, _ready, _framework| {
                 Box::pin(async move {
                     let db = framework_db_clone;
+                    let api_cache = framework_api_cache_clone;
+
                     debug!("registering global commands…");
                     let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
                     ctx.http.create_global_commands(&commands_to_create).await?;
@@ -189,11 +194,7 @@ impl Bot {
                             }
                         });
                     }
-
-                    let api_cache = ApiCache::new(db.clone());
-
                     debug!("framework setup complete");
-
                     Ok(Data { db, api_cache })
                 })
             })
@@ -211,7 +212,7 @@ impl Bot {
             .await
             .expect("Failed to set bot's initial activity");
 
-        let bot = Self { client, db };
+        let bot = Self { client, db, api_cache};
         Ok(bot)
     }
 
@@ -342,7 +343,15 @@ impl Bot {
             });
         }
 
-        debug!("Background jobs started. Starting client event handler…");
+        debug!("Background jobs started. Starting API cache registration…");
+
+        // register all stores in API cache
+        let stores = self.db.get_all_stores().await?;
+        for jinxxy_user_id in stores {
+            self.api_cache.register_store_in_cache(jinxxy_user_id).await?;
+        }
+
+        debug!("API cache registration complete. Starting client event handler…");
 
         // note that client.start() does NOT do sharding. If sharding is needed you need to use one of the alternative start functions
         // https://docs.rs/serenity/latest/serenity/gateway/index.html#sharding
@@ -351,6 +360,7 @@ impl Bot {
 
         debug!("client stopped itself. Closing DB…");
         self.db.close().await;
+        debug!("DB closed!");
 
         Ok(())
     }

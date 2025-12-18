@@ -68,50 +68,22 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             if let Err(e) = guild_command_reinstall_result {
                 error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
             }
-
-            match context.user_data.db.has_jinxxy_linked(guild.id).await {
-                Ok(true) => {
-                    // the guild has at least one jinxxy link
-                    //TODO: need to move this logic to the store link command
-                    let register_guild_result = context.user_data.api_cache.register_store_in_cache(guild.id).await;
-                    if let Err(e) = register_guild_result {
-                        error!(
-                            "Error registering guild {} for background cache refresh: {:?}",
-                            guild.id.get(),
-                            e
-                        );
-                    }
-                }
-                Ok(false) => {
-                    // guild had no API key set; do nothing
-                }
-                Err(e) => {
-                    error!(
-                        "Error checking API key before registering guild {} for background cache refresh: {:?}",
-                        guild.id.get(),
-                        e
-                    );
-                }
-            }
         }
-        // bot was removed from a guild (kick, ban, or guild deleted)
+        // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete
         FullEvent::GuildDelete { incomplete, full } => {
+            // If unavailable is false, the bot was removed from the guild, either by being kicked or banned.
+            // If unavailable is true, the guild went offline due to an outage.
             // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
-            if incomplete.unavailable || full.is_some() {
-                //TODO: need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
-                let unregister_guild_result = context
-                    .user_data
-                    .api_cache
-                    .unregister_store_in_cache(incomplete.id)
-                    .await;
-                if let Err(e) = unregister_guild_result {
-                    error!(
-                        "Error registering guild {} for background cache refresh: {:?}",
-                        incomplete.id.get(),
-                        e
-                    );
+            if !incomplete.unavailable {
+                // need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
+                let deleted_stores = context.user_data.db.delete_guild(incomplete.id).await?;
+                for jinxxy_user_id in deleted_stores {
+                    context
+                        .user_data
+                        .api_cache
+                        .unregister_store_in_cache(jinxxy_user_id)
+                        .await?;
                 }
-
                 info!("GuildDelete guild={:?} full={:?}", incomplete, full)
             }
         }
