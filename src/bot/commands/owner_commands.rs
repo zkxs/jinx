@@ -85,7 +85,7 @@ pub(in crate::bot) async fn owner_stats(
     Ok(())
 }
 
-/// Ensure all guilds are registered in the API cache, even if they previously had Jinxxy API failures.
+/// Ensure all stores are registered in the API cache, even if they previously had Jinxxy API failures.
 #[poise::command(
     slash_command,
     default_member_permissions = "MANAGE_GUILD",
@@ -94,10 +94,10 @@ pub(in crate::bot) async fn owner_stats(
     interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn unfuck_cache(context: Context<'_>) -> Result<(), Error> {
-    for guild_id in context.cache().guilds() {
-        context.data().api_cache.register_store_in_cache(guild_id).await?;
+    for jinxxy_user_id in context.data().db.get_all_stores().await? {
+        context.data().api_cache.register_store_in_cache(jinxxy_user_id).await?;
     }
-    let reply = success_reply("Success", "All guilds re-registered in cache refresh worker");
+    let reply = success_reply("Success", "All stores re-registered in cache refresh worker");
     context.send(reply).await?;
     Ok(())
 }
@@ -363,11 +363,14 @@ pub(in crate::bot) async fn verify_guild(
                             .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
                     };
 
-                    let api_embed = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild.id).await? {
-                        match jinxxy::get_own_user(&api_key).await {
+                    let store_links = context.data().db.get_store_links(guild_id).await?;
+                    let mut api_embeds = Vec::with_capacity(store_links.len());
+                    for linked_store in store_links {
+                        let unique_name = linked_store.jinxxy_username.unwrap_or(linked_store.jinxxy_user_id);
+                        let api_embed = match jinxxy::get_own_user(&linked_store.jinxxy_api_key).await {
                             Ok(auth_user) => {
                                 let embed = CreateEmbed::default()
-                                    .title("API Verification Success")
+                                    .title(format!("API Verification Success: {unique_name}"))
                                     .color(Colour::DARK_GREEN);
                                 let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
                                     embed.thumbnail(profile_image_url)
@@ -387,16 +390,12 @@ pub(in crate::bot) async fn verify_guild(
                                 embed.description(message)
                             }
                             Err(e) => CreateEmbed::default()
-                                .title("API Verification Error")
+                                .title(format!("API Verification Error: {unique_name}"))
                                 .color(Colour::RED)
                                 .description(format!("API key invalid: {e}")),
-                        }
-                    } else {
-                        CreateEmbed::default()
-                            .title("API Verification Skipped")
-                            .color(Colour::ORANGE)
-                            .description("API key was unset")
-                    };
+                        };
+                        api_embeds.push(api_embed);
+                    }
 
                     let guild_embed = {
                         let guild_name = guild.name;
@@ -434,10 +433,13 @@ pub(in crate::bot) async fn verify_guild(
                         }
                     };
 
-                    CreateReply::default()
+                    let mut reply = CreateReply::default()
                         .embed(verify_embed)
-                        .embed(api_embed)
-                        .embed(guild_embed)
+                        .embed(guild_embed);
+                    for api_embed in api_embeds {
+                        reply = reply.embed(api_embed);
+                    }
+                    reply
                 } else {
                     // guild was not cached
                     let embed = CreateEmbed::default()

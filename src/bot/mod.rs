@@ -212,7 +212,7 @@ impl Bot {
             .await
             .expect("Failed to set bot's initial activity");
 
-        let bot = Self { client, db, api_cache};
+        let bot = Self { client, db, api_cache };
         Ok(bot)
     }
 
@@ -346,8 +346,7 @@ impl Bot {
         debug!("Background jobs started. Starting API cache registration…");
 
         // register all stores in API cache
-        let stores = self.db.get_all_stores().await?;
-        for jinxxy_user_id in stores {
+        for jinxxy_user_id in self.db.get_all_stores().await? {
             self.api_cache.register_store_in_cache(jinxxy_user_id).await?;
         }
 

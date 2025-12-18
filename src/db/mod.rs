@@ -381,6 +381,21 @@ impl JinxDb {
         Ok(api_key)
     }
 
+    /// Get an all linked stores for this guild
+    pub async fn get_store_links(&self, guild: GuildId) -> SqliteResult<Vec<LinkedStore>> {
+        let guild_id = guild.get() as i64;
+        let api_key = sqlx::query_as!(
+            LinkedStore,
+            r#"SELECT jinxxy_user_id, jinxxy_username, jinxxy_api_key FROM jinxxy_user_guild
+               LEFT JOIN jinxxy_user USING (jinxxy_user_id)
+               WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_all(&self.read_pool)
+        .await?;
+        Ok(api_key)
+    }
+
     /// Mark an API key as invalid and excluded from use in the background cache job
     pub async fn invalidate_jinxxy_api_key(&self, guild: GuildId, jinxxy_user_id: &str) -> SqliteResult<()> {
         let guild_id = guild.get() as i64;
@@ -1359,5 +1374,13 @@ pub struct UserLicense {
 /// Helper struct returned by [`JinxDb::get_arbitrary_jinxxy_api_key`]
 pub struct GuildApiKey {
     pub guild_id: GuildId,
+    pub jinxxy_api_key: String,
+}
+
+/// Helper struct returned by [`JinxDb::get_store_links`]
+#[derive(sqlx::FromRow)]
+pub struct LinkedStore {
+    pub jinxxy_user_id: String,
+    pub jinxxy_username: Option<String>,
     pub jinxxy_api_key: String,
 }
