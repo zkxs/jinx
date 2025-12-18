@@ -1490,7 +1490,7 @@ mod helper {
     }
 
     static GLOBAL_LIKE_ESCAPE_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(/%\?)").expect("Failed to compile GLOBAL_LIKE_ESCAPE_REGEX"));
+        LazyLock::new(|| Regex::new(r"([_%?])").expect("Failed to compile GLOBAL_LIKE_ESCAPE_REGEX"));
 
     thread_local! {
         // trick to avoid a subtle performance edge case: https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention
@@ -1499,7 +1499,7 @@ mod helper {
 
     /// Escapes LIKE strings using the escape character '?', which was specifically chosen due to its lack of URL safety
     pub(super) fn escape_like(s: &str) -> Cow<'_, str> {
-        LIKE_ESCAPE_REGEX.with(|regex| regex.replace_all(s, "${1}?"))
+        LIKE_ESCAPE_REGEX.with(|regex| regex.replace_all(s, "?${1}"))
     }
 
     #[cfg(test)]
@@ -1534,6 +1534,11 @@ mod helper {
         #[test]
         fn test_escape_like_multiple() {
             assert_eq!(escape_like("%_?"), "?%?_??");
+        }
+
+        #[test]
+        fn test_escape_like_multiple_same() {
+            assert_eq!(escape_like("???"), "??????");
         }
     }
 }
