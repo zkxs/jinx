@@ -439,8 +439,7 @@ async fn handle_license_registration<'a>(
             .user_data
             .db
             .get_jinxxy_api_key(guild_id, &jinxxy_user_id)
-            .await
-            .map_err(JinxError::from)?
+            .await?
         {
             let license = license_type.create_untrusted_jinxxy_license(license_key);
             let license_response = if let Some(license) = license {
@@ -629,7 +628,7 @@ async fn handle_license_registration<'a>(
                         let roles = context
                             .user_data
                             .db
-                            .get_role_grants(guild_id, license_info.new_product_version_id())
+                            .get_role_grants(guild_id, &license_info.new_product_version_id())
                             .await?;
 
                         let product_display_name = if let Some(product_version_info) = license_info.product_version_info

@@ -672,18 +672,14 @@ impl Username<'_> {
     pub fn as_str(&self) -> Option<&str> {
         self.0
     }
-
-    pub fn to_owned(&self) -> Option<String> {
-        self.0.map(|s| s.to_owned())
-    }
 }
 
 pub trait GetUsername {
-    fn username(&self) -> Username;
+    fn username(&self) -> Username<'_>;
 }
 
 impl GetUsername for LicenseInfo {
-    fn username(&self) -> Username {
+    fn username(&self) -> Username<'_> {
         Username(self.username.as_deref())
     }
 }

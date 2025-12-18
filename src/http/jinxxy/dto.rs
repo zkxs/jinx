@@ -116,7 +116,7 @@ impl AuthUser {
     pub fn as_display_name(&self) -> &str {
         match &self.name {
             Some(name) if !name.is_empty() && !name.trim().is_empty() => name,
-            _ => self.username.as_deref().unwrap_or_else(|| "`null`"),
+            _ => self.username.as_deref().unwrap_or("`null`"),
         }
     }
 
@@ -157,7 +157,7 @@ impl AuthUser {
 }
 
 impl GetUsername for AuthUser {
-    fn username(&self) -> Username {
+    fn username(&self) -> Username<'_> {
         Username(self.username.as_deref())
     }
 }

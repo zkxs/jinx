@@ -315,7 +315,6 @@ pub(in crate::bot) async fn verify_guild(
 
                 // 1-off struct to contain the guild data we want, as GuildRef cannot pass await boundaries
                 struct GuildData {
-                    id: GuildId,
                     owner_id: UserId,
                     name: String,
                     description: Option<String>,
@@ -323,7 +322,6 @@ pub(in crate::bot) async fn verify_guild(
                 }
                 fn to_guild_data(guild: GuildRef) -> GuildData {
                     GuildData {
-                        id: guild.id,
                         owner_id: guild.owner_id,
                         name: guild.name.clone(),
                         description: guild.description.clone(),

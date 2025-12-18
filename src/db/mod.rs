@@ -916,19 +916,15 @@ impl JinxDb {
     }
 
     /// Locally get all users that have activated the given license. This may be out of sync with Jinxxy!
-    /// Note also that this can return users *not in this guild* who have activated this license. This can happen
-    /// even if the user was never in this guild, as they could have activated the license from a completely different
-    /// linked guild.
-    pub async fn get_license_users(&self, guild: GuildId, license_id: &str) -> SqliteResult<Vec<u64>> {
-        let guild_id = guild.get() as i64;
+    pub async fn get_license_users(&self, jinxxy_user_id: &str, license_id: &str) -> SqliteResult<Vec<u64>> {
         let result = sqlx::query!(
-            r#"SELECT DISTINCT activator_user_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) WHERE guild_id = ? AND license_id = ?"#,
-            guild_id,
+            r#"SELECT DISTINCT activator_user_id FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ?"#,
+            jinxxy_user_id,
             license_id
         )
-            .map(|row| row.activator_user_id as u64)
-            .fetch_all(&self.read_pool)
-            .await?;
+        .map(|row| row.activator_user_id as u64)
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -1502,7 +1498,7 @@ mod helper {
     }
 
     /// Escapes LIKE strings using the escape character '?', which was specifically chosen due to its lack of URL safety
-    pub(super) fn escape_like(s: &str) -> Cow<str> {
+    pub(super) fn escape_like(s: &str) -> Cow<'_, str> {
         LIKE_ESCAPE_REGEX.with(|regex| regex.replace_all(s, "${1}?"))
     }
 

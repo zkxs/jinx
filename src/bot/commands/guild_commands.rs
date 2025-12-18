@@ -1,11 +1,10 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::util;
-use crate::bot::util::{error_reply, license_to_id, success_reply};
-use crate::bot::{Context, MISSING_API_KEY_MESSAGE};
+use crate::bot::util::{error_reply, success_reply};
+use crate::bot::{Context, MISSING_STORE_LINK_MESSAGE, util};
 use crate::db::LinkSource;
-use crate::error::{JinxError, SafeDisplay};
+use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername, Username};
 use crate::license::LOCKING_USER_ID;
@@ -165,93 +164,71 @@ pub(in crate::bot) async fn create_post(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = match context.data().db.get_store_link(guild, &store_name).await {
-        Ok(Some(store_link)) => {
-            match jinxxy::get_own_user(&store_link.jinxxy_api_key).await {
-                Ok(jinxxy_user) => {
-                    // might as well do a sanity check while I've got the data in scope. This shouldn't ever fail.
-                    if jinxxy_user.id != store_link.jinxxy_user_id {
-                        /*
-                        Hello, dear reader. If you're here it means that somehow an API key in the database currently has a user ID
-                        that does not match the user ID stored alongside that API key in the database. This should not be possible,
-                        as the user ID is assumed to be immutable and the database is assumed to be uncorruptible.
-                         */
-                        let nonce: u64 = util::generate_nonce();
-                        error!(
-                            "NONCE[{}] ID MISMATCH MAJOR FUCKUP!!! API user_id: \"{}\" DB jinxxy_user_id: \"{}\"",
-                            nonce, jinxxy_user.id, store_link.jinxxy_user_id
-                        );
-                        // if it DOES somehow fail, we should stop here.
-                        Err(JinxError::new(format!(
-                            "A critical sanity-check has failed. Please report this to the bot developer with error code `{}`",
-                            nonce
-                        )))?;
-                    }
+    let reply = if let Some(store) = context.data().db.get_store_link(guild, &store_name).await? {
+        match jinxxy::get_own_user(&store.jinxxy_api_key).await {
+            Ok(jinxxy_user) => {
+                // might as well do a sanity check while I've got the data in scope. This shouldn't ever fail.
+                if jinxxy_user.id != store.jinxxy_user_id {
+                    /*
+                    Hello, dear reader. If you're here it means that somehow an API key in the database currently has a user ID
+                    that does not match the user ID stored alongside that API key in the database. This should not be possible,
+                    as the user ID is assumed to be immutable and the database is assumed to be uncorruptible.
+                     */
+                    let nonce: u64 = util::generate_nonce();
+                    error!(
+                        "NONCE[{}] ID MISMATCH MAJOR FUCKUP!!! API user_id: \"{}\" DB jinxxy_user_id: \"{}\"",
+                        nonce, jinxxy_user.id, store.jinxxy_user_id
+                    );
+                    // if it DOES somehow fail, we should stop here.
+                    Err(JinxError::new(format!(
+                        "A critical sanity-check has failed. Please report this to the bot developer with error code `{}`",
+                        nonce
+                    )))?;
+                }
 
-                    let display_user = jinxxy::DisplayUser::from(&jinxxy_user); // convert into just the data we need for this command
-                    let display_name = display_user.name_possessive();
-                    let display_name = if let Some(profile_url) = jinxxy_user.username().profile_url() {
-                        format!("[{display_name}](<{profile_url}>)")
-                    } else {
-                        display_name
-                    };
-                    let embed = CreateEmbed::default()
+                let display_user = jinxxy::DisplayUser::from(&jinxxy_user); // convert into just the data we need for this command
+                let display_name = display_user.name_possessive();
+                let display_name = if let Some(profile_url) = jinxxy_user.username().profile_url() {
+                    format!("[{display_name}](<{profile_url}>)")
+                } else {
+                    display_name
+                };
+                let embed = CreateEmbed::default()
                         .title("Jinxxy Product Registration")
                         .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
-                    let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
-                        embed.thumbnail(profile_image_url)
-                    } else {
-                        embed
-                    };
+                let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
+                    embed.thumbnail(profile_image_url)
+                } else {
+                    embed
+                };
 
-                    // embed the store ID into the register button
-                    // note that custom id can be AT MOST 100 characters long or Discord will explode
-                    let components = vec![CreateActionRow::Buttons(vec![
-                        CreateButton::new(format!("{}:{}", REGISTER_BUTTON_ID, jinxxy_user.id))
-                            .label("Register")
-                            .style(ButtonStyle::Primary),
-                    ])];
-                    let message = CreateMessage::default().embed(embed).components(components);
+                // embed the store ID into the register button
+                // note that custom id can be AT MOST 100 characters long or Discord will explode
+                let components = vec![CreateActionRow::Buttons(vec![
+                    CreateButton::new(format!("{}:{}", REGISTER_BUTTON_ID, jinxxy_user.id))
+                        .label("Register")
+                        .style(ButtonStyle::Primary),
+                ])];
+                let message = CreateMessage::default().embed(embed).components(components);
 
-                    if let Err(e) = channel.send_message(context, message).await {
-                        warn!("Error in /create_post when sending message: {:?}", e);
-                        error_reply(
-                            "Error Creating Post",
-                            "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.",
-                        )
-                    } else {
-                        success_reply("Success", "Registration post created!")
-                    }
+                if let Err(e) = channel.send_message(context, message).await {
+                    warn!("Error in /create_post when sending message: {:?}", e);
+                    error_reply(
+                        "Error Creating Post",
+                        "Post not created because there was an error sending a message to this channel. Please check bot and channel permissions.",
+                    )
+                } else {
+                    success_reply("Success", "Registration post created!")
                 }
-                Err(e) => error_reply(
-                    "Error Creating Post",
-                    format!("Could not get info for your Jinxxy user: {e}"),
-                ),
             }
-        }
-        Ok(None) => {
-            // happens if we couldn't find a linked store with that username
-            error_reply("Error Creating Post", "No linked store with that username was found.")
-        }
-        Err(e) => {
-            // happens if the DB errored
-            let nonce: u64 = util::generate_nonce();
-            warn!(
-                "NONCE[{}] Error lookup up Jinxxy user \"{}\" in guild {}: {:?}",
-                nonce,
-                store_name,
-                guild.get(),
-                e
-            );
-            error_reply(
+            Err(e) => error_reply(
                 "Error Creating Post",
-                format!(
-                    "Error looking up Jinxxy user: {}. Please report this to the bot developer with error code `{}`",
-                    e.safe_display(),
-                    nonce
-                ),
-            )
+                format!("Could not get info for your Jinxxy user: {e}"),
+            ),
         }
+    } else {
+        // happens if we couldn't find a linked store with that username
+        error_reply("Error Creating Post", MISSING_STORE_LINK_MESSAGE)
     };
 
     context.send(reply).await?;
@@ -430,21 +407,21 @@ pub async fn deactivate_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = util::license_to_id(&api_key, &license).await?;
+    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = context
                 .data()
                 .db
-                .get_user_license_activations(guild_id, user.id.get(), license_id.clone())
+                .get_user_license_activations(&store.jinxxy_user_id, user.id.get(), &license_id)
                 .await?;
             for activation_id in activations {
                 let license_id = license_id.clone();
-                jinxxy::delete_license_activation(&api_key, &license_id, &activation_id).await?;
+                jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &activation_id).await?;
                 context
                     .data()
                     .db
-                    .deactivate_license(guild_id, license_id, activation_id, user.id.get())
+                    .deactivate_license(&store.jinxxy_user_id, &license_id, &activation_id, user.id.get())
                     .await?;
             }
             success_reply(
@@ -464,7 +441,7 @@ pub async fn deactivate_license(
             )
         }
     } else {
-        error_reply("Error Deactivating License", MISSING_API_KEY_MESSAGE)
+        error_reply("Error Deactivating License", MISSING_STORE_LINK_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -491,19 +468,19 @@ pub async fn license_info(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = util::license_to_id(&api_key, &license).await?;
+    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
             let (local_license_users, license_info, remote_license_users) = join!(
-                context.data().db.get_license_users(guild_id, license_id.clone()),
+                context.data().db.get_license_users(&store.jinxxy_user_id, &license_id),
                 async {
-                    let api_key = api_key.clone();
+                    let api_key = store.jinxxy_api_key.to_owned();
                     let license_id = license_id.clone();
                     jinxxy::check_license_id(&api_key, &license_id, true).await
                 },
                 async {
-                    let api_key = api_key.clone();
+                    let api_key = store.jinxxy_api_key.to_owned();
                     let license_id = license_id.clone();
                     jinxxy::get_license_activations(&api_key, &license_id).await
                 }
@@ -585,7 +562,7 @@ pub async fn license_info(
             )
         }
     } else {
-        error_reply("Error Getting License Info", MISSING_API_KEY_MESSAGE)
+        error_reply("Error Getting License Info", MISSING_STORE_LINK_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -612,14 +589,22 @@ pub async fn lock_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = util::license_to_id(&api_key, &license).await?;
+    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activation_id = jinxxy::create_license_activation(&api_key, &license_id, LOCKING_USER_ID).await?;
+            let activation_id =
+                jinxxy::create_license_activation(&store.jinxxy_api_key, &license_id, LOCKING_USER_ID).await?;
             context
                 .data()
                 .db
-                .activate_license(guild_id, license_id, activation_id, LOCKING_USER_ID, None, None)
+                .activate_license(
+                    &store.jinxxy_user_id,
+                    &license_id,
+                    &activation_id,
+                    LOCKING_USER_ID,
+                    None,
+                    None,
+                )
                 .await?;
             success_reply(
                 "Success",
@@ -634,7 +619,7 @@ pub async fn lock_license(
             )
         }
     } else {
-        error_reply("Error Locking License", MISSING_API_KEY_MESSAGE)
+        error_reply("Error Locking License", MISSING_STORE_LINK_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
@@ -661,21 +646,21 @@ pub async fn unlock_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(api_key) = context.data().db.get_jinxxy_api_key(guild_id).await? {
-        let license_id = util::license_to_id(&api_key, &license).await?;
+    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activations = jinxxy::get_license_activations(&api_key, &license_id).await?;
+            let activations = jinxxy::get_license_activations(&store.jinxxy_api_key, &license_id).await?;
             let lock_activation_id = activations
                 .into_iter()
                 .find(|activation| activation.is_lock())
                 .map(|activation| activation.id);
 
             let message = if let Some(lock_activation_id) = lock_activation_id {
-                jinxxy::delete_license_activation(&api_key, &license_id, &lock_activation_id).await?;
+                jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &lock_activation_id).await?;
                 context
                     .data()
                     .db
-                    .deactivate_license(guild_id, license_id, lock_activation_id, LOCKING_USER_ID)
+                    .deactivate_license(&store.jinxxy_user_id, &license_id, &lock_activation_id, LOCKING_USER_ID)
                     .await?;
                 format!("License `{license}` is now unlocked and may be used to grant roles.")
             } else {
@@ -694,7 +679,7 @@ pub async fn unlock_license(
             )
         }
     } else {
-        error_reply("Error Unlocking License", MISSING_API_KEY_MESSAGE)
+        error_reply("Error Unlocking License", MISSING_STORE_LINK_MESSAGE)
     };
     context.send(reply).await?;
     Ok(())
