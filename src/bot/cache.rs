@@ -624,32 +624,46 @@ impl ApiCache {
     pub async fn autocomplete_product_names_with_prefix(
         &self,
         db: &JinxDb,
-        jinxxy_user_id: &str,
+        guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(db, jinxxy_user_id, |cache_entry| {
-            cache_entry
-                .product_names_with_prefix(prefix)
-                .take(AUTOCOMPLETE_RESULT_LIMIT)
-                .collect()
-        })
-        .await
+        let mut result = Vec::with_capacity(AUTOCOMPLETE_RESULT_LIMIT);
+        let mut remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT;
+        let stores = db.get_store_link_user_ids(guild_id).await?;
+        for jinxxy_user_id in stores {
+            self.get(db, &jinxxy_user_id, |cache_entry| {
+                result.extend(cache_entry.product_names_with_prefix(prefix).take(remaining_capacity));
+                remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT - result.len();
+            })
+            .await?;
+            if remaining_capacity == 0 {
+                break;
+            }
+        }
+        Ok(result)
     }
 
     /// Get product version names with prefix, up to Discord's limit
     pub async fn autocomplete_product_version_names_with_prefix(
         &self,
         db: &JinxDb,
-        jinxxy_user_id: &str,
+        guild_id: GuildId,
         prefix: &str,
     ) -> Result<Vec<String>, Error> {
-        self.get(db, jinxxy_user_id, |cache_entry| {
-            cache_entry
-                .product_version_names_with_prefix(prefix)
-                .take(AUTOCOMPLETE_RESULT_LIMIT)
-                .collect()
-        })
-        .await
+        let mut result = Vec::with_capacity(AUTOCOMPLETE_RESULT_LIMIT);
+        let mut remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT;
+        let stores = db.get_store_link_user_ids(guild_id).await?;
+        for jinxxy_user_id in stores {
+            self.get(db, &jinxxy_user_id, |cache_entry| {
+                result.extend(cache_entry.product_version_names_with_prefix(prefix).take(remaining_capacity));
+                remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT - result.len();
+            })
+                .await?;
+            if remaining_capacity == 0 {
+                break;
+            }
+        }
+        Ok(result)
     }
 
     pub async fn product_name_to_ids(

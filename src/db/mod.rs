@@ -405,7 +405,7 @@ impl JinxDb {
     /// Get an all linked stores for this guild
     pub async fn get_store_links(&self, guild: GuildId) -> JinxResult<Vec<LinkedStore>> {
         let guild_id = guild.get() as i64;
-        let api_key = sqlx::query_as!(
+        let result = sqlx::query_as!(
             LinkedStore,
             r#"SELECT jinxxy_user_id, jinxxy_username, jinxxy_api_key FROM jinxxy_user_guild
                LEFT JOIN jinxxy_user USING (jinxxy_user_id)
@@ -414,7 +414,21 @@ impl JinxDb {
         )
         .fetch_all(&self.read_pool)
         .await?;
-        Ok(api_key)
+        Ok(result)
+    }
+
+    /// Get an all linked store's user ids for this guild
+    pub async fn get_store_link_user_ids(&self, guild: GuildId) -> JinxResult<Vec<String>> {
+        let guild_id = guild.get() as i64;
+        let result = sqlx::query_scalar!(
+            r#"SELECT jinxxy_user_id FROM jinxxy_user_guild
+               LEFT JOIN jinxxy_user USING (jinxxy_user_id)
+               WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_all(&self.read_pool)
+        .await?;
+        Ok(result)
     }
 
     /// Get a specific store link for this guild using the provided username. Returns `None` if no link
