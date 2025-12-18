@@ -232,8 +232,8 @@ impl JinxDb {
             product_id,
             version_id
         )
-        .execute(&mut *connection)
-        .await?;
+            .execute(&mut *connection)
+            .await?;
         Ok(())
     }
 
@@ -254,9 +254,9 @@ impl JinxDb {
             license_activation_id,
             activator_user_id
         )
-        .execute(&mut *connection)
-        .await?
-        .rows_affected();
+            .execute(&mut *connection)
+            .await?
+            .rows_affected();
         Ok(delete_count != 0)
     }
 
@@ -267,8 +267,8 @@ impl JinxDb {
             jinxxy_user_id,
             license_id
         )
-        .fetch_one(&self.read_pool)
-        .await?;
+            .fetch_one(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -366,8 +366,8 @@ impl JinxDb {
         let deleted_users = sqlx::query_scalar!(
             r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
         )
-        .fetch_all(&mut *transaction)
-        .await?;
+            .fetch_all(&mut *transaction)
+            .await?;
 
         transaction.commit().await?;
 
@@ -393,12 +393,12 @@ impl JinxDb {
             r#"SELECT guild_id, jinxxy_api_key FROM jinxxy_user_guild WHERE jinxxy_user_id = ? AND jinxxy_api_key_valid LIMIT 1"#,
             jinxxy_user_id
         )
-        .map(|row| GuildApiKey {
-            guild_id: GuildId::new(row.guild_id as u64),
-            jinxxy_api_key: row.jinxxy_api_key,
-        })
-        .fetch_optional(&self.read_pool)
-        .await?;
+            .map(|row| GuildApiKey {
+                guild_id: GuildId::new(row.guild_id as u64),
+                jinxxy_api_key: row.jinxxy_api_key,
+            })
+            .fetch_optional(&self.read_pool)
+            .await?;
         Ok(api_key)
     }
 
@@ -539,12 +539,19 @@ impl JinxDb {
     }
 
     /// blanket link a Jinxxy product and a role
-    pub async fn link_product(&self, guild: GuildId, product_id: &str, role: RoleId) -> JinxResult<()> {
+    pub async fn link_product(
+        &self,
+        jinxxy_user_id: &str,
+        guild: GuildId,
+        product_id: &str,
+        role: RoleId,
+    ) -> JinxResult<()> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let mut connection = self.write_connection().await?;
         sqlx::query!(
-            r#"INSERT OR IGNORE INTO product_role (guild_id, product_id, role_id) VALUES (?, ?, ?)"#,
+            r#"INSERT OR IGNORE INTO product_role (jinxxy_user_id, guild_id, product_id, role_id) VALUES (?, ?, ?, ?)"#,
+            jinxxy_user_id,
             guild_id,
             product_id,
             role_id
@@ -555,12 +562,19 @@ impl JinxDb {
     }
 
     /// blanket unlink a Jinxxy product and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
-    pub async fn unlink_product(&self, guild: GuildId, product_id: &str, role: RoleId) -> JinxResult<bool> {
+    pub async fn unlink_product(
+        &self,
+        jinxxy_user_id: &str,
+        guild: GuildId,
+        product_id: &str,
+        role: RoleId,
+    ) -> JinxResult<bool> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let mut connection = self.write_connection().await?;
         let delete_count = sqlx::query!(
-            r#"DELETE FROM product_role WHERE guild_id = ? AND product_id = ? AND role_id = ?"#,
+            r#"DELETE FROM product_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND role_id = ?"#,
+            jinxxy_user_id,
             guild_id,
             product_id,
             role_id
@@ -574,6 +588,7 @@ impl JinxDb {
     /// link a Jinxxy product-version and a role
     pub async fn link_product_version(
         &self,
+        jinxxy_user_id: &str,
         guild: GuildId,
         product_version_id: ProductVersionId,
         role: RoleId,
@@ -582,15 +597,23 @@ impl JinxDb {
         let role_id = role.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let mut connection = self.write_connection().await?;
-        sqlx::query!(r#"INSERT OR IGNORE INTO product_version_role (guild_id, product_id, version_id, role_id) VALUES (?, ?, ?, ?)"#, guild_id, product_id, version_id, role_id)
-            .execute(&mut *connection)
-            .await?;
+        sqlx::query!(
+            r#"INSERT OR IGNORE INTO product_version_role (jinxxy_user_id, guild_id, product_id, version_id, role_id) VALUES (?, ?, ?, ?, ?)"#,
+            jinxxy_user_id,
+            guild_id,
+            product_id,
+            version_id,
+            role_id
+        )
+        .execute(&mut *connection)
+        .await?;
         Ok(())
     }
 
     /// unlink a Jinxxy product-version and a role. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
     pub async fn unlink_product_version(
         &self,
+        jinxxy_user_id: &str,
         guild: GuildId,
         product_version_id: ProductVersionId,
         role: RoleId,
@@ -599,10 +622,17 @@ impl JinxDb {
         let role_id = role.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let mut connection = self.write_connection().await?;
-        let delete_count = sqlx::query!(r#"DELETE FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ? AND role_id = ?"#, guild_id, product_id, version_id, role_id)
-            .execute(&mut *connection)
-            .await?
-            .rows_affected();
+        let delete_count = sqlx::query!(
+            r#"DELETE FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ? AND role_id = ?"#,
+            jinxxy_user_id,
+            guild_id,
+            product_id,
+            version_id,
+            role_id
+        )
+        .execute(&mut *connection)
+        .await?
+        .rows_affected();
         Ok(delete_count != 0)
     }
 
@@ -669,11 +699,17 @@ impl JinxDb {
     }
 
     /// Get roles for a product. This is ONLY product-level blanket grants.
-    pub async fn get_linked_roles_for_product(&self, guild: GuildId, product_id: &str) -> JinxResult<Vec<RoleId>> {
+    pub async fn get_linked_roles_for_product(
+        &self,
+        jinxxy_user_id: &str,
+        guild: GuildId,
+        product_id: &str,
+    ) -> JinxResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         // uses `role_lookup` index
         let result = sqlx::query!(
-            r#"SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?"#,
+            r#"SELECT role_id AS "role_id!" FROM product_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ?"#,
+            jinxxy_user_id,
             guild_id,
             product_id
         )
@@ -686,13 +722,15 @@ impl JinxDb {
     /// Get roles for a product version. This does not include blanket grants.
     pub async fn get_linked_roles_for_product_version(
         &self,
+        jinxxy_user_id: &str,
         guild: GuildId,
         product_version_id: ProductVersionId,
     ) -> JinxResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let result = sqlx::query!(
-            r#"SELECT role_id FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
+            r#"SELECT role_id FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ?"#,
+            jinxxy_user_id,
             guild_id,
             product_id,
             version_id
@@ -717,9 +755,9 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .map(|row| UserId::new(row.user_id as u64))
-        .fetch_all(&self.read_pool)
-        .await?;
+            .map(|row| UserId::new(row.user_id as u64))
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -740,23 +778,35 @@ impl JinxDb {
         Ok(result)
     }
 
-    /// get all links
-    pub async fn get_links(&self, guild: GuildId) -> JinxResult<HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>> {
+    /// get an aggregate all role links for a guild
+    pub async fn get_links(&self, guild: GuildId) -> JinxResult<Links> {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_pool.acquire().await?;
+        let mut transaction = connection.begin().await?;
 
-        let mut map: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
+        let mut links: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
+
+        // enumerate linked stores
+        let stores = sqlx::query_as!(
+            LinkedDisplayStore,
+            r#"SELECT jinxxy_user_id, jinxxy_username FROM jinxxy_user_guild
+               LEFT JOIN jinxxy_user USING (jinxxy_user_id)
+               WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_all(&mut *transaction)
+        .await?;
 
         // deal with global blanket
         {
             let blanket_result =
                 sqlx::query_scalar!(r#"SELECT blanket_role_id from guild where guild_id = ?"#, guild_id)
-                    .fetch_optional(&mut *connection)
+                    .fetch_optional(&mut *transaction)
                     .await?
                     .flatten()
                     .map(|role_id| RoleId::new(role_id as u64));
             if let Some(blanket_role) = blanket_result {
-                map.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
+                links.entry(blanket_role).or_default().push(LinkSource::GlobalBlanket);
             }
         }
 
@@ -767,9 +817,10 @@ impl JinxDb {
                 guild_id
             )
             .map(|row| (RoleId::new(row.role_id as u64), row.product_id))
-            .fetch(&mut *connection);
+            .fetch(&mut *transaction);
             while let Some((role, product_id)) = product_result.try_next().await? {
-                map.entry(role)
+                links
+                    .entry(role)
                     .or_default()
                     .push(LinkSource::ProductBlanket { product_id });
             }
@@ -787,15 +838,18 @@ impl JinxDb {
                     ProductVersionId::from_db_values(row.product_id, row.version_id),
                 )
             })
-            .fetch(&mut *connection);
+            .fetch(&mut *transaction);
             while let Some((role, product_version_id)) = product_version_result.try_next().await? {
-                map.entry(role)
+                links
+                    .entry(role)
                     .or_default()
-                    .push(LinkSource::ProductVersion(product_version_id));
+                    .push(LinkSource::ProductVersion { product_version_id });
             }
         }
 
-        Ok(map)
+        transaction.commit().await?;
+
+        Ok(Links { stores, links })
     }
 
     /// Locally get all licences a users has been recorded to activate. This may be out of sync with Jinxxy!
@@ -808,8 +862,8 @@ impl JinxDb {
             guild_id,
             activator_user_id
         )
-        .fetch_all(&self.read_pool)
-        .await?;
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -837,8 +891,8 @@ impl JinxDb {
             activator_user_id,
             license_id
         )
-        .fetch_one(&self.read_pool)
-        .await?;
+            .fetch_one(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -856,8 +910,8 @@ impl JinxDb {
             activator_user_id,
             license_id
         )
-        .fetch_all(&self.read_pool)
-        .await?;
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -872,9 +926,9 @@ impl JinxDb {
             guild_id,
             license_id
         )
-        .map(|row| row.activator_user_id as u64)
-        .fetch_all(&self.read_pool)
-        .await?;
+            .map(|row| row.activator_user_id as u64)
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -997,9 +1051,9 @@ impl JinxDb {
             sqlx::query!(
                 r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test"#
             )
-            .map(|row| ChannelId::new(row.channel_id as u64))
-            .fetch_all(&self.read_pool)
-            .await
+                .map(|row| ChannelId::new(row.channel_id as u64))
+                .fetch_all(&self.read_pool)
+                .await
         } else {
             // all servers, including production servers
             sqlx::query!(
@@ -1124,13 +1178,13 @@ impl JinxDb {
                    )
                )"#
         )
-        .map(|row| GuildGumroadInfo {
-            guild_id: GuildId::new(row.guild_id as u64),
-            log_channel_id: ChannelId::new(row.log_channel_id as u64),
-            gumroad_failure_count: row.gumroad_failure_count as u64,
-        })
-        .fetch_all(&self.read_pool)
-        .await?;
+            .map(|row| GuildGumroadInfo {
+                guild_id: GuildId::new(row.guild_id as u64),
+                log_channel_id: ChannelId::new(row.log_channel_id as u64),
+                gumroad_failure_count: row.gumroad_failure_count as u64,
+            })
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
@@ -1209,15 +1263,15 @@ impl JinxDb {
             jinxxy_user_id,
             product_id
         )
-        .map(|row| ProductVersionNameInfo {
-            id: ProductVersionId {
-                product_id: product_id.to_string(),
-                product_version_id: Some(row.version_id),
-            },
-            product_version_name: row.product_version_name,
-        })
-        .fetch_all(&self.read_pool)
-        .await?;
+            .map(|row| ProductVersionNameInfo {
+                id: ProductVersionId {
+                    product_id: product_id.to_string(),
+                    product_version_id: Some(row.version_id),
+                },
+                product_version_name: row.product_version_name,
+            })
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 }
@@ -1495,11 +1549,24 @@ pub struct GuildGumroadInfo {
     pub gumroad_failure_count: u64,
 }
 
-/// Helper enum returned by [`JinxDb::get_links`]. This is any source for a product->role link.
+/// Helper struct returned by [`JinxDb::get_links`].
+pub struct Links {
+    pub stores: Vec<LinkedDisplayStore>,
+    pub links: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>,
+}
+
+/// Helper struct used by [`Links`]. This is the parts of a store needed for display only.
+#[derive(sqlx::FromRow)]
+pub struct LinkedDisplayStore {
+    pub jinxxy_user_id: String,
+    pub jinxxy_username: Option<String>,
+}
+
+/// Helper enum used by [`Links`]. This is any source for a product->role link.
 pub enum LinkSource {
     GlobalBlanket,
     ProductBlanket { product_id: String },
-    ProductVersion(ProductVersionId),
+    ProductVersion { product_version_id: ProductVersionId },
 }
 
 /// Helper struct returned by [`JinxDb::get_store_cache`] and taken by [`JinxDb::persist_store_cache`].
