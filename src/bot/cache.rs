@@ -120,18 +120,17 @@ impl ApiCache {
                                             map.pin().insert(jinxxy_user_id, store_cache);
                                         }
                                         Err(e) => {
-                                            if e.is_api_key_invalid() {
-                                                if let Err(e) = db
+                                            if e.is_api_key_invalid()
+                                                && let Err(e) = db
                                                     .invalidate_jinxxy_api_key(api_key.guild_id, &jinxxy_user_id)
                                                     .await
-                                                {
-                                                    warn!(
-                                                        "Error invalidating API key for guild {} store {}: {:?}",
-                                                        api_key.guild_id.get(),
-                                                        jinxxy_user_id,
-                                                        e
-                                                    );
-                                                }
+                                            {
+                                                warn!(
+                                                    "Error invalidating API key for guild {} store {}: {:?}",
+                                                    api_key.guild_id.get(),
+                                                    jinxxy_user_id,
+                                                    e
+                                                );
                                             }
                                             warn!(
                                                 "Error initializing API cache during high-priority refresh for {}: {:?}",
@@ -423,21 +422,20 @@ impl ApiCache {
                                                                 true
                                                             }
                                                             Err(e) => {
-                                                                if e.is_api_key_invalid() {
-                                                                    if let Err(e) = db
+                                                                if e.is_api_key_invalid()
+                                                                    && let Err(e) = db
                                                                         .invalidate_jinxxy_api_key(
                                                                             api_key.guild_id,
                                                                             &queue_entry.jinxxy_user_id,
                                                                         )
                                                                         .await
-                                                                    {
-                                                                        warn!(
-                                                                            "Error invalidating API key for guild {} store {}: {:?}",
-                                                                            api_key.guild_id.get(),
-                                                                            queue_entry.jinxxy_user_id,
-                                                                            e
-                                                                        );
-                                                                    }
+                                                                {
+                                                                    warn!(
+                                                                        "Error invalidating API key for guild {} store {}: {:?}",
+                                                                        api_key.guild_id.get(),
+                                                                        queue_entry.jinxxy_user_id,
+                                                                        e
+                                                                    );
                                                                 }
                                                                 warn!(
                                                                     "Error initializing API cache during low-priority refresh for {}, will unregister now: {:?}",
@@ -600,17 +598,16 @@ impl ApiCache {
 
             // we had a cache miss, implying that there's no reason to load from db so we go straight through to the jinxxy API
             let api_result = StoreCache::from_jinxxy_api::<true>(db, &api_key.jinxxy_api_key, jinxxy_user_id).await;
-            if let Err(e) = &api_result {
-                if e.is_api_key_invalid() {
-                    if let Err(e) = db.invalidate_jinxxy_api_key(api_key.guild_id, &jinxxy_user_id).await {
-                        warn!(
-                            "Error invalidating API key for guild {} store {}: {:?}",
-                            api_key.guild_id.get(),
-                            jinxxy_user_id,
-                            e
-                        );
-                    }
-                }
+            if let Err(e) = &api_result
+                && e.is_api_key_invalid()
+                && let Err(e) = db.invalidate_jinxxy_api_key(api_key.guild_id, jinxxy_user_id).await
+            {
+                warn!(
+                    "Error invalidating API key for guild {} store {}: {:?}",
+                    api_key.guild_id.get(),
+                    jinxxy_user_id,
+                    e
+                );
             }
             let store_cache = api_result?;
 
