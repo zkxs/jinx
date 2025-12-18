@@ -787,7 +787,7 @@ async fn handle_license_registration<'a>(
 
     // log if license registration took a really long time
     let elapsed = start_time.elapsed();
-    if elapsed > Duration::from_secs(3) {
+    if elapsed > Duration::from_secs(5) {
         let elapsed_ms = elapsed.as_millis();
         warn!("License registration took {elapsed_ms}ms");
     }
