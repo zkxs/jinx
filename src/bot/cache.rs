@@ -655,10 +655,14 @@ impl ApiCache {
         let stores = db.get_store_link_user_ids(guild_id).await?;
         for jinxxy_user_id in stores {
             self.get(db, &jinxxy_user_id, |cache_entry| {
-                result.extend(cache_entry.product_version_names_with_prefix(prefix).take(remaining_capacity));
+                result.extend(
+                    cache_entry
+                        .product_version_names_with_prefix(prefix)
+                        .take(remaining_capacity),
+                );
                 remaining_capacity = AUTOCOMPLETE_RESULT_LIMIT - result.len();
             })
-                .await?;
+            .await?;
             if remaining_capacity == 0 {
                 break;
             }
@@ -669,25 +673,35 @@ impl ApiCache {
     pub async fn product_name_to_ids(
         &self,
         db: &JinxDb,
-        jinxxy_user_id: &str,
+        guild_id: GuildId,
         product_name: &str,
-    ) -> Result<Vec<String>, Error> {
-        self.get(db, jinxxy_user_id, |cache_entry| {
-            cache_entry.product_name_to_ids(product_name).to_vec()
-        })
-        .await
+    ) -> Result<Vec<GlobalProductId>, Error> {
+        let mut result = Vec::with_capacity(1);
+        let stores = db.get_store_link_user_ids(guild_id).await?;
+        for jinxxy_user_id in stores {
+            self.get(db, &jinxxy_user_id, |cache_entry| {
+                result.extend_from_slice(cache_entry.product_name_to_ids(product_name))
+            })
+            .await?;
+        }
+        Ok(result)
     }
 
     pub async fn product_version_name_to_version_ids(
         &self,
         db: &JinxDb,
-        jinxxy_user_id: &str,
+        guild_id: GuildId,
         product_name: &str,
-    ) -> Result<Vec<ProductVersionId>, Error> {
-        self.get(db, jinxxy_user_id, |cache_entry| {
-            cache_entry.product_version_name_to_version_ids(product_name).to_vec()
-        })
-        .await
+    ) -> Result<Vec<GlobalProductVersionId>, Error> {
+        let mut result = Vec::with_capacity(1);
+        let stores = db.get_store_link_user_ids(guild_id).await?;
+        for jinxxy_user_id in stores {
+            self.get(db, &jinxxy_user_id, |cache_entry| {
+                result.extend_from_slice(cache_entry.product_version_name_to_version_ids(product_name))
+            })
+            .await?;
+        }
+        Ok(result)
     }
 }
 
@@ -742,7 +756,7 @@ pub struct StoreCache {
     /// id to name
     product_id_to_name_map: HashMap<String, String, ahash::RandomState>,
     /// name to id
-    product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState>,
+    product_name_to_id_map: HashMap<String, Vec<GlobalProductId>, ahash::RandomState>,
     /// completes lowercase name to name with correct case
     product_name_trie: Trie<u8, String>,
     /// number of products
@@ -750,7 +764,7 @@ pub struct StoreCache {
     /// version_id to name
     product_version_id_to_name_map: HashMap<ProductVersionId, String, ahash::RandomState>,
     /// name to version_id
-    product_name_to_version_id_map: HashMap<String, Vec<ProductVersionId>, ahash::RandomState>,
+    product_name_to_version_id_map: HashMap<String, Vec<GlobalProductVersionId>, ahash::RandomState>,
     /// completes lowercase version name to version name with correct case
     product_version_name_trie: Trie<u8, String>,
     /// Number of product versions, including null versions
@@ -844,7 +858,12 @@ impl StoreCache {
             create_time,
         )
         .await?;
-        Self::from_products(product_name_info, product_version_name_info, create_time)
+        Self::from_products(
+            jinxxy_user_id,
+            product_name_info,
+            product_version_name_info,
+            create_time,
+        )
     }
 
     /// Attempt to create a cache entry from the DB. This is quite cheap compared to hitting Jinxxy.
@@ -859,6 +878,7 @@ impl StoreCache {
             Ok(None)
         } else {
             Ok(Some(Self::from_products(
+                jinxxy_user_id,
                 db_cache_entry.product_name_info,
                 db_cache_entry.product_version_name_info,
                 db_cache_entry.cache_time,
@@ -885,6 +905,7 @@ impl StoreCache {
 
     /// Create a cache entry from values.
     fn from_products(
+        jinxxy_user_id: &str,
         product_name_info: Vec<ProductNameInfo>,
         product_version_name_info: Vec<ProductVersionNameInfo>,
         create_time: SimpleTime,
@@ -925,22 +946,28 @@ impl StoreCache {
             .collect();
 
         // build reverse map without versions
-        let mut product_name_to_id_map: HashMap<String, Vec<String>, ahash::RandomState> = Default::default();
+        let mut product_name_to_id_map: HashMap<String, Vec<GlobalProductId>, ahash::RandomState> = Default::default();
         for name_info in product_name_info {
             product_name_to_id_map
                 .entry(name_info.value.product_name)
                 .or_default()
-                .push(name_info.id);
+                .push(GlobalProductId {
+                    jinxxy_user_id: jinxxy_user_id.to_owned(),
+                    product_id: name_info.id,
+                });
         }
 
         // build reverse map with versions
-        let mut product_name_to_version_id_map: HashMap<String, Vec<ProductVersionId>, ahash::RandomState> =
+        let mut product_name_to_version_id_map: HashMap<String, Vec<GlobalProductVersionId>, ahash::RandomState> =
             Default::default();
         for name_info in product_version_name_info {
             product_name_to_version_id_map
                 .entry(name_info.product_version_name)
                 .or_default()
-                .push(name_info.id);
+                .push(GlobalProductVersionId {
+                    jinxxy_user_id: jinxxy_user_id.to_owned(),
+                    product_version_id: name_info.id,
+                });
         }
 
         Ok(StoreCache {
@@ -978,14 +1005,14 @@ impl StoreCache {
             .map(|str| str.as_str())
     }
 
-    fn product_name_to_ids(&self, product_name: &str) -> &[String] {
+    fn product_name_to_ids(&self, product_name: &str) -> &[GlobalProductId] {
         self.product_name_to_id_map
             .get(product_name)
             .map(|vec| vec.as_slice())
             .unwrap_or_default()
     }
 
-    fn product_version_name_to_version_ids(&self, product_name: &str) -> &[ProductVersionId] {
+    fn product_version_name_to_version_ids(&self, product_name: &str) -> &[GlobalProductVersionId] {
         self.product_name_to_version_id_map
             .get(product_name)
             .map(|vec| vec.as_slice())
@@ -1013,6 +1040,18 @@ impl StoreCache {
     pub fn product_name_iter(&self) -> impl Iterator<Item = &str> {
         self.product_name_to_id_map.keys().map(|str| str.as_str())
     }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+pub struct GlobalProductId {
+    pub jinxxy_user_id: String,
+    pub product_id: String,
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+pub struct GlobalProductVersionId {
+    pub jinxxy_user_id: String,
+    pub product_version_id: ProductVersionId,
 }
 
 #[cfg(test)]
