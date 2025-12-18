@@ -153,7 +153,9 @@ async fn store_name_autocomplete(context: Context<'_>, store_name_prefix: &str) 
 )]
 pub(in crate::bot) async fn create_post(
     context: Context<'_>,
-    #[autocomplete = "store_name_autocomplete"] store_name: String,
+    #[description = "store this license belongs to"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
@@ -417,6 +419,9 @@ pub async fn user_info(
 pub async fn deactivate_license(
     context: Context<'_>,
     #[description = "user to deactivate license for"] user: serenity::User,
+    #[description = "store this license belongs to"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
     #[description = "Jinxxy license to deactivate for user"] license: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
@@ -475,6 +480,9 @@ pub async fn deactivate_license(
 )]
 pub async fn license_info(
     context: Context<'_>,
+    #[description = "store this license belongs to"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
     #[description = "Jinxxy license to query activations for"] license: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
@@ -593,6 +601,9 @@ pub async fn license_info(
 )]
 pub async fn lock_license(
     context: Context<'_>,
+    #[description = "store this license belongs to"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
     #[description = "Jinxxy license to lock"] license: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
@@ -639,6 +650,9 @@ pub async fn lock_license(
 )]
 pub async fn unlock_license(
     context: Context<'_>,
+    #[description = "store this license belongs to"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
     #[description = "Jinxxy license to unlock"] license: String,
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
