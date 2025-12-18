@@ -2,13 +2,14 @@
 /target
 
 # Config files
-jinx.sqlite
-jinx.sqlite-*
-jinx2.sqlite
-jinx2.sqlite-*
+/*.sqlite
+/*.sqlite-*
 
 # Log files
 *.log
+
+# Backup files
+*.bak
 
 # IntelliJ stuff
 *.iml
