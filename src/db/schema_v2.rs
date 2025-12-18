@@ -76,6 +76,10 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
         .await?;
+    // Index needed to look up directly by api key for setting its validity
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup ON jinxxy_user_guild (jinxxy_api_key)"#)
+        .await?;
 
     // disk cache for product names
     connection

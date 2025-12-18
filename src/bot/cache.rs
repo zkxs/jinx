@@ -111,9 +111,7 @@ impl ApiCache {
                                     // the high-priority API hit
                                     match StoreCache::from_jinxxy_api::<true>(&db, &api_key, &jinxxy_user_id).await {
                                         Ok(store_cache) => {
-                                            if let Err(e) =
-                                                db.set_jinxxy_api_key_validity(guild, &jinxxy_user_id, true).await
-                                            {
+                                            if let Err(e) = db.set_jinxxy_api_key_validity(&api_key, true).await {
                                                 warn!(
                                                     "Error re-validating API key for guild {} store {}: {:?}",
                                                     guild.get(),
@@ -125,8 +123,7 @@ impl ApiCache {
                                         }
                                         Err(e) => {
                                             if e.is_api_key_invalid()
-                                                && let Err(e) =
-                                                    db.set_jinxxy_api_key_validity(guild, &jinxxy_user_id, false).await
+                                                && let Err(e) = db.set_jinxxy_api_key_validity(&api_key, false).await
                                             {
                                                 warn!(
                                                     "Error invalidating API key for guild {} store {}: {:?}",
@@ -428,8 +425,7 @@ impl ApiCache {
                                                                 if e.is_api_key_invalid()
                                                                     && let Err(e) = db
                                                                         .set_jinxxy_api_key_validity(
-                                                                            api_key.guild_id,
-                                                                            &queue_entry.jinxxy_user_id,
+                                                                            &api_key.jinxxy_api_key,
                                                                             false,
                                                                         )
                                                                         .await
@@ -451,7 +447,7 @@ impl ApiCache {
                                                     }
                                                     None => {
                                                         info!(
-                                                            "low-priority refresh was triggered for store {}, which has no api key set! Unregistering now.",
+                                                            "low-priority refresh was triggered for store {}, which has no valid api key set! Unregistering now.",
                                                             queue_entry.jinxxy_user_id
                                                         );
                                                         false
@@ -604,7 +600,7 @@ impl ApiCache {
             let api_result = StoreCache::from_jinxxy_api::<true>(db, &api_key, jinxxy_user_id).await;
             match &api_result {
                 Ok(_) => {
-                    if let Err(e) = db.set_jinxxy_api_key_validity(guild, jinxxy_user_id, true).await {
+                    if let Err(e) = db.set_jinxxy_api_key_validity(&api_key, true).await {
                         warn!(
                             "Error re-validating API key for guild {} store {}: {:?}",
                             guild.get(),
@@ -614,7 +610,7 @@ impl ApiCache {
                     }
                 }
                 Err(e) if e.is_api_key_invalid() => {
-                    if let Err(e) = db.set_jinxxy_api_key_validity(guild, jinxxy_user_id, false).await {
+                    if let Err(e) = db.set_jinxxy_api_key_validity(&api_key, false).await {
                         warn!(
                             "Error invalidating API key for guild {} store {}: {:?}",
                             guild.get(),

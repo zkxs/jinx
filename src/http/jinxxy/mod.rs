@@ -337,7 +337,7 @@ pub async fn get_product_uncached(api_key: &str, product_id: &str) -> JinxxyResu
 ///
 /// Note that this function is only _helpful_ for getting products in a cached way: it does not actually handle the
 /// fallback read to cached values!
-pub async fn get_product_cached(
+async fn get_product_cached(
     api_key: &str,
     product_id: &str,
     expected_etag: Option<&[u8]>,
