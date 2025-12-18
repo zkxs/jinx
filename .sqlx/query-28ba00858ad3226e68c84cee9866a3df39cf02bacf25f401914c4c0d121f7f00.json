@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT substr(jinxxy_username, 1, 100) AS \"username!: String\" FROM jinxxy_user_guild\n               LEFT JOIN jinxxy_user USING (jinxxy_user_id)\n               WHERE guild_id = ?\n               AND jinxxy_username IS NOT NULL\n               AND jinxxy_username LIKE ? ESCAPE '?'",
+  "describe": {
+    "columns": [
+      {
+        "name": "username!: String",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "28ba00858ad3226e68c84cee9866a3df39cf02bacf25f401914c4c0d121f7f00"
+}

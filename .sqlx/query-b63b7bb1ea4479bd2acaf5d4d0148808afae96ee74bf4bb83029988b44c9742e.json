@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id FROM product WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b63b7bb1ea4479bd2acaf5d4d0148808afae96ee74bf4bb83029988b44c9742e"
+}

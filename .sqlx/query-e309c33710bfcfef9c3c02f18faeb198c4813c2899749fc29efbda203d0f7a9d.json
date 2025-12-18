@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(DISTINCT log_channel_id) AS \"count!\" FROM guild WHERE NOT guild.test",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e309c33710bfcfef9c3c02f18faeb198c4813c2899749fc29efbda203d0f7a9d"
+}

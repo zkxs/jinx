@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM jinxxy_user_guild WHERE guild_id = ?) AS \"has_key: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has_key: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2f3c21b218e516958f8f2c479983228aaa04f44477462f9b71c51222ec7ef266"
+}

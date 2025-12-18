@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO jinxxy_user_guild (guild_id, jinxxy_user_id, jinxxy_api_key, jinxxy_api_key_valid)\n               VALUES (?, ?, ?, TRUE)\n               ON CONFLICT (guild_id, jinxxy_user_id) DO UPDATE\n               SET jinxxy_api_key = excluded.jinxxy_api_key, jinxxy_api_key_valid = excluded.jinxxy_api_key_valid",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "23d248ee6380b894d153acd06c35b6edbe0467e5dfe2aa17d114a82b53888ce9"
+}

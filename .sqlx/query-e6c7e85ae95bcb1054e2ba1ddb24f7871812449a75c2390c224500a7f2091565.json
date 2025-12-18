@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id, version_id, product_version_name FROM product_version WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "product_version_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e6c7e85ae95bcb1054e2ba1ddb24f7871812449a75c2390c224500a7f2091565"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE jinxxy_user SET cache_time_unix_ms = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "47dfc7bdbe41e5da5cdb0c0ef348fad649b21a1a435753791745ed97872ec95a"
+}

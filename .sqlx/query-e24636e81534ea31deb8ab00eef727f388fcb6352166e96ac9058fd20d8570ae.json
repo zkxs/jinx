@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jinxxy_user_id, jinxxy_api_key, license_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) WHERE guild_id = ? AND activator_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "jinxxy_api_key",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "license_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e24636e81534ea31deb8ab00eef727f388fcb6352166e96ac9058fd20d8570ae"
+}

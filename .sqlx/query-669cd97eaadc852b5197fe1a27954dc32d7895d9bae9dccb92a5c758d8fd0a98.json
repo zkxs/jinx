@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT guild_id, log_channel_id AS \"log_channel_id!\", gumroad_failure_count FROM guild AS \"outer\"\n               WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10\n               AND (gumroad_failure_count * 5) > (\n                   SELECT count(*) FROM (\n                       SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation\n                       INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)\n                       WHERE jinxxy_user_guild.guild_id = \"outer\".guild_id\n                   )\n               )",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "log_channel_id!",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "gumroad_failure_count",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "669cd97eaadc852b5197fe1a27954dc32d7895d9bae9dccb92a5c758d8fd0a98"
+}

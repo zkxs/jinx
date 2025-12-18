@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO owner (owner_id) VALUES (?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "94b49f80e4b707e1ac2ced621a47d3ebe3232186fef2b6f06714cddef26f5c41"
+}

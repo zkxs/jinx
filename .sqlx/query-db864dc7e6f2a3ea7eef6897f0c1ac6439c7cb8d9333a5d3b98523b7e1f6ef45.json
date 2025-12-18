@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO settings (key, value) VALUES ('low_priority_cache_expiry_seconds', ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "db864dc7e6f2a3ea7eef6897f0c1ac6439c7cb8d9333a5d3b98523b7e1f6ef45"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ad0fafc400927e8a73e78b53bc5a84e0ad6d0410532adb32c0e324720bcdd1f4"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND license_activation_id = ? AND activator_user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "51a87cbb6dc773199c448d97dcbcdc7de74a7778b1922045e246272f9c0a3d66"
+}

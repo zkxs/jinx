@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO product_version (jinxxy_user_id, product_id, version_id, product_version_name) VALUES (?, ?, ?, ?)\n               ON CONFLICT (jinxxy_user_id, product_id, version_id) DO UPDATE SET product_version_name = excluded.product_version_name",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "883e303023a4d28da25a86d729da74ca0f612a4a3aa269271b354ca811e4a0f1"
+}

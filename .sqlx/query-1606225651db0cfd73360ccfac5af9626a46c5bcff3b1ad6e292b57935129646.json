@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jinxxy_user_id, jinxxy_username, jinxxy_api_key FROM jinxxy_user_guild\n               LEFT JOIN jinxxy_user USING (jinxxy_user_id)\n               WHERE guild_id = ?\n               AND jinxxy_username = ?\n               LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "jinxxy_username",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "jinxxy_api_key",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "1606225651db0cfd73360ccfac5af9626a46c5bcff3b1ad6e292b57935129646"
+}

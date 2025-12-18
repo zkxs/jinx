@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT guild_id, jinxxy_api_key FROM jinxxy_user_guild WHERE jinxxy_user_id = ? AND jinxxy_api_key_valid LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "jinxxy_api_key",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "20656a14f782a7f60cd9450dae1b3b5c2140633eeab42d74273d898aef6d8a48"
+}

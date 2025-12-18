@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO product_version_role (jinxxy_user_id, guild_id, product_id, version_id, role_id) VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "3e52c59f63b579397ced6a55534f66f0e819fea52f730d614a2216d7b98298b1"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT cache_time_unix_ms FROM jinxxy_user WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "cache_time_unix_ms",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "efe43f6b51adf808d6955f9247e8e179bba6df3ecaac80a92ea046ee90fbf7c2"
+}

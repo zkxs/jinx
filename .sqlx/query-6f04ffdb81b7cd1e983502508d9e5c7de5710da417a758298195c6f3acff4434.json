@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND activator_user_id = 0) AS \"is_locked: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_locked: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6f04ffdb81b7cd1e983502508d9e5c7de5710da417a758298195c6f3acff4434"
+}

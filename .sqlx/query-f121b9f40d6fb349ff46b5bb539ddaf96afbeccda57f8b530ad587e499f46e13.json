@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM product WHERE jinxxy_user_id = ? AND product_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f121b9f40d6fb349ff46b5bb539ddaf96afbeccda57f8b530ad587e499f46e13"
+}

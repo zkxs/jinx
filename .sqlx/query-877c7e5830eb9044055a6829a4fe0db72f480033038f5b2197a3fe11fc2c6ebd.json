@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jinxxy_user_id FROM jinxxy_user_guild\n               LEFT JOIN jinxxy_user USING (jinxxy_user_id)\n               WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "877c7e5830eb9044055a6829a4fe0db72f480033038f5b2197a3fe11fc2c6ebd"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jinxxy_api_key FROM jinxxy_user_guild WHERE guild_id = ? AND jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_api_key",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7d6a69c5e9676b7f5824381cd0865a96e4f39e35f196660216db697bc02314b0"
+}

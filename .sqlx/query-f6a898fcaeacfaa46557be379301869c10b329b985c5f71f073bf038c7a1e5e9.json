@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id, product_name, etag FROM product WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "product_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "etag",
+        "ordinal": 2,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f6a898fcaeacfaa46557be379301869c10b329b985c5f71f073bf038c7a1e5e9"
+}

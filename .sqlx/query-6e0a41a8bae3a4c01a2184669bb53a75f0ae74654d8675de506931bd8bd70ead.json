@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT default_jinxxy_user FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "default_jinxxy_user",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6e0a41a8bae3a4c01a2184669bb53a75f0ae74654d8675de506931bd8bd70ead"
+}

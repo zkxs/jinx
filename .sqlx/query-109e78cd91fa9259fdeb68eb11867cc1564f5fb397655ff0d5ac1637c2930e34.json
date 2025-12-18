@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT activator_user_id FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "activator_user_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "109e78cd91fa9259fdeb68eb11867cc1564f5fb397655ff0d5ac1637c2930e34"
+}

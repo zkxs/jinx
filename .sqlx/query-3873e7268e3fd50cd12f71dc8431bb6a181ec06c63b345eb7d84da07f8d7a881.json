@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) AS \"count!\" FROM product_role INNER JOIN guild USING (guild_id) WHERE NOT guild.test",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3873e7268e3fd50cd12f71dc8431bb6a181ec06c63b345eb7d84da07f8d7a881"
+}

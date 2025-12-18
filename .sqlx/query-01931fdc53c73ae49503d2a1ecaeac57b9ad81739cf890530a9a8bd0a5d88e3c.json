@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM jinxxy_user_guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "01931fdc53c73ae49503d2a1ecaeac57b9ad81739cf890530a9a8bd0a5d88e3c"
+}

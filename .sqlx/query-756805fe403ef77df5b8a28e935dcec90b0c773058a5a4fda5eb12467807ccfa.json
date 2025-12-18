@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT guild_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) WHERE activator_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "756805fe403ef77df5b8a28e935dcec90b0c773058a5a4fda5eb12467807ccfa"
+}

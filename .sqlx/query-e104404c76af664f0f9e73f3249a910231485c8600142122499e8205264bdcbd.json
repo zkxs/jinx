@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE jinxxy_user_guild SET jinxxy_api_key_valid = FALSE WHERE guild_id = ? AND jinxxy_user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e104404c76af664f0f9e73f3249a910231485c8600142122499e8205264bdcbd"
+}
