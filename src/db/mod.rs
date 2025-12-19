@@ -86,7 +86,7 @@ impl JinxDb {
                     .shared_cache(false)
                     .journal_mode(SqliteJournalMode::Delete)
                     .locking_mode(SqliteLockingMode::Normal)
-                    .read_only(false)
+                    .read_only(false) // we might have to perform version migrations
                     .create_if_missing(false)
                     .synchronous(SqliteSynchronous::Full)
                     .auto_vacuum(SqliteAutoVacuum::None)
@@ -97,7 +97,9 @@ impl JinxDb {
                 schema_v1::init(&mut v1_connection).await?;
                 // perform the big migration
                 let mut write_connection = self.write_pool.acquire().await?;
-                schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await
+                schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await?;
+                v1_connection.close().await?;
+                Ok(())
             } else {
                 Err(JinxError::new(
                     "attempted to perform v1->v2 DB migration into an existing v2 DB",
