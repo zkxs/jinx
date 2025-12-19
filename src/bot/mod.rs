@@ -381,6 +381,8 @@ impl Bot {
     /// Shutdown all bot shards
     pub async fn close(&self) {
         self.client.shard_manager.shutdown_all().await;
+        self.db.close().await;
+        debug!("DB closed!");
     }
 }
 
