@@ -109,15 +109,10 @@ impl JinxDb {
                     let mut write_connection = self.write_pool.acquire().await?;
                     // start measuring time AFTER we acquire the connection, as we're only interested in timing the core migration logic
                     let start_time = Instant::now();
-                    let (read_transaction, write_transaction) =
-                        tokio::join!(v1_connection.begin(), write_connection.begin());
-                    let mut read_transaction = read_transaction?;
-                    let mut write_transaction = write_transaction?;
+                    let (mut read_transaction, mut write_transaction) =
+                        tokio::try_join!(v1_connection.begin(), write_connection.begin())?;
                     schema_v2::copy_from_v1(&mut read_transaction, &mut write_transaction).await?;
-                    let (read_commit, write_commit) =
-                        tokio::join!(read_transaction.commit(), write_transaction.commit());
-                    let () = read_commit?;
-                    let () = write_commit?;
+                    tokio::try_join!(read_transaction.commit(), write_transaction.commit())?;
                     info!("migration complete in {}ms", start_time.elapsed().as_millis());
                 }
                 v1_connection.close().await?;
@@ -137,8 +132,7 @@ impl JinxDb {
 
     /// Gracefully the database connections and wait for the close to complete
     pub async fn close(&self) {
-        self.read_pool.close().await;
-        self.write_pool.close().await;
+        tokio::join!(self.read_pool.close(), self.write_pool.close());
     }
 
     /// Get something that we can DerefMut as SqliteConnection
