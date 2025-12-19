@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO guild (guild_id, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count, blanket_role_id, default_jinxxy_user)\n                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "504fbae444e865414a6508debe0ef951cf2f05d41c203aaad49fbbef3e841d78"
+}

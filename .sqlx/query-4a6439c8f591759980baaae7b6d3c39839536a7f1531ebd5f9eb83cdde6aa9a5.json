@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO jinxxy_user_guild (jinxxy_user_id, guild_id, jinxxy_api_key)\n                   VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4a6439c8f591759980baaae7b6d3c39839536a7f1531ebd5f9eb83cdde6aa9a5"
+}

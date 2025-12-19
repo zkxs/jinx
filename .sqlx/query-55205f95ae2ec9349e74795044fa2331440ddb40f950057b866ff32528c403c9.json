@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)\n                   VALUES (?, ?, ?, ?, ?, ?)\n                   ON CONFLICT (jinxxy_user_id, license_id, activator_user_id, license_activation_id) DO UPDATE\n                   SET product_id = ifnull(excluded.product_id, product_id),\n                   version_id = ifnull(excluded.version_id, version_id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "55205f95ae2ec9349e74795044fa2331440ddb40f950057b866ff32528c403c9"
+}

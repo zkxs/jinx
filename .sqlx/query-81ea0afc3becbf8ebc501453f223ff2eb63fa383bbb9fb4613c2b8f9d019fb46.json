@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO jinxxy_user (jinxxy_user_id, jinxxy_username, cache_time_unix_ms)\n                   VALUES (?, ?, ?)\n                   ON CONFLICT (jinxxy_user_id) DO UPDATE\n                   SET cache_time_unix_ms = max(excluded.cache_time_unix_ms, cache_time_unix_ms),\n                   jinxxy_username = ifnull(excluded.jinxxy_username, jinxxy_username)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "81ea0afc3becbf8ebc501453f223ff2eb63fa383bbb9fb4613c2b8f9d019fb46"
+}
