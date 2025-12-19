@@ -248,7 +248,9 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                         Err(JinxError::new("Tried to create a custom ID longer than "))?;
                     }
                 }
-                _ => {}
+                (event_type, event_key) => {
+                    warn!("Unknown component interaction custom_id: {event_type}:{event_key:?}");
+                }
             }
         }
         // handle modal interactions
@@ -284,7 +286,9 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                         modal_interaction.edit_response(context.serenity_context, edit).await?;
                     }
                 }
-                _ => {}
+                (event_type, event_key) => {
+                    warn!("Unknown modal interaction custom_id: {event_type}:{event_key:?}");
+                }
             }
         }
         FullEvent::InteractionCreate {
