@@ -4,7 +4,8 @@
 use crate::db::helper;
 use crate::error::JinxError;
 use poise::futures_util::TryStreamExt;
-use sqlx::{Executor, SqliteConnection};
+use sqlx::{Executor, Row, SqliteConnection};
+use std::collections::HashMap;
 use tokio::time::Instant;
 use tracing::{debug, info};
 
@@ -154,13 +155,19 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
             r#"CREATE TABLE IF NOT EXISTS license_activation (
                    jinxxy_user_id         TEXT NOT NULL,
                    license_id             TEXT NOT NULL,
-                   license_activation_id  TEXT NOT NULL,
                    activator_user_id      INTEGER NOT NULL,
+                   license_activation_id  TEXT NOT NULL,
                    product_id             TEXT,
                    version_id             TEXT,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT, WITHOUT ROWID"#,
+        )
+        .await?;
+    // for searching for activations given an activator user ID
+    connection
+        .execute(
+            r#"CREATE INDEX IF NOT EXISTS activation_lookup_by_activator ON license_activation (activator_user_id)"#,
         )
         .await?;
 
@@ -209,7 +216,6 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 }
 
 /// Copy all rows in the v1 db into the v2 db
-#[allow(clippy::unused_async, unused_variables)] //TODO: remove
 pub(super) async fn copy_from_v1(
     v1_pool: &mut SqliteConnection,
     v2_pool: &mut SqliteConnection,
@@ -244,8 +250,10 @@ pub(super) async fn copy_from_v1(
         }
     }
 
+    // all the old tables are guild-based so we'll need to be able to map them to the correct store
+    let mut guild_to_store_map: HashMap<i64, String, ahash::RandomState> = Default::default();
+
     // guild migration
-    /*
     {
         info!("starting guild migration");
         let mut rows = sqlx::query(
@@ -254,7 +262,7 @@ pub(super) async fn copy_from_v1(
         )
         .fetch(&mut *v1_pool);
         while let Some(row) = rows.try_next().await? {
-            let guild_id: &str = row.get("guild_id");
+            let guild_id: i64 = row.get("guild_id");
             let jinxxy_api_key: &str = row.get("jinxxy_api_key");
             let log_channel_id: i64 = row.get("log_channel_id");
             let test: i64 = row.get("test");
@@ -265,6 +273,28 @@ pub(super) async fn copy_from_v1(
             let blanket_role_id: i64 = row.get("blanket_role_id");
             let jinxxy_user_id: &str = row.get("jinxxy_user_id");
             let jinxxy_username: &str = row.get("jinxxy_username");
+
+            // that's a surprise tool that can help us later
+            guild_to_store_map.insert(guild_id, jinxxy_user_id.to_owned());
+
+            // Some of the data is separated into the new jinxxy_user table, and must therefore be deduplicated.
+            // This must be done first for foreign key constraint reasons.
+            info!("continuing as jinxxy_user sub-migration");
+            sqlx::query!(
+                r#"INSERT INTO jinxxy_user (jinxxy_user_id, jinxxy_username, cache_time_unix_ms)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id) DO UPDATE
+                   SET cache_time_unix_ms = max(excluded.cache_time_unix_ms, cache_time_unix_ms),
+                   jinxxy_username = ifnull(excluded.jinxxy_username, jinxxy_username)"#,
+                jinxxy_user_id,
+                jinxxy_username,
+                cache_time_unix_ms
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+
+            // most of the data goes into the new guild table
+            info!("continuing as guild sub-migration");
             sqlx::query!(
                 r#"INSERT INTO guild (guild_id, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count, blanket_role_id, default_jinxxy_user)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
@@ -275,55 +305,171 @@ pub(super) async fn copy_from_v1(
                 gumroad_failure_count,
                 gumroad_nag_count,
                 blanket_role_id,
-                default_jinxy_user,
+                jinxxy_user_id,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+
+            // finally, the api key goes into jinxxy_user_guild. This must be done last for foreign key constraint reasons.
+            info!("continuing as jinxxy_user_guild sub-migration");
+            sqlx::query!(
+                r#"INSERT INTO jinxxy_user_guild (jinxxy_user_id, guild_id, jinxxy_api_key)
+                   VALUES (?, ?, ?)"#,
+                jinxxy_user_id,
+                guild_id,
+                jinxxy_api_key
             )
             .execute(&mut *v2_pool)
             .await?;
         }
-        //TODO: implement
-    }
-     */
-
-    // jinxxy_user migration
-    {
-        info!("starting jinxxy_user migration");
-        //TODO: implement
-    }
-
-    // jinxxy_user_guild migration
-    {
-        info!("starting jinxxy_user_guild migration");
-        //TODO: implement
     }
 
     // product migration
     {
         info!("starting product migration");
-        //TODO: implement
+        let mut rows =
+            sqlx::query(r#"SELECT guild_id, product_id, product_name, etag FROM product"#).fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: i64 = row.get("guild_id");
+            let product_id: &str = row.get("product_id");
+            let product_name: &str = row.get("product_name");
+            let etag: &[u8] = row.get("etag");
+            let jinxxy_user_id: &str = guild_to_store_map
+                .get(&guild_id)
+                .expect("jinxxy_user_id not found for guild");
+
+            sqlx::query!(
+                r#"INSERT INTO product (jinxxy_user_id, product_id, product_name, etag)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, product_id) DO NOTHING"#,
+                jinxxy_user_id,
+                product_id,
+                product_name,
+                etag,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
     }
 
     // product_version migration
     {
         info!("starting product_version migration");
-        //TODO: implement
+        let mut rows =
+            sqlx::query(r#"SELECT guild_id, product_id, version_id, product_version_name FROM product_version"#)
+                .fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: i64 = row.get("guild_id");
+            let product_id: &str = row.get("product_id");
+            let version_id: &str = row.get("version_id");
+            let product_version_name: &str = row.get("product_version_name");
+            let jinxxy_user_id: &str = guild_to_store_map
+                .get(&guild_id)
+                .expect("jinxxy_user_id not found for guild");
+
+            sqlx::query!(
+                r#"INSERT INTO product_version (jinxxy_user_id, product_id, version_id, product_version_name)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, product_id, version_id) DO NOTHING"#,
+                jinxxy_user_id,
+                product_id,
+                version_id,
+                product_version_name,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
     }
 
     // product_role migration
     {
         info!("starting product_role migration");
-        //TODO: implement
+        let mut rows = sqlx::query(r#"SELECT guild_id, product_id, role_id FROM product_role"#).fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: i64 = row.get("guild_id");
+            let product_id: &str = row.get("product_id");
+            let role_id: i64 = row.get("role_id");
+            let jinxxy_user_id: &str = guild_to_store_map
+                .get(&guild_id)
+                .expect("jinxxy_user_id not found for guild");
+
+            sqlx::query!(
+                r#"INSERT INTO product_role (jinxxy_user_id, guild_id, product_id, role_id)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, guild_id, product_id, role_id) DO NOTHING"#,
+                jinxxy_user_id,
+                guild_id,
+                product_id,
+                role_id,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
     }
 
     // product_version_role migration
     {
         info!("starting product_version_role migration");
-        //TODO: implement
+        let mut rows = sqlx::query(r#"SELECT guild_id, product_id, version_id, role_id FROM product_version_role"#)
+            .fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: i64 = row.get("guild_id");
+            let product_id: &str = row.get("product_id");
+            let version_id: &str = row.get("version_id");
+            let role_id: i64 = row.get("role_id");
+            let jinxxy_user_id: &str = guild_to_store_map
+                .get(&guild_id)
+                .expect("jinxxy_user_id not found for guild");
+
+            sqlx::query!(
+                r#"INSERT INTO product_version_role (jinxxy_user_id, guild_id, product_id, version_id, role_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, guild_id, product_id, version_id, role_id) DO NOTHING"#,
+                jinxxy_user_id,
+                guild_id,
+                product_id,
+                version_id,
+                role_id,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
     }
 
     // license_activation migration
     {
         info!("starting license_activation migration");
-        //TODO: implement
+        let mut rows = sqlx::query(
+            r#"SELECT guild_id, license_id, license_activation_id, user_id, product_id, version_id FROM license_activation"#
+        )
+            .fetch(&mut *v1_pool);
+        while let Some(row) = rows.try_next().await? {
+            let guild_id: i64 = row.get("guild_id");
+            let license_id: &str = row.get("license_id");
+            let license_activation_id: &str = row.get("license_activation_id");
+            let activator_user_id: i64 = row.get("user_id");
+            let product_id: &str = row.get("product_id");
+            let version_id: &str = row.get("version_id");
+            let jinxxy_user_id: &str = guild_to_store_map
+                .get(&guild_id)
+                .expect("jinxxy_user_id not found for guild");
+
+            sqlx::query!(
+                r#"INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, license_id, activator_user_id, license_activation_id) DO UPDATE
+                   SET product_id = ifnull(excluded.product_id, product_id),
+                   version_id = ifnull(excluded.version_id, version_id)"#,
+                jinxxy_user_id,
+                license_id,
+                activator_user_id,
+                license_activation_id,
+                product_id,
+                version_id,
+            )
+            .execute(&mut *v2_pool)
+            .await?;
+        }
     }
 
     // owner migration
