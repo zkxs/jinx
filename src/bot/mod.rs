@@ -340,7 +340,7 @@ impl Bot {
                             };
 
                             let elapsed = start.elapsed();
-                            const EXPECTED_DURATION: Duration = Duration::from_millis(5);
+                            const EXPECTED_DURATION: Duration = Duration::from_millis(10);
                             if elapsed > EXPECTED_DURATION {
                                 info!(
                                     "updated bot activity in {}μs, real_update={}",
