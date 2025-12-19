@@ -20,10 +20,12 @@ terms.
 
 You may stop using The Service at any time.
 
-If you are a Jinxxy creator and you would like to have your creator data deleted contact us at zkxs00@gmail.com
-with subject "JINX DATA DELETION". Note that we will have to verify that you own the relevant Discord account in this
-email exchange. We do not currently provide an option to request your Jinx data, as all activation data is also stored in your
-Jinxxy account and can be retrieved from it.
+If you are a Jinxxy creator and you would like to have your creator data deleted simply kick the bot from your server
+and all associated data will be immediately and permanently deleted from our database. In the unusual case where you are
+unable to kick the bot, contact us at zkxs00@gmail.com with subject "JINX DATA DELETION". Note that we will have to
+verify that you own the relevant Jinnxy account in this email exchange. We do not currently provide an option to request
+your Jinx data, as all activation data is also mirrored in your Jinxxy account and can be retrieved from it via the
+Jinxxy creator API.
 
 ### Termination by the Jinx Team
 
@@ -57,4 +59,4 @@ If you have any questions or concerns about these terms, please contact us at zk
 
 ---
 
-Last updated: 2025-12-16
+Last updated: 2025-12-18

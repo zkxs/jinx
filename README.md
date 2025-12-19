@@ -57,7 +57,7 @@ Make note of the API key when you create it: we'll need it shortly. The form sho
 
 Finally, back in your Discord server run the following slash commands:
 
-1. Run the `/init <api_key>` command in your Sever and provide your API key. This is one-time setup.
+1. Run the `/add_store <api_key>` command in your Sever and provide your API key. This is one-time setup.
 2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations)
    to. I recommend you make this channel private so only you and your trusted moderators can see it. You will probably
    need to grant Jinx permission to send messages to this channel.
@@ -65,7 +65,7 @@ Finally, back in your Discord server run the following slash commands:
    each product. Any product can grant any role, or even multiple roles! If you make a mistake, use `/unlink_product` to fix it.
    For even more ways to link products to roles, check out the rest of the [role management commands](docs/command-reference.md#role-management-commands).
 4. Check your work using `/list_links`
-5. When you're ready, run `/create_post` in the channel of your choosing to have Jinx create a button users can click to
+5. When you're ready, run `/create_post <store_name>` in the channel of your choosing to have Jinx create a button users can click to
    register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
    you may want to delete and recreate the post, as it will not automatically update.
 

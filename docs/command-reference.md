@@ -5,11 +5,11 @@
 
 ## Setup Commands
 
-| Command                      | Required Permission | Description                                        |
-| ---------------------------- | ------------------- | -------------------------------------------------- |
-| `/init <api_key>`            | Manage Server       | Set up Jinx for this Discord server.               |
-| `/set_log_channel [channel]` | Manage Server       | Set (or unset) channel for bot to log to.          |
-| `/create_post`               | Manage Roles        | Create post with buttons to register product keys. |
+| Command                      | Required Permission | Description                                                                  |
+| ---------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| `/add_store <api_key>`       | Manage Server       | Link a Jinxxy store to this Discord server.                                  |
+| `/set_log_channel [channel]` | Manage Server       | Set (or unset) channel for bot to log to.                                    |
+| `/create_post <store_name>`  | Manage Roles        | Create a post in the current channel with a button to register product keys. |
 
 ## Role Management Commands
 
@@ -26,13 +26,13 @@
 
 ## License Management Commands
 
-| Command                                | Required Permission | Description                                                                                                                          |
-| -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `/user_info <user>`                    | Manage Server       | List all licenses linked to a Discord user.                                                                                          |
-| `/license_info <license>`              | Manage Roles        | List activation information for a license.                                                                                           |
-| `/lock_license <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                                                                        |
-| `/unlock_license <license>`            | Manage Roles        | Unlock a locked license, allowing it to be used to grant roles.                                                                      |
-| `/deactivate_license <user> <license>` | Manage Roles        | Forget a user's activation of a license. This does not remove roles and allows a different Discord user to re-activate this license! |
+| Command                                             | Required Permission | Description                                                                                                                          |
+| --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/user_info <user>`                                 | Manage Server       | List all licenses linked to a Discord user.                                                                                          |
+| `/license_info <store_name> <license>`              | Manage Roles        | List activation information for a license.                                                                                           |
+| `/lock_license <store_name> <license>`              | Manage Roles        | Lock a license, preventing it from being used to grant roles.                                                                        |
+| `/unlock_license <store_name> <license>`            | Manage Roles        | Unlock a locked license, allowing it to be used to grant roles.                                                                      |
+| `/deactivate_license <user> <store_name> <license>` | Manage Roles        | Forget a user's activation of a license. This does not remove roles and allows a different Discord user to re-activate this license! |
 
 > [!TIP]
 > `/user_info` can also be used from the context menu: look for "Apps"/"List Jinxxy licenses" when you right-click a user in your server.

@@ -69,12 +69,19 @@ As the bot owner, you have access to additional owner-only commands:
 
 | Command                                     | Description                                                                                                                       |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `/init install_owner_commands`              | Installs bot-owner slash commands into this server                                                                                |
-| `/init uninstall_owner_commands`            | Uninstalls bot-owner slash commands from this guild                                                                               |
+| `/add_store install_owner_commands`         | Installs bot-owner slash commands into this server                                                                                |
+| `/add_store uninstall_owner_commands`       | Uninstalls bot-owner slash commands from this guild                                                                               |
 | `/exit`                                     | Exit the bot. It will NOT restart automatically.                                                                                  |
 | `/restart`                                  | Exit the bot. It will restart automatically if the bot is running from `./run.sh`                                                 |
 | `/owner_stats`                              | Display bot-wide usage and performance statistics.                                                                                |
 | `/set_test <True/False>`                    | Set/unset this server as a test server.                                                                                           |
 | `/announce_test <message> [title]`          | Send an announcement to the log channels for all servers marked as test servers using the `/set_test` command.                    |
 | `/announce <message> [title]`               | Send an announcement to the log channels for all servers                                                                          |
-| `/verify_guild <guild_id> <guild_owner_id>` | Verify if the provided guild ID is owned by the provided user ID. Intended use is to verify guild ownership for support requests. |
+| `/verify_guild <guild_id> [guild_owner_id]` | Verify if the provided guild ID is owned by the provided user ID. Intended use is to verify guild ownership for support requests. |
+| `/whois <user>`                             | Check a user's guild ownership status. Intended as an alternative way to verify guild ownership for support requests.             |
+| `/misconfigured_guilds`                     | List guilds with common configuration issues. Intended to identify places where better documentation is needed.                   |
+| `/sudo_list_links <guild_id>`               | List links in a target guild. Used for investigating role linking bugs.                                                           |
+| `/debug_product_cache <guild_id>`           | Dump product cache for a target guild. Used for investigating product cache bugs.                                                 |
+| `/clear_cache`                              | Delete all product cache state.                                                                                                   |
+| `/unfuck_cache`                             | Forcibly re-register all stores in the product cache. Useful if Jinxxy API failures have caused stores to become unregistered.    |
+| `/set_cache_expiry_time <hours>`            | Set the expiry time for the product cache. Default is 24 hours. Do not set this to 0.                                             |
