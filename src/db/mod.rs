@@ -21,7 +21,8 @@ use sqlx::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tracing::info;
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 const DB_V2_FILENAME: &str = "jinx2.sqlite";
@@ -106,6 +107,8 @@ impl JinxDb {
                 // perform the big migration
                 {
                     let mut write_connection = self.write_pool.acquire().await?;
+                    // start measuring time AFTER we acquire the connection, as we're only interested in timing the core migration logic
+                    let start_time = Instant::now();
                     let (read_transaction, write_transaction) =
                         tokio::join!(v1_connection.begin(), write_connection.begin());
                     let mut read_transaction = read_transaction?;
@@ -115,6 +118,7 @@ impl JinxDb {
                         tokio::join!(read_transaction.commit(), write_transaction.commit());
                     let () = read_commit?;
                     let () = write_commit?;
+                    info!("migration complete in {}ms", start_time.elapsed().as_millis());
                 }
                 v1_connection.close().await?;
 

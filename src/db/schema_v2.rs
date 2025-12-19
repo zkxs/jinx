@@ -7,7 +7,7 @@ use poise::futures_util::TryStreamExt;
 use sqlx::{Executor, Row, SqliteConnection};
 use std::collections::HashMap;
 use tokio::time::Instant;
-use tracing::{debug, info};
+use tracing::debug;
 
 const SCHEMA_MINOR_VERSION_KEY: &str = "schema_minor_version";
 const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
@@ -222,7 +222,7 @@ pub(super) async fn copy_from_v1(
 ) -> Result<(), JinxError> {
     // settings migration
     {
-        info!("starting settings migration");
+        debug!("starting settings migration");
         let discord_token: Option<String> =
             sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = 'discord_token'"#)
                 .fetch_optional(&mut *v1_connection)
@@ -255,7 +255,7 @@ pub(super) async fn copy_from_v1(
 
     // guild migration
     {
-        info!("starting guild migration");
+        debug!("starting guild migration");
         let mut rows = sqlx::query(
             r#"SELECT guild_id, jinxxy_api_key, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count,
                    cache_time_unix_ms, blanket_role_id, jinxxy_user_id, jinxxy_username FROM guild"#,
@@ -326,7 +326,7 @@ pub(super) async fn copy_from_v1(
 
     // product migration
     {
-        info!("starting product migration");
+        debug!("starting product migration");
         let mut rows =
             sqlx::query(r#"SELECT guild_id, product_id, product_name, etag FROM product"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
@@ -354,7 +354,7 @@ pub(super) async fn copy_from_v1(
 
     // product_version migration
     {
-        info!("starting product_version migration");
+        debug!("starting product_version migration");
         let mut rows =
             sqlx::query(r#"SELECT guild_id, product_id, version_id, product_version_name FROM product_version"#)
                 .fetch(&mut *v1_connection);
@@ -383,7 +383,7 @@ pub(super) async fn copy_from_v1(
 
     // product_role migration
     {
-        info!("starting product_role migration");
+        debug!("starting product_role migration");
         let mut rows =
             sqlx::query(r#"SELECT guild_id, product_id, role_id FROM product_role"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
@@ -410,7 +410,7 @@ pub(super) async fn copy_from_v1(
 
     // product_version_role migration
     {
-        info!("starting product_version_role migration");
+        debug!("starting product_version_role migration");
         let mut rows = sqlx::query(r#"SELECT guild_id, product_id, version_id, role_id FROM product_version_role"#)
             .fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
@@ -439,7 +439,7 @@ pub(super) async fn copy_from_v1(
 
     // license_activation migration
     {
-        info!("starting license_activation migration");
+        debug!("starting license_activation migration");
         let mut rows = sqlx::query(
             r#"SELECT guild_id, license_id, license_activation_id, user_id, product_id, version_id FROM license_activation"#
         )
@@ -481,7 +481,7 @@ pub(super) async fn copy_from_v1(
 
     // owner migration
     {
-        info!("starting owner migration");
+        debug!("starting owner migration");
         let mut rows = sqlx::query_scalar(r#"SELECT owner_id FROM owner"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let owner_id: i64 = row;
@@ -490,8 +490,6 @@ pub(super) async fn copy_from_v1(
                 .await?;
         }
     }
-
-    info!("migration complete");
 
     Ok(())
 }
