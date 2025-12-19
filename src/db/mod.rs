@@ -857,12 +857,15 @@ impl JinxDb {
         let activator_user_id = activator_user_id as i64;
         let result = sqlx::query_as!(
             UserLicense,
-            r#"SELECT jinxxy_user_id, jinxxy_api_key, license_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) WHERE guild_id = ? AND activator_user_id = ?"#,
+            r#"SELECT jinxxy_user_id, jinxxy_api_key, license_id, jinxxy_username FROM license_activation
+               INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+               INNER JOIN jinxxy_user USING (jinxxy_user_id)
+               WHERE guild_id = ? AND activator_user_id = ?"#,
             guild_id,
             activator_user_id
         )
-            .fetch_all(&self.read_pool)
-            .await?;
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -1604,6 +1607,7 @@ pub struct UserLicense {
     pub jinxxy_user_id: String,
     pub jinxxy_api_key: String,
     pub license_id: String,
+    pub jinxxy_username: Option<String>,
 }
 
 /// Helper struct returned by [`JinxDb::get_arbitrary_jinxxy_api_key`]

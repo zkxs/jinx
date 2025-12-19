@@ -347,16 +347,16 @@ pub async fn user_info(
                         .is_license_locked(jinxxy_user_id.as_str(), license_info.license_id.as_str())
                         .await?;
 
-                    let username = if let Some(username) = &license_info.username {
-                        format!("[{}](<{}>)", username, Username::format_profile_url(username))
-                    } else {
-                        format!("`{}`", license_info.user_id)
-                    };
+                    let username =
+                        Username::format_discord_display_name(&license_info.user_id, license_info.username.as_deref());
+                    let store_identifier =
+                        Username::format_discord_display_name(jinxxy_user_id, license_id.jinxxy_username.as_deref());
 
                     message.push_str(
                         format!(
-                            "\n- `{}` activations={} locked={} user={} product=\"{}\" version={}",
+                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}",
                             license_info.short_key,
+                            store_identifier,
                             license_info.activations, // this field came from Jinxxy and is up to date
                             locked,                   // this field came from the local DB and may be out of sync
                             username,

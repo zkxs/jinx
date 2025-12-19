@@ -669,6 +669,19 @@ impl Username<'_> {
         format!("https://jinxxy.com/{}", utf8_percent_encode(username, NON_ALPHANUMERIC))
     }
 
+    /// Try to format this as a markdown URL for display in discord, falling back to the ID if username is unavailable
+    pub fn format_discord_display_name(user_id: &str, username: Option<&str>) -> String {
+        username
+            .map(|username| {
+                format!(
+                    "[{}](https://jinxxy.com/{})",
+                    username,
+                    utf8_percent_encode(username, NON_ALPHANUMERIC)
+                )
+            })
+            .unwrap_or(format!("`{}`", user_id))
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         self.0
     }
