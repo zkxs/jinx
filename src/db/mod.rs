@@ -11,7 +11,7 @@ use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, RoleId, UserId};
 use sqlx::{
-    Acquire, ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection,
+    ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection,
     error::Error as SqlxError,
     pool::PoolConnection,
     sqlite::{
@@ -42,8 +42,14 @@ pub struct JinxDb {
 impl JinxDb {
     /// Open a new database
     pub async fn open() -> JinxResult<Self> {
-        let pool_options_write = SqlitePoolOptions::new().min_connections(1).max_connections(1);
-        let pool_options_read = SqlitePoolOptions::new().min_connections(1).max_connections(4);
+        let pool_options_write = SqlitePoolOptions::new()
+            .min_connections(1) // always keep at least one connection open
+            .max_connections(1) // allow only 1 write connection
+            .max_lifetime(None) // don't close connections for no reason, as we assume sqlite doesn't leak resources
+            .test_before_acquire(false) // we assume sqlite is extremely reliable, as it's in-process
+            .acquire_slow_threshold(Duration::from_millis(100)) // we expect sqlite to be fast
+            .idle_timeout(Some(Duration::from_secs(90))); // idle extra connections may be closed after a while
+        let pool_options_read = pool_options_write.clone().max_connections(4); // allow up to 4 read connections
         let connect_options_write = SqliteConnectOptions::new()
             .filename(DB_V2_FILENAME)
             .foreign_keys(true)
@@ -82,7 +88,7 @@ impl JinxDb {
                 // the v2 DB does not exist, so we must initialize the v1 db and migrate it to v2
                 let connect_options_v1 = SqliteConnectOptions::new()
                     .filename(DB_V1_FILENAME)
-                    .foreign_keys(false)
+                    .foreign_keys(false) // note that this actually IS required as sqlx overrides the normal sqlite default here
                     .in_memory(false)
                     .shared_cache(false)
                     .journal_mode(SqliteJournalMode::Delete)
@@ -96,10 +102,22 @@ impl JinxDb {
                 let mut v1_connection = connect_options_v1.connect().await?;
                 // handle any pending migrations on the v1 db
                 schema_v1::init(&mut v1_connection).await?;
+
                 // perform the big migration
-                let mut write_connection = self.write_pool.acquire().await?;
-                schema_v2::copy_from_v1(&mut v1_connection, &mut write_connection).await?;
+                {
+                    let mut write_connection = self.write_pool.acquire().await?;
+                    let (read_transaction, write_transaction) =
+                        tokio::join!(v1_connection.begin(), write_connection.begin());
+                    let mut read_transaction = read_transaction?;
+                    let mut write_transaction = write_transaction?;
+                    schema_v2::copy_from_v1(&mut read_transaction, &mut write_transaction).await?;
+                    let (read_commit, write_commit) =
+                        tokio::join!(read_transaction.commit(), write_transaction.commit());
+                    let () = read_commit?;
+                    let () = write_commit?;
+                }
                 v1_connection.close().await?;
+
                 Ok(())
             } else {
                 Err(JinxError::new(

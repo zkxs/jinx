@@ -18,7 +18,6 @@ use serenity::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
-use tokio::join;
 use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 
@@ -472,7 +471,7 @@ pub async fn license_info(
         let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
-            let (local_license_users, license_info, remote_license_users) = join!(
+            let (local_license_users, license_info, remote_license_users) = tokio::join!(
                 context.data().db.get_license_users(&store.jinxxy_user_id, &license_id),
                 async {
                     let api_key = store.jinxxy_api_key.to_owned();
