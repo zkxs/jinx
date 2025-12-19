@@ -158,7 +158,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    activator_user_id      INTEGER NOT NULL,
                    license_activation_id  TEXT NOT NULL,
                    product_id             TEXT NOT NULL,
-                   version_id             TEXT NOT NULL,
+                   version_id             TEXT,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT, WITHOUT ROWID"#,
@@ -454,7 +454,11 @@ pub(super) async fn copy_from_v1(
                 .get(&guild_id)
                 .expect("jinxxy_user_id not found for guild");
             let product_id = product_id.expect("expected product_id to be non-null for all license_activation");
-            let version_id = version_id.expect("expected version_id to be non-null for all license_activation");
+            let version_id = match version_id {
+                Some("") => None, // replace empty version ids with null, as the meaning is semantically equivalent but empty string is more obnoxious
+                Some(s) => Some(s),
+                None => None,
+            };
 
             sqlx::query!(
                 r#"INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)
