@@ -282,7 +282,6 @@ pub(super) async fn copy_from_v1(
 
             // Some of the data is separated into the new jinxxy_user table, and must therefore be deduplicated.
             // This must be done first for foreign key constraint reasons.
-            info!("continuing as jinxxy_user sub-migration");
             sqlx::query!(
                 r#"INSERT INTO jinxxy_user (jinxxy_user_id, jinxxy_username, cache_time_unix_ms)
                    VALUES (?, ?, ?)
@@ -297,7 +296,6 @@ pub(super) async fn copy_from_v1(
             .await?;
 
             // most of the data goes into the new guild table
-            info!("continuing as guild sub-migration");
             sqlx::query!(
                 r#"INSERT INTO guild (guild_id, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count, blanket_role_id, default_jinxxy_user)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
@@ -314,7 +312,6 @@ pub(super) async fn copy_from_v1(
             .await?;
 
             // finally, the api key goes into jinxxy_user_guild. This must be done last for foreign key constraint reasons.
-            info!("continuing as jinxxy_user_guild sub-migration");
             sqlx::query!(
                 r#"INSERT INTO jinxxy_user_guild (jinxxy_user_id, guild_id, jinxxy_api_key)
                    VALUES (?, ?, ?)"#,
