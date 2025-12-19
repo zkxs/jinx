@@ -157,8 +157,8 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    license_id             TEXT NOT NULL,
                    activator_user_id      INTEGER NOT NULL,
                    license_activation_id  TEXT NOT NULL,
-                   product_id             TEXT,
-                   version_id             TEXT,
+                   product_id             TEXT NOT NULL,
+                   version_id             TEXT NOT NULL,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT, WITHOUT ROWID"#,
@@ -263,16 +263,19 @@ pub(super) async fn copy_from_v1(
         .fetch(&mut *v1_pool);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
-            let jinxxy_api_key: &str = row.get("jinxxy_api_key");
-            let log_channel_id: i64 = row.get("log_channel_id");
+            let jinxxy_api_key: Option<&str> = row.get("jinxxy_api_key");
+            let log_channel_id: Option<i64> = row.get("log_channel_id");
             let test: i64 = row.get("test");
             let owner: i64 = row.get("owner");
             let gumroad_failure_count: i64 = row.get("gumroad_failure_count");
             let gumroad_nag_count: i64 = row.get("gumroad_nag_count");
             let cache_time_unix_ms: i64 = row.get("cache_time_unix_ms");
-            let blanket_role_id: i64 = row.get("blanket_role_id");
-            let jinxxy_user_id: &str = row.get("jinxxy_user_id");
-            let jinxxy_username: &str = row.get("jinxxy_username");
+            let blanket_role_id: Option<i64> = row.get("blanket_role_id");
+            let jinxxy_user_id: Option<&str> = row.get("jinxxy_user_id");
+            let jinxxy_username: Option<&str> = row.get("jinxxy_username");
+
+            let jinxxy_api_key = jinxxy_api_key.expect("Expected jinxxy_api_key to be non-null for all guilds");
+            let jinxxy_user_id = jinxxy_user_id.expect("Expected jinxxy_user_id to be non-null for all guilds");
 
             // that's a surprise tool that can help us later
             guild_to_store_map.insert(guild_id, jinxxy_user_id.to_owned());
@@ -333,7 +336,7 @@ pub(super) async fn copy_from_v1(
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
             let product_name: &str = row.get("product_name");
-            let etag: &[u8] = row.get("etag");
+            let etag: Option<&[u8]> = row.get("etag");
             let jinxxy_user_id: &str = guild_to_store_map
                 .get(&guild_id)
                 .expect("jinxxy_user_id not found for guild");
@@ -448,11 +451,13 @@ pub(super) async fn copy_from_v1(
             let license_id: &str = row.get("license_id");
             let license_activation_id: &str = row.get("license_activation_id");
             let activator_user_id: i64 = row.get("user_id");
-            let product_id: &str = row.get("product_id");
-            let version_id: &str = row.get("version_id");
+            let product_id: Option<&str> = row.get("product_id");
+            let version_id: Option<&str> = row.get("version_id");
             let jinxxy_user_id: &str = guild_to_store_map
                 .get(&guild_id)
                 .expect("jinxxy_user_id not found for guild");
+            let product_id = product_id.expect("expected product_id to be non-null for all license_activation");
+            let version_id = version_id.expect("expected version_id to be non-null for all license_activation");
 
             sqlx::query!(
                 r#"INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)
