@@ -217,35 +217,35 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 
 /// Copy all rows in the v1 db into the v2 db
 pub(super) async fn copy_from_v1(
-    v1_pool: &mut SqliteConnection,
-    v2_pool: &mut SqliteConnection,
+    v1_connection: &mut SqliteConnection,
+    v2_connection: &mut SqliteConnection,
 ) -> Result<(), JinxError> {
     // settings migration
     {
         info!("starting settings migration");
         let discord_token: Option<String> =
             sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = 'discord_token'"#)
-                .fetch_optional(&mut *v1_pool)
+                .fetch_optional(&mut *v1_connection)
                 .await?;
         if let Some(discord_token) = discord_token {
             sqlx::query!(
                 r#"INSERT INTO settings (key, value) VALUES ('discord_token', ?)"#,
                 discord_token
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
 
         let low_priority_cache_expiry_seconds: Option<i64> =
             sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = 'low_priority_cache_expiry_seconds'"#)
-                .fetch_optional(&mut *v1_pool)
+                .fetch_optional(&mut *v1_connection)
                 .await?;
         if let Some(low_priority_cache_expiry_seconds) = low_priority_cache_expiry_seconds {
             sqlx::query!(
                 r#"INSERT INTO settings (key, value) VALUES ('low_priority_cache_expiry_seconds', ?)"#,
                 low_priority_cache_expiry_seconds
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -260,7 +260,7 @@ pub(super) async fn copy_from_v1(
             r#"SELECT guild_id, jinxxy_api_key, log_channel_id, test, owner, gumroad_failure_count, gumroad_nag_count,
                    cache_time_unix_ms, blanket_role_id, jinxxy_user_id, jinxxy_username FROM guild"#,
         )
-        .fetch(&mut *v1_pool);
+        .fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let jinxxy_api_key: Option<&str> = row.get("jinxxy_api_key");
@@ -292,7 +292,7 @@ pub(super) async fn copy_from_v1(
                 jinxxy_username,
                 cache_time_unix_ms
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
 
             // most of the data goes into the new guild table
@@ -308,7 +308,7 @@ pub(super) async fn copy_from_v1(
                 blanket_role_id,
                 jinxxy_user_id,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
 
             // finally, the api key goes into jinxxy_user_guild. This must be done last for foreign key constraint reasons.
@@ -319,7 +319,7 @@ pub(super) async fn copy_from_v1(
                 guild_id,
                 jinxxy_api_key
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -328,7 +328,7 @@ pub(super) async fn copy_from_v1(
     {
         info!("starting product migration");
         let mut rows =
-            sqlx::query(r#"SELECT guild_id, product_id, product_name, etag FROM product"#).fetch(&mut *v1_pool);
+            sqlx::query(r#"SELECT guild_id, product_id, product_name, etag FROM product"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
@@ -347,7 +347,7 @@ pub(super) async fn copy_from_v1(
                 product_name,
                 etag,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -357,7 +357,7 @@ pub(super) async fn copy_from_v1(
         info!("starting product_version migration");
         let mut rows =
             sqlx::query(r#"SELECT guild_id, product_id, version_id, product_version_name FROM product_version"#)
-                .fetch(&mut *v1_pool);
+                .fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
@@ -376,7 +376,7 @@ pub(super) async fn copy_from_v1(
                 version_id,
                 product_version_name,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -384,7 +384,8 @@ pub(super) async fn copy_from_v1(
     // product_role migration
     {
         info!("starting product_role migration");
-        let mut rows = sqlx::query(r#"SELECT guild_id, product_id, role_id FROM product_role"#).fetch(&mut *v1_pool);
+        let mut rows =
+            sqlx::query(r#"SELECT guild_id, product_id, role_id FROM product_role"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
@@ -402,7 +403,7 @@ pub(super) async fn copy_from_v1(
                 product_id,
                 role_id,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -411,7 +412,7 @@ pub(super) async fn copy_from_v1(
     {
         info!("starting product_version_role migration");
         let mut rows = sqlx::query(r#"SELECT guild_id, product_id, version_id, role_id FROM product_version_role"#)
-            .fetch(&mut *v1_pool);
+            .fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
@@ -431,7 +432,7 @@ pub(super) async fn copy_from_v1(
                 version_id,
                 role_id,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -442,7 +443,7 @@ pub(super) async fn copy_from_v1(
         let mut rows = sqlx::query(
             r#"SELECT guild_id, license_id, license_activation_id, user_id, product_id, version_id FROM license_activation"#
         )
-            .fetch(&mut *v1_pool);
+            .fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let license_id: &str = row.get("license_id");
@@ -473,7 +474,7 @@ pub(super) async fn copy_from_v1(
                 product_id,
                 version_id,
             )
-            .execute(&mut *v2_pool)
+            .execute(&mut *v2_connection)
             .await?;
         }
     }
@@ -481,11 +482,11 @@ pub(super) async fn copy_from_v1(
     // owner migration
     {
         info!("starting owner migration");
-        let mut rows = sqlx::query_scalar(r#"SELECT owner_id FROM owner"#).fetch(&mut *v1_pool);
+        let mut rows = sqlx::query_scalar(r#"SELECT owner_id FROM owner"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let owner_id: i64 = row;
             sqlx::query!(r#"INSERT INTO owner (owner_id) VALUES (?)"#, owner_id)
-                .execute(&mut *v2_pool)
+                .execute(&mut *v2_connection)
                 .await?;
         }
     }

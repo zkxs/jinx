@@ -8,15 +8,16 @@ use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::futures_util::TryStreamExt;
-use poise::serenity_prelude::{ChannelId, GuildId, RoleId, UserId};
-use sqlx::pool::PoolConnection;
-use sqlx::sqlite::{
-    SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
-    SqliteSynchronous,
-};
+use poise::serenity_prelude as serenity;
+use serenity::{ChannelId, GuildId, RoleId, UserId};
 use sqlx::{
-    ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection, Type,
+    Acquire, ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection,
     error::Error as SqlxError,
+    pool::PoolConnection,
+    sqlite::{
+        SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
+        SqliteSynchronous,
+    },
 };
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -134,7 +135,7 @@ impl JinxDb {
 
     async fn get_setting<'e, T>(&self, key: &str) -> SqliteResult<Option<T>>
     where
-        T: Type<Sqlite> + Send + Unpin + 'e,
+        T: sqlx::Type<Sqlite> + Send + Unpin + 'e,
         (T,): for<'r> FromRow<'r, SqliteRow>, // what the fuck is this
     {
         let mut connection = self.write_connection().await?;
@@ -143,7 +144,7 @@ impl JinxDb {
 
     async fn set_setting<'q, T>(&self, key: &'q str, value: T) -> SqliteResult<bool>
     where
-        T: Encode<'q, Sqlite> + Type<Sqlite> + 'q,
+        T: Encode<'q, Sqlite> + sqlx::Type<Sqlite> + 'q,
     {
         let mut connection = self.write_connection().await?;
         helper::set_setting(&mut connection, key, value).await
@@ -234,8 +235,8 @@ impl JinxDb {
             product_id,
             version_id
         )
-            .execute(&mut *connection)
-            .await?;
+        .execute(&mut *connection)
+        .await?;
         Ok(())
     }
 
@@ -256,9 +257,9 @@ impl JinxDb {
             license_activation_id,
             activator_user_id
         )
-            .execute(&mut *connection)
-            .await?
-            .rows_affected();
+        .execute(&mut *connection)
+        .await?
+        .rows_affected();
         Ok(delete_count != 0)
     }
 
@@ -269,8 +270,8 @@ impl JinxDb {
             jinxxy_user_id,
             license_id
         )
-            .fetch_one(&self.read_pool)
-            .await?;
+        .fetch_one(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -368,8 +369,8 @@ impl JinxDb {
         let deleted_users = sqlx::query_scalar!(
             r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
         )
-            .fetch_all(&mut *transaction)
-            .await?;
+        .fetch_all(&mut *transaction)
+        .await?;
 
         transaction.commit().await?;
 
@@ -643,6 +644,7 @@ impl JinxDb {
         let role_id = role.get() as i64;
         let mut deleted = 0;
         let mut connection = self.write_connection().await?;
+        let mut transaction = connection.begin().await?;
 
         // handle blanket role
         deleted += sqlx::query!(
@@ -650,7 +652,7 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await?
         .rows_affected();
         // handle product links
@@ -659,7 +661,7 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await?
         .rows_affected();
         // handle product-version links
@@ -668,9 +670,11 @@ impl JinxDb {
             guild_id,
             role_id
         )
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await?
         .rows_affected();
+
+        transaction.commit().await?;
 
         Ok(deleted)
     }
@@ -684,18 +688,19 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let result = sqlx::query!(
-        r#"SELECT blanket_role_id AS "role_id!" from guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
-           UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?
-           UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
-        guild_id,
-        guild_id,
-        product_id,
-        guild_id,
-        product_id,
-        version_id)
-            .map(|row| RoleId::new(row.role_id as u64))
-            .fetch_all(&self.read_pool)
-            .await?;
+            r#"SELECT blanket_role_id AS "role_id!" from guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
+               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?
+               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
+            guild_id,
+            guild_id,
+            product_id,
+            guild_id,
+            product_id,
+            version_id
+        )
+        .map(|row| RoleId::new(row.role_id as u64))
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -756,9 +761,9 @@ impl JinxDb {
             guild_id,
             role_id
         )
-            .map(|row| UserId::new(row.user_id as u64))
-            .fetch_all(&self.read_pool)
-            .await?;
+        .map(|row| UserId::new(row.user_id as u64))
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -895,8 +900,8 @@ impl JinxDb {
             activator_user_id,
             license_id
         )
-            .fetch_one(&self.read_pool)
-            .await?;
+        .fetch_one(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -914,8 +919,8 @@ impl JinxDb {
             activator_user_id,
             license_id
         )
-            .fetch_all(&self.read_pool)
-            .await?;
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -1213,9 +1218,12 @@ impl JinxDb {
 
     pub async fn get_store_cache(&self, jinxxy_user_id: &str) -> JinxResult<StoreCache> {
         let mut connection = self.read_pool.acquire().await?;
-        let cache_time = helper::get_cache_time(&mut connection, jinxxy_user_id).await?;
-        let product_name_info = helper::product_names_in_store(&mut connection, jinxxy_user_id).await?;
-        let product_version_name_info = helper::product_version_names_in_store(&mut connection, jinxxy_user_id).await?;
+        let mut transaction = connection.begin().await?;
+        let cache_time = helper::get_cache_time(&mut transaction, jinxxy_user_id).await?;
+        let product_name_info = helper::product_names_in_store(&mut transaction, jinxxy_user_id).await?;
+        let product_version_name_info =
+            helper::product_version_names_in_store(&mut transaction, jinxxy_user_id).await?;
+        transaction.commit().await?;
         Ok(StoreCache {
             product_name_info,
             product_version_name_info,
@@ -1225,23 +1233,29 @@ impl JinxDb {
 
     pub async fn persist_store_cache(&self, jinxxy_user_id: &str, cache_entry: StoreCache) -> JinxResult<()> {
         let mut connection = self.write_connection().await?;
-        helper::persist_product_names(&mut connection, jinxxy_user_id, cache_entry.product_name_info).await?;
-        helper::persist_product_version_names(&mut connection, jinxxy_user_id, cache_entry.product_version_name_info)
+        let mut transaction = connection.begin().await?;
+        helper::persist_product_names(&mut transaction, jinxxy_user_id, cache_entry.product_name_info).await?;
+        helper::persist_product_version_names(&mut transaction, jinxxy_user_id, cache_entry.product_version_name_info)
             .await?;
-        helper::set_cache_time(&mut connection, jinxxy_user_id, cache_entry.cache_time).await?;
+        helper::set_cache_time(&mut transaction, jinxxy_user_id, cache_entry.cache_time).await?;
+        transaction.commit().await?;
         Ok(())
     }
 
     /// Delete all cache entries for all guilds
     pub async fn clear_cache(&self) -> JinxResult<()> {
         let mut connection = self.write_connection().await?;
-        sqlx::query!(r#"DELETE FROM product"#).execute(&mut *connection).await?;
+        let mut transaction = connection.begin().await?;
+        sqlx::query!(r#"DELETE FROM product"#)
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query!(r#"DELETE FROM product_version"#)
-            .execute(&mut *connection)
+            .execute(&mut *transaction)
             .await?;
         sqlx::query!(r#"UPDATE jinxxy_user SET cache_time_unix_ms = 0"#)
-            .execute(&mut *connection)
+            .execute(&mut *transaction)
             .await?;
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -1280,6 +1294,7 @@ impl JinxDb {
 mod helper {
     use super::*;
     use regex::Regex;
+    use sqlx::SqliteTransaction;
     use std::borrow::Cow;
     use std::sync::LazyLock;
 
@@ -1287,7 +1302,7 @@ mod helper {
     /// Option<T> instead of a T. This function returns None only if the entire row is absent.
     pub(crate) async fn get_setting<'e, T>(connection: &'e mut SqliteConnection, key: &str) -> SqliteResult<Option<T>>
     where
-        T: Type<Sqlite> + Send + Unpin + 'e,
+        T: sqlx::Type<Sqlite> + Send + Unpin + 'e,
         (T,): for<'r> FromRow<'r, SqliteRow>, // what the fuck is this
     {
         let result: Option<T> = sqlx::query_scalar(r#"SELECT value FROM settings WHERE key = ?"#)
@@ -1303,7 +1318,7 @@ mod helper {
         value: T,
     ) -> SqliteResult<bool>
     where
-        T: Encode<'q, Sqlite> + Type<Sqlite> + 'q,
+        T: Encode<'q, Sqlite> + sqlx::Type<Sqlite> + 'q,
     {
         let update_count = sqlx::query(r#"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"#)
             .bind(key)
@@ -1366,7 +1381,7 @@ mod helper {
 
     /// Get name info for products versions in a guild
     pub(super) async fn product_version_names_in_store(
-        connection: &mut SqliteConnection,
+        transaction: &mut SqliteTransaction<'_>,
         jinxxy_user_id: &str,
     ) -> SqliteResult<Vec<ProductVersionNameInfo>> {
         sqlx::query!(
@@ -1380,7 +1395,7 @@ mod helper {
             },
             product_version_name: row.product_version_name,
         })
-        .fetch_all(connection)
+        .fetch_all(&mut **transaction)
         .await
     }
 
@@ -1438,7 +1453,7 @@ mod helper {
     }
 
     pub(super) async fn persist_product_version_names(
-        connection: &mut SqliteConnection,
+        transaction: &mut SqliteTransaction<'_>,
         jinxxy_user_id: &str,
         product_version_name_info: Vec<ProductVersionNameInfo>,
     ) -> SqliteResult<()> {
@@ -1457,7 +1472,7 @@ mod helper {
                 version_id,
                 product_version_name
             )
-                .execute(&mut *connection)
+                .execute(&mut **transaction)
                 .await?;
             new_key_set.insert((product_id, version_id));
         }
@@ -1468,7 +1483,7 @@ mod helper {
                 r#"SELECT product_id, version_id FROM product_version WHERE jinxxy_user_id = ?"#,
                 jinxxy_user_id
             )
-            .fetch(&mut *connection);
+            .fetch(&mut **transaction);
             while let Some(row) = rows.try_next().await? {
                 let product_id: String = row.product_id;
                 let version_id: String = row.version_id;
@@ -1487,7 +1502,7 @@ mod helper {
                 product_id,
                 version_id
             )
-            .execute(&mut *connection)
+            .execute(&mut **transaction)
             .await?;
         }
         Ok(())
