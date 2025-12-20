@@ -530,7 +530,7 @@ pub(in crate::bot) async fn sudo_list_links(
                 let guild_id = GuildId::new(guild_id);
 
                 // horrible evil hack to reuse all the logic with minimal work
-                guild_commands::list_links_impl::<true>(context, guild_id).await?;
+                guild_commands::list_links_impl(context, guild_id, true).await?;
             }
         }
         Err(e) => {

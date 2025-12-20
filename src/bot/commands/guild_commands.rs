@@ -1102,14 +1102,11 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
     let guild_id = context
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    list_links_impl::<false>(context, guild_id).await
+    list_links_impl(context, guild_id, false).await
 }
 
 /// internal list links implementation. You MUST `context.defer_ephemeral()` on your own before calling this.
-pub(in crate::bot) async fn list_links_impl<const SUDO: bool>(
-    context: Context<'_>,
-    guild_id: GuildId,
-) -> Result<(), Error> {
+pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: GuildId, sudo: bool) -> Result<(), Error> {
     let assignable_roles = util::assignable_roles(&context, guild_id).await?;
     // all links from the db for this guild, even across multiple stores
     let link_info = context.data().db.get_links(guild_id).await?;
@@ -1140,7 +1137,7 @@ pub(in crate::bot) async fn list_links_impl<const SUDO: bool>(
             } else {
                 message.push('\n');
             }
-            if SUDO {
+            if sudo {
                 let role_name = util::role_name(&context, guild_id, *role)?;
                 if let Some(role_name) = role_name {
                     message.push_str(format!("- `{}` granted by:", role_name).as_str());
