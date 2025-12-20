@@ -3,6 +3,7 @@
 
 //! Tests certain sqlite edge cases to make sure the sqlite library acts as expected even under edge cases
 
+use semver::Version;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Executor, SqlitePool};
 
@@ -116,4 +117,17 @@ async fn test_u64_128_persistence() {
 async fn test_u64_129_persistence() {
     let value: u64 = 0x81;
     test_u64(value).await;
+}
+
+/// Assert that the bundled sqlite version is at least as new as some expected version
+#[tokio::test(flavor = "current_thread")]
+async fn assert_sqlite_version() {
+    let connection = get_test_connection().await;
+    let row: String = sqlx::query_scalar(r#"SELECT sqlite_version()"#)
+        .fetch_one(&connection)
+        .await
+        .expect("can't get version row");
+    let version = Version::parse(&row).expect("can't parse version");
+    let expected = Version::new(3, 51, 1);
+    assert!(version >= expected, "Expected {version} >= {expected}");
 }

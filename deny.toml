@@ -226,7 +226,7 @@ skip = [
     # However, I'm pinning the specific old version so that I can track if new duplicates are introduced.
     { crate = "base64@0.21.7", reason = "reqwest@0.11.27 uses old version" },
     { crate = "bitflags@1.3.2", reason = "reqwest@0.11.27 uses old version" },
-    { crate = "hashbrown@0.14.5", reason = "a lot of stuff uses old version" },
+    { crate = "hashbrown@0.14.5", reason = "serenity@0.12.4 uses old version" },
     { crate = "http@0.2.12", reason = "reqwest@0.11.27 and hyper@0.14.30 use old version" },
     { crate = "rustls@0.21.12", reason = "reqwest@0.11.27 uses old version" },
     { crate = "rustls-webpki@0.101.7", reason = "reqwest@0.11.27 uses old version" },
@@ -249,7 +249,6 @@ skip = [
     { crate = "tokio-rustls@0.25", reason = "used by reqwest@0.11.27"},
     { crate = "webpki-roots@0.26", reason = "used by reqwest@0.11.27"},
     { crate = "socket2@0.5", reason = "used by reqwest@0.11.27"},
-    { crate = "hashbrown@0.15.5", reason = "used by sqlx, reqwest, and poise"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
