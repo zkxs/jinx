@@ -20,9 +20,10 @@ use sqlx::{
     },
 };
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use tracing::info;
+use tracing::{error, info};
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 const DB_V2_FILENAME: &str = "jinx2.sqlite";
@@ -75,11 +76,14 @@ impl JinxDb {
         schema_v2::init(&mut write_connection).await?;
 
         let read_pool = pool_options_read.connect_with(connect_options_read).await?;
-
         let db = JinxDb {
             read_pool,
             write_pool,
             new_db,
+        };
+        match db.get_sqlite_version().await {
+            Ok(version) => info!("Opened DB with sqlite version {version}"),
+            Err(e) => error!("Error reading sqlite version: {e:?}"),
         };
         Ok(db)
     }
@@ -159,6 +163,13 @@ impl JinxDb {
             .await?;
         let result = SqliteWalCheckpointResults::from_row(&result)?;
         Ok(result)
+    }
+
+    async fn get_sqlite_version(&self) -> SqliteResult<String> {
+        let version = sqlx::query_scalar!(r#"SELECT sqlite_version() AS "version!""#)
+            .fetch_one(&self.read_pool)
+            .await?;
+        Ok(version)
     }
 
     async fn get_setting<'e, T>(&self, key: &str) -> SqliteResult<Option<T>>
@@ -1719,8 +1730,7 @@ impl SqliteWalCheckpoint {
     }
 }
 
-#[derive(Debug, FromRow)]
-#[allow(dead_code)] // this gets debug printed
+#[derive(FromRow)]
 pub struct SqliteWalCheckpointResults {
     /// Usually `false`, but `true` if a RESTART or FULL or TRUNCATE checkpoint was blocked from completing,
     /// for example because another thread or process was actively using the database.
@@ -1730,4 +1740,24 @@ pub struct SqliteWalCheckpointResults {
     /// The number of pages in the write-ahead log file that have been successfully moved back into the database file at
     /// the conclusion of the checkpoint, or `-1` if there is no write-ahead log.
     pub checkpointed: i64,
+}
+
+impl SqliteWalCheckpointResults {
+    /// Number of uncheckpointed pages remaining in the write-ahead log file, or `-1` if there is no write-ahead log.
+    pub fn remaining(&self) -> i64 {
+        if self.log < 0 { -1 } else { self.log - self.checkpointed }
+    }
+}
+
+impl Display for SqliteWalCheckpointResults {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "busy: {}, log: {}, checkpointed: {}, remaining: {}",
+            self.busy,
+            self.log,
+            self.checkpointed,
+            self.remaining()
+        )
+    }
 }

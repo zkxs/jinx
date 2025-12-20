@@ -222,7 +222,7 @@ impl Bot {
                                 let result = db.checkpoint(SqliteWalCheckpoint::Passive).await;
                                 let elapsed = start.elapsed();
                                 match result {
-                                    Ok(result) => info!("checkpointed db in {}ms: {:?}", elapsed.as_millis(), result),
+                                    Ok(result) => info!("checkpointed db in {}ms. {}", elapsed.as_millis(), result),
                                     Err(e) => error!("error checkpointing db after {}ms: {:?}", elapsed.as_millis(), e),
                                 }
                             }
