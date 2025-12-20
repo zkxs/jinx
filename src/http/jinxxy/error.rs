@@ -11,7 +11,7 @@ use std::fmt::{Display, Formatter};
 pub type JinxxyResult<T> = Result<T, JinxxyError>;
 
 #[derive(Debug)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub enum JinxxyError {
     /// Any error for which we got an HTTP response from Jinxxy. Happens when we detect non-200 status codes.
     /// If we're looking for a 404 we just build one of these errors directly. If we expect a 2xx these errors
@@ -191,14 +191,14 @@ impl IsDeterministic for JinxxyError {
 
 /// Generic wrapper for a reqwest error.
 #[derive(Debug)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub struct ReqwestError {
     endpoint: &'static str,
     error: reqwest::Error,
 }
 
 #[derive(Debug)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub struct HttpResponse {
     endpoint: &'static str,
     status_code: StatusCode,
@@ -207,7 +207,7 @@ pub struct HttpResponse {
 }
 
 #[derive(Debug)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub enum HttpBody {
     /// We received an error response from Jinxxy which was successfully deserialized
     JsonErrorResponse(JinxxyErrorResponse),
@@ -248,7 +248,7 @@ pub struct JinxxyErrorResponse {
     message: JinxxyErrorMessage,
     /// This field appears completely useless for my own use, but might be helpful for the Jinxxy devs if I need to
     /// forward an error report along.
-    #[allow(unused)]
+    #[allow(dead_code)]
     code: String,
 }
 
@@ -297,7 +297,7 @@ impl JinxxyErrorMessage {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub struct JinxxyErrorMultiMessagePart {
     message: String,
     code: String,

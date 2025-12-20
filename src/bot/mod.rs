@@ -10,7 +10,7 @@ pub mod util;
 use crate::bot::cache::ApiCache;
 use crate::bot::error_handler::error_handler;
 use crate::bot::event_handler::event_handler;
-use crate::db::JinxDb;
+use crate::db::{JinxDb, SqliteWalCheckpoint};
 use crate::error::JinxError;
 use commands::*;
 use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
@@ -208,6 +208,25 @@ impl Bot {
                             }
                         });
                     }
+
+                    // set up the task to periodically checkpoint the DB
+                    {
+                        let db = db.clone();
+                        tokio::task::spawn(async move {
+                            loop {
+                                // 1 hour per checkpoint. We do not checkpoint on startup.
+                                tokio::time::sleep(Duration::from_secs(SECONDS_PER_HOUR)).await;
+                                let start = Instant::now();
+                                let result = db.checkpoint(SqliteWalCheckpoint::Passive).await;
+                                let elapsed = start.elapsed();
+                                match result {
+                                    Ok(result) => info!("checkpointed db in {}ms: {:?}", elapsed.as_millis(), result),
+                                    Err(e) => error!("error checkpointing db after {}ms: {:?}", elapsed.as_millis(), e),
+                                }
+                            }
+                        });
+                    }
+
                     debug!("framework setup complete");
                     Ok(Data { db, api_cache })
                 })

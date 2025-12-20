@@ -16,7 +16,7 @@ where
 }
 
 #[derive(Debug)]
-#[allow(unused)] // these are debug printed frequently
+#[allow(dead_code)] // these are debug printed frequently
 pub enum JinxError {
     Message(String),
     Sensitive { public: String, private: String },

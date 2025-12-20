@@ -150,6 +150,17 @@ impl JinxDb {
         Ok(())
     }
 
+    /// Perform a [WAL checkpoint](https://sqlite.org/pragma.html#pragma_wal_checkpoint)
+    pub async fn checkpoint(&self, mode: SqliteWalCheckpoint) -> JinxResult<SqliteWalCheckpointResults> {
+        let mut connection = self.write_connection().await?;
+        let result = sqlx::query(mode.query())
+            .persistent(false)
+            .fetch_one(&mut *connection)
+            .await?;
+        let result = SqliteWalCheckpointResults::from_row(&result)?;
+        Ok(result)
+    }
+
     async fn get_setting<'e, T>(&self, key: &str) -> SqliteResult<Option<T>>
     where
         T: sqlx::Type<Sqlite> + Send + Unpin + 'e,
@@ -1667,4 +1678,56 @@ pub struct LinkedStore {
     pub jinxxy_user_id: String,
     pub jinxxy_username: Option<String>,
     pub jinxxy_api_key: String,
+}
+
+/// Different modes of WAL checkpoint: https://sqlite.org/pragma.html#pragma_wal_checkpoint
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
+pub enum SqliteWalCheckpoint {
+    /// Checkpoint as many frames as possible without waiting for any database readers or writers to finish. Sync the
+    /// db file if all frames in the log are checkpointed. This mode is the same as calling the
+    /// [sqlite3_wal_checkpoint()](https://sqlite.org/c3ref/wal_checkpoint.html) C interface. The
+    /// [busy-handler callback](https://sqlite.org/c3ref/busy_handler.html) is never invoked in this mode.
+    Passive,
+    /// This mode blocks (invokes the [busy-handler callback](https://sqlite.org/c3ref/busy_handler.html)) until there
+    /// is no database writer and all readers are reading from the most recent database snapshot. It then checkpoints
+    /// all frames in the log file and syncs the database file. FULL blocks concurrent writers while it is running, but
+    /// readers can proceed.
+    Full,
+    /// This mode works the same way as FULL with the addition that after checkpointing the log file it blocks (calls
+    /// the [busy-handler callback](https://sqlite.org/c3ref/busy_handler.html)) until all readers are finished with the
+    /// log file. This ensures that the next client to write to the database file restarts the log file from the
+    /// beginning. RESTART blocks concurrent writers while it is running, but allows readers to proceed.
+    Restart,
+    /// This mode works the same way as RESTART with the addition that the WAL file is truncated to zero bytes upon
+    /// successful completion.
+    Truncate,
+    /// This mode does not checkpoint any frames. It is used to obtain the returned values only.
+    Noop,
+}
+
+impl SqliteWalCheckpoint {
+    /// Retrieve the PRAGMA query for this WAL checkpoint mode
+    fn query(self) -> &'static str {
+        match self {
+            SqliteWalCheckpoint::Passive => r#"PRAGMA wal_checkpoint(PASSIVE)"#,
+            SqliteWalCheckpoint::Full => r#"PRAGMA wal_checkpoint(FULL)"#,
+            SqliteWalCheckpoint::Restart => r#"PRAGMA wal_checkpoint(RESTART)"#,
+            SqliteWalCheckpoint::Truncate => r#"PRAGMA wal_checkpoint(TRUNCATE)"#,
+            SqliteWalCheckpoint::Noop => r#"PRAGMA wal_checkpoint(NOOP)"#,
+        }
+    }
+}
+
+#[derive(Debug, FromRow)]
+#[allow(dead_code)] // this gets debug printed
+pub struct SqliteWalCheckpointResults {
+    /// Usually `false`, but `true` if a RESTART or FULL or TRUNCATE checkpoint was blocked from completing,
+    /// for example because another thread or process was actively using the database.
+    pub busy: bool,
+    /// The number of modified pages that have been written to the write-ahead log file, or `-1` if there is no write-ahead log.
+    pub log: i64,
+    /// The number of pages in the write-ahead log file that have been successfully moved back into the database file at
+    /// the conclusion of the checkpoint, or `-1` if there is no write-ahead log.
+    pub checkpointed: i64,
 }

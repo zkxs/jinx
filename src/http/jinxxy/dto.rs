@@ -197,7 +197,7 @@ pub struct PartialProduct {
     pub id: String,
 
     /// Product Name
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub name: String,
 }
 
