@@ -234,25 +234,27 @@ impl Bot {
                 })
             })
             .build();
-
         debug!("framework built");
 
         let distinct_user_count = db
             .distinct_user_count()
             .await
             .expect("Failed to read distinct user count from DB");
+        debug!("fetched initial distinct_user_count");
+
         let client = serenity::ClientBuilder::new(discord_token, intents)
             .activity(ActivityData::custom(get_activity_string(distinct_user_count)))
             .framework(framework)
             .await
             .expect("Failed to set bot's initial activity");
+        debug!("client built");
 
         let bot = Self { client, db, api_cache };
         Ok(bot)
     }
 
     pub async fn start(&mut self) -> Result<(), Error> {
-        debug!("client built. Starting background jobs…");
+        debug!("Starting background jobs…");
         // set up the task to periodically perform gumroad nags
         {
             let db = self.db.clone();
@@ -331,13 +333,12 @@ impl Bot {
         // set up the task to periodically set the bot's status
         {
             let db = self.db.clone();
-            let distinct_user_count = db
-                .distinct_user_count()
-                .await
-                .expect("Failed to read distinct user count from DB");
             let shard_manager = self.client.shard_manager.clone();
             tokio::task::spawn(async move {
-                let mut distinct_user_count = distinct_user_count;
+                let mut distinct_user_count = db
+                    .distinct_user_count()
+                    .await
+                    .expect("Failed to read distinct user count from DB");
 
                 loop {
                     // update once a minute

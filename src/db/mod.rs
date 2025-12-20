@@ -137,7 +137,9 @@ impl JinxDb {
 
     /// Gracefully the database connections and wait for the close to complete
     pub async fn close(&self) {
-        tokio::join!(self.read_pool.close(), self.write_pool.close());
+        self.read_pool.close().await;
+        self.write_pool.close().await;
+        // closing the write pool last ensures we're able to delete the WAL file
     }
 
     /// Get something that we can DerefMut as SqliteConnection

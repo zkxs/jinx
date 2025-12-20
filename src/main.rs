@@ -139,7 +139,7 @@ async fn bot_subsystem(subsystem: &mut SubsystemHandle) -> Result<(), Error> {
     tokio::select! {
         _ = subsystem.on_shutdown_requested() => {
             info!("external shutdown requested");
-            bot.close().await;
+            bot.close().await; // once this finishes, the bot.start() task will be canceled
             Ok(())
         },
         result = bot.start() => {
