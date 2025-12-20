@@ -28,6 +28,7 @@ const DB_V1_FILENAME: &str = "jinx.sqlite";
 const DB_V2_FILENAME: &str = "jinx2.sqlite";
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
+const CAN_NAG_PUBLIC_CHANNELS: &str = "can_nag_public_channels";
 
 type JinxResult<T> = Result<T, JinxError>;
 type SqliteResult<T> = Result<T, SqlxError>;
@@ -187,6 +188,11 @@ impl JinxDb {
     pub async fn set_discord_token(&self, discord_token: &str) -> JinxResult<()> {
         self.set_setting(DISCORD_TOKEN_KEY, discord_token).await?;
         Ok(())
+    }
+
+    pub async fn can_nag_public_channels(&self) -> JinxResult<bool> {
+        let can_nag = self.get_setting::<bool>(CAN_NAG_PUBLIC_CHANNELS).await?;
+        Ok(can_nag.unwrap_or(false))
     }
 
     pub async fn get_owners(&self) -> JinxResult<Vec<u64>> {

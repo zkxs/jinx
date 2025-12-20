@@ -41,7 +41,7 @@ const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_D
 const SECONDS_PER_HOUR: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 
 /// Message shown to admins when the Jinxxy API key is missing
-pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/init` command to set it.";
+pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/add_store` command to set it.";
 /// Message shown to admins when there's no store link for the username they provided via some command
 pub static MISSING_STORE_LINK_MESSAGE: &str = "No linked store with that username was found.";
 

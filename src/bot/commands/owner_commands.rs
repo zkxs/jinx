@@ -414,6 +414,9 @@ pub(in crate::bot) async fn verify_guild(
                             .await?
                             .unwrap_or(0);
                         let gumroad_nag_count = context.data().db.get_gumroad_nag_count(guild_id).await?.unwrap_or(0);
+                        let nag_role = util::highest_mentionable_role(&context, guild_id)?
+                            .and_then(|role_id| util::role_name(&context, guild_id, role_id).ok().flatten())
+                            .unwrap_or_default();
                         let guild_embed = CreateEmbed::default().title("Guild Information").description(format!(
                             "Name={guild_name}\n\
                                 Description={guild_description}\n\
@@ -422,7 +425,8 @@ pub(in crate::bot) async fn verify_guild(
                                 Admin={is_administrator}\n\
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
-                                gumroad nags={gumroad_nag_count}"
+                                gumroad nags={gumroad_nag_count}\n\
+                                nag role={nag_role}"
                         ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)
@@ -526,7 +530,7 @@ pub(in crate::bot) async fn sudo_list_links(
                 let guild_id = GuildId::new(guild_id);
 
                 // horrible evil hack to reuse all the logic with minimal work
-                guild_commands::list_links_impl(context, guild_id).await?;
+                guild_commands::list_links_impl::<true>(context, guild_id).await?;
             }
         }
         Err(e) => {

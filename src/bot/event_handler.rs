@@ -12,7 +12,7 @@ use crate::license::LicenseType;
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
-    ActionRowComponent, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
+    ActionRowComponent, ChannelId, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
     CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
     ModalInteraction,
 };
@@ -121,8 +121,8 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
                 );
 
                 if !new_message.author.bot {
-                    let reply_content = "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys. \
-                    It does not work from DMs: it needs to be set up in a server.\n\
+                    let reply_content = "I am a Discord bot that grants roles to users when they register Jinxxy license keys. \
+                    I do not work from DMs: I needs to be used in a server.\n\
                     For documentation, see <https://github.com/zkxs/jinx>\n\
                     For support, join https://discord.gg/aKkA6m26f9";
                     if let Err(e) = new_message.reply_ping(context.serenity_context, reply_content).await {
@@ -501,12 +501,7 @@ async fn handle_license_registration<'a>(
                             .description(message)
                             .color(Colour::ORANGE);
                         let bot_log_message = CreateMessage::default().embed(embed);
-                        handle_message_send_error(
-                            log_channel
-                                .send_message(context.serenity_context, bot_log_message)
-                                .await,
-                            guild_id,
-                        );
+                        send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
                     }
 
                     send_fail_message().await?;
@@ -619,12 +614,7 @@ async fn handle_license_registration<'a>(
                                 .description(message)
                                 .color(Colour::RED);
                             let bot_log_message = CreateMessage::default().embed(embed);
-                            handle_message_send_error(
-                                log_channel
-                                    .send_message(context.serenity_context, bot_log_message)
-                                    .await,
-                                guild_id,
-                            );
+                            send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
                         }
                     }
 
@@ -675,12 +665,7 @@ async fn handle_license_registration<'a>(
                                     .color(Colour::GOLD)
                                     .description(owner_message);
                                 let bot_log_message = CreateMessage::default().embed(embed);
-                                handle_message_send_error(
-                                    log_channel
-                                        .send_message(context.serenity_context, bot_log_message)
-                                        .await,
-                                    guild_id,
-                                );
+                                send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
                             }
                         } else {
                             let mut client_message = format!(
@@ -748,12 +733,7 @@ async fn handle_license_registration<'a>(
                                         .color(Colour::RED);
                                     bot_log_message.embed(error_embed)
                                 };
-                                handle_message_send_error(
-                                    log_channel
-                                        .send_message(context.serenity_context, bot_log_message)
-                                        .await,
-                                    guild_id,
-                                );
+                                send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
                             }
                         }
                     } else {
@@ -799,19 +779,121 @@ async fn handle_license_registration<'a>(
     Ok(())
 }
 
-/// Handle any recoverable errors in sending a message to a channel. Presently this only performs logging.
-fn handle_message_send_error(result: serenity::Result<serenity::Message>, guild_id: GuildId) {
-    if let Err(e) = result {
-        match e {
-            serenity::Error::Http(serenity::HttpError::UnsuccessfulRequest(error)) if error.status_code == 403 => {
-                // Handle the case where we have missing access. This happens sometimes if a guild owner screw up their
-                // log channel, for example by deleting it or fucking up the permissions.
-                info!("Error logging to log channel in {}: {:?}", guild_id.get(), error)
-            }
-            _ => {
-                // In all other cases log this as a warning
-                warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e)
+/// Send the bot log message to the specified log channel, and handles all errors sending the message via increasingly dramatic approaches.
+/// 1. Attempt to DM the guild owner
+/// 2. Ping the highest mentionable role in the first channel that can be messaged
+///
+/// If any attempt to notify of a misconfigured log channel succeeds, the log channel will be unset, otherise it will be left alone.
+fn send_bot_log_message(
+    context: &FrameworkContext<'_, Data, Error>,
+    guild_id: GuildId,
+    log_channel: ChannelId,
+    bot_log_message: CreateMessage,
+) {
+    let cache = context.serenity_context.cache.clone();
+    let http = context.serenity_context.http.clone();
+    let db = context.user_data.db.clone();
+    tokio::task::spawn(async move {
+        let result = log_channel.send_message(&http, bot_log_message).await;
+        if let Err(mystery_error) = result {
+            match mystery_error {
+                serenity::Error::Http(serenity::HttpError::UnsuccessfulRequest(error)) if error.status_code == 403 => {
+                    // Handle the case where we have missing access. This happens sometimes if a guild owner screws up their
+                    // log channel, for example by deleting it or fucking up the permissions.
+
+                    // fist, try messaging the owner
+                    if let Some((owner, message)) = cache.guild(guild_id).map(|guild| {
+                        let message = CreateMessage::default().content(format!(
+                            "My log channel in \"{}\" is no longer working. Please use `/set_log_channel` to fix it.",
+                            guild.name
+                        ));
+                        (guild.owner_id, message)
+                    }) {
+                        match owner.direct_message(&http, message).await {
+                            Ok(_) => {
+                                // WE DID IT
+                                info!(
+                                    "Error logging to log channel in {}, but was able to notify guild owner. {:?}",
+                                    guild_id.get(),
+                                    error
+                                );
+                                if let Err(e) = db.set_log_channel(guild_id, None).await {
+                                    warn!("Error unsetting log channel: {e:?}");
+                                }
+                                return;
+                            }
+                            Err(e) => {
+                                info!(
+                                    "Error logging to log channel in {}, and was unable to DM guild owner: {:?}",
+                                    guild_id.get(),
+                                    e
+                                );
+                            }
+                        };
+                    }
+
+                    // next, we need to determine the highest mentionable role and start trying to ping it in every channel
+                    if db.can_nag_public_channels().await.unwrap_or(false) {
+                        // wait a bit between trying next method
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+
+                        match util::highest_mentionable_role(&cache, guild_id) {
+                            Ok(Some(nag_role)) => match util::sorted_channels(&cache, guild_id) {
+                                Ok(channels) => {
+                                    let message = CreateMessage::default()
+                                        .content(format!("<@&{}>, my log channel <#{}> is no longer working. Please use `/set_log_channel` to fix it.", nag_role.get(), log_channel.get()));
+                                    for (_position, channel_id) in channels {
+                                        match channel_id.send_message((&cache, http.as_ref()), message.clone()).await {
+                                            Ok(_) => {
+                                                // WE DID IT
+                                                info!(
+                                                    "Error logging to log channel in {}, but was able to ping some arbitrary channel. {:?}",
+                                                    guild_id.get(),
+                                                    error
+                                                );
+                                                if let Err(e) = db.set_log_channel(guild_id, None).await {
+                                                    warn!("Error unsetting log channel: {e:?}");
+                                                }
+                                                return;
+                                            }
+                                            Err(_e) => {
+                                                // wait a bit between each message attempt
+                                                tokio::time::sleep(Duration::from_secs(5)).await;
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Error listing channels in {}: {:?}", guild_id.get(), e);
+                                }
+                            },
+                            Ok(None) => {
+                                warn!("No mentionable role in {}", guild_id.get());
+                            }
+                            Err(e) => {
+                                warn!("Error getting highest mentionable role in {}: {:?}", guild_id.get(), e);
+                            }
+                        }
+                    }
+
+                    // If nothing worked, log this as info and give up
+                    info!(
+                        "Error logging to log channel {} in {}, and was unable to contact owners. {:?}",
+                        log_channel.get(),
+                        guild_id.get(),
+                        error
+                    )
+                }
+                _ => {
+                    // In all other cases where we've gotten some mystery error, log this as a warning
+                    warn!(
+                        "Error logging to log channel {} in {}: {:?}",
+                        log_channel.get(),
+                        guild_id.get(),
+                        mystery_error
+                    )
+                }
             }
         }
-    }
+    });
 }

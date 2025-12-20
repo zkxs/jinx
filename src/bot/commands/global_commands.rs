@@ -92,7 +92,7 @@ pub(in crate::bot) async fn add_store(
 
     let reply = if api_key == "install_owner_commands" {
         // here we have a bit of an easter-egg to install owner commands
-        // it is done this way because you can't have secret slash commands, and /init is installed globally.
+        // it is done this way because you can't have secret slash commands, and /add_store is installed globally.
 
         if check_owner(context).await? {
             context.data().db.set_owner_guild(guild_id, true).await?;
@@ -117,7 +117,7 @@ pub(in crate::bot) async fn add_store(
             error_reply("Error Uninstalling Owner Commands", "Not an owner")
         }
     } else if JINXXY_API_KEY_REGEX.with(|regex| regex.is_match(api_key)) {
-        // normal /init <key> use ends up in this branch
+        // normal /add_store <key> use ends up in this branch
         match jinxxy::get_own_user(api_key).await {
             Ok(auth_user) => {
                 let has_required_scopes = auth_user.has_required_scopes();

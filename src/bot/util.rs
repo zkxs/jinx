@@ -14,8 +14,8 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serenity::{
-    AutocompleteChoice, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, GuildId, Http, Message,
-    MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
+    AutocompleteChoice, Cache, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, GuildId, Http,
+    Message, MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -81,6 +81,47 @@ pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String
     Ok(license_id)
 }
 
+pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Option<RoleId>, Error> {
+    let guild = guild_id
+        .to_guild_cached(cache)
+        .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
+    let roles = &guild.roles;
+    let max_role = roles
+        .iter()
+        .filter_map(|(role_id, role)| role.mentionable.then_some((role.position, *role_id)))
+        .max_by(|(position_a, role_id_a), (position_b, role_id_b)| {
+            // bigger position is better, then smaller role_id is better
+            position_a.cmp(position_b).then(role_id_b.cmp(role_id_a))
+        })
+        .map(|(_position, role_id)| role_id);
+    Ok(max_role)
+}
+
+pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Vec<(u16, ChannelId)>, Error> {
+    let guild = guild_id
+        .to_guild_cached(cache)
+        .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
+    let mut channels = guild
+        .channels
+        .iter()
+        .map(|(channel_id, channel)| (channel.position, *channel_id))
+        .collect::<Vec<_>>();
+    channels.sort_unstable_by(|(pos_a, id_a), (pos_b, id_b)| pos_a.cmp(pos_b).then(id_b.cmp(id_a)));
+    Ok(channels)
+}
+
+pub(super) fn role_name(
+    cache: &impl AsRef<Cache>,
+    guild_id: GuildId,
+    role_id: RoleId,
+) -> Result<Option<String>, Error> {
+    let guild = guild_id
+        .to_guild_cached(cache)
+        .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
+    let role_name = guild.roles.get(&role_id).map(|role| role.name.clone());
+    Ok(role_name)
+}
+
 pub(super) async fn assignable_roles(
     context: &Context<'_>,
     guild_id: GuildId,
@@ -126,12 +167,12 @@ pub(super) async fn assignable_roles(
 }
 
 pub(super) fn deleted_roles(
-    context: &Context<'_>,
+    cache: &impl AsRef<Cache>,
     guild_id: GuildId,
     known_roles: impl Iterator<Item = RoleId>,
 ) -> Result<Vec<RoleId>, Error> {
     let guild = guild_id
-        .to_guild_cached(context)
+        .to_guild_cached(cache)
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
     let roles = &guild.roles;
     Ok(known_roles.filter(|role| !roles.contains_key(role)).collect())
