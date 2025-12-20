@@ -206,6 +206,14 @@ impl ApiCache {
                         // we have no data yet, so there is no reason to have a timeout
                         Ok(refresh_register_rx.recv().await)
                     };
+
+                    if matches!(received_event, Ok(None)) {
+                        // channel is closed, so stop this task
+                        // we intentionally do this check BEFORE the db read we're about to do, because if the channel is
+                        // closed the DB is almost certainly also closed, which would cause us to log scary errors
+                        break 'outer;
+                    }
+
                     let low_priority_cache_expiry_time = match db.get_low_priority_cache_expiry_time().await {
                         Ok(Some(expiry_time)) => expiry_time,
                         Ok(None) => DEFAULT_LOW_PRIORITY_CACHE_EXPIRY_TIME,
@@ -265,7 +273,10 @@ impl ApiCache {
                             }
                         }
                         Ok(None) => {
-                            // channel is broken, so stop this task
+                            // channel is closed, so stop this task. We check for this further up, so this check is redundant.
+                            error!(
+                                "Low priority refresh task channel is closed, but we should have already checked for this! Stupid programmer!"
+                            );
                             break 'outer;
                         }
                         Err(()) => {
