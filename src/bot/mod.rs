@@ -213,6 +213,8 @@ impl Bot {
                     {
                         let db = db.clone();
                         tokio::task::spawn(async move {
+                            // an extra 30 minute phase shift so this doesn't align with the 24h optimize
+                            tokio::time::sleep(Duration::from_secs(30 * SECONDS_PER_MINUTE)).await;
                             loop {
                                 // 1 hour per checkpoint. We do not checkpoint on startup.
                                 tokio::time::sleep(Duration::from_secs(SECONDS_PER_HOUR)).await;
