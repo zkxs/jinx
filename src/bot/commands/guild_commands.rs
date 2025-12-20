@@ -193,8 +193,8 @@ pub(in crate::bot) async fn create_post(
                     display_name
                 };
                 let embed = CreateEmbed::default()
-                        .title("Jinxxy Product Registration")
-                        .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
+                    .title("Jinxxy Product Registration")
+                    .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
                 let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
                     embed.thumbnail(profile_image_url)
                 } else {
@@ -1130,61 +1130,67 @@ pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: Guil
         // /init and /link_product do background cache warming.
         linked_roles.sort_unstable(); // make sure the roles are listed in a consistent order and not subject to HashMap randomization
         let mut message = String::new();
-        for store in link_info.stores {
-            context
-                .data()
-                .api_cache
-                .get(&context.data().db, guild_id, &store.jinxxy_user_id, |cache| {
-                    let mut first_line = true;
-                    for role in &linked_roles {
-                        if first_line {
-                            first_line = false;
-                        } else {
-                            message.push('\n');
-                        }
-                        message.push_str(format!("- <@&{}> granted by:", role.get()).as_str());
-                        let link_sources = link_info.links.get(role).expect(
-                            "we just queried a map with its own key list, how the hell is it missing an entry now?",
-                        );
-                        for link_source in link_sources {
-                            // In the majority of cases we get a name &str here, so we use a Cow<str> to avoid a bunch of copies.
-                            // Only in the case where we have to show an un-cached product version do we need to build an owned String.
-                            let name = match link_source {
-                                LinkSource::GlobalBlanket => Cow::Borrowed("`*`"),
-                                LinkSource::ProductBlanket { product_id } => {
-                                    let name = cache.product_id_to_name(product_id).unwrap_or(product_id.as_str());
-                                    Cow::Borrowed(name)
-                                }
-                                LinkSource::ProductVersion { product_version_id } => cache
+        let mut first_line = true;
+        for role in &linked_roles {
+            if first_line {
+                first_line = false;
+            } else {
+                message.push('\n');
+            }
+            message.push_str(format!("- <@&{}> granted by:", role.get()).as_str());
+            let link_sources = link_info
+                .links
+                .get(role)
+                .expect("we just queried a map with its own key list, how the hell is it missing an entry now?");
+            for link_source in link_sources {
+                // In the majority of cases we get a name &str here, so we use a Cow<str> to avoid a bunch of copies.
+                // Only in the case where we have to show an un-cached product version do we need to build an owned String.
+                let name = match link_source {
+                    LinkSource::GlobalBlanket => Cow::Borrowed("`*`"),
+                    LinkSource::ProductBlanket {
+                        jinxxy_user_id,
+                        product_id,
+                    } => {
+                        let store_display_name = link_info
+                            .stores
+                            .get(jinxxy_user_id)
+                            .map(|s| s.as_str())
+                            .unwrap_or(jinxxy_user_id.as_str());
+                        context
+                            .data()
+                            .api_cache
+                            .get(&context.data().db, guild_id, jinxxy_user_id, |cache| {
+                                let product_name = cache.product_id_to_name(product_id).unwrap_or(product_id.as_str());
+                                Cow::Owned(format!("{store_display_name}: {product_name}"))
+                            })
+                            .await?
+                    }
+                    LinkSource::ProductVersion {
+                        jinxxy_user_id,
+                        product_version_id,
+                    } => {
+                        let store_display_name = link_info
+                            .stores
+                            .get(jinxxy_user_id)
+                            .map(|s| s.as_str())
+                            .unwrap_or(jinxxy_user_id.as_str());
+                        context
+                            .data()
+                            .api_cache
+                            .get(&context.data().db, guild_id, jinxxy_user_id, |cache| {
+                                let product_version_name = cache
                                     .product_version_id_to_name(product_version_id)
                                     .map(Cow::Borrowed)
-                                    .unwrap_or_else(|| Cow::Owned(format!("{product_version_id}"))),
-                            };
-                            message.push_str("\n  - ");
-                            message.push_str(
-                                store
-                                    .jinxxy_username
-                                    .as_deref()
-                                    .unwrap_or(store.jinxxy_user_id.as_str()),
-                            );
-                            message.push_str(": ");
-                            message.push_str(&name);
-                        }
+                                    .unwrap_or_else(|| Cow::Owned(format!("{product_version_id}")));
+                                Cow::Owned(format!("{store_display_name}: {product_version_name}"))
+                            })
+                            .await?
                     }
+                };
 
-                    // discord has a message length limit of "4096 characters", but they do not specify if the mean
-                    // codepoints or code units (bytes) by "characters". We check here to see if we're more than 80%
-                    // (> 3276 bytes) of the way to 4096.
-                    const MESSAGE_LENGTH_WARN_THRESHOLD: usize = 3276;
-                    if message.len() > MESSAGE_LENGTH_WARN_THRESHOLD {
-                        warn!(
-                            "/list_links in {} had length of {}, which is getting dangerously close to the limit",
-                            guild_id.get(),
-                            message.len()
-                        );
-                    }
-                })
-                .await?;
+                message.push_str("\n  - ");
+                message.push_str(&name);
+            }
         }
         message
     };

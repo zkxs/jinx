@@ -809,15 +809,20 @@ impl JinxDb {
         let mut links: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState> = Default::default();
 
         // enumerate linked stores
-        let stores = sqlx::query_as!(
-            LinkedDisplayStore,
-            r#"SELECT jinxxy_user_id, jinxxy_username FROM jinxxy_user_guild
-               LEFT JOIN jinxxy_user USING (jinxxy_user_id)
-               WHERE guild_id = ?"#,
-            guild_id
-        )
-        .fetch_all(&mut *transaction)
-        .await?;
+        let mut stores: HashMap<String, String, ahash::RandomState> = Default::default();
+        {
+            let mut rows = sqlx::query!(
+                r#"SELECT jinxxy_user_id, jinxxy_username AS "jinxxy_username!" FROM jinxxy_user_guild
+                   LEFT JOIN jinxxy_user USING (jinxxy_user_id)
+                   WHERE guild_id = ?
+                   AND jinxxy_username IS NOT NULL"#,
+                guild_id
+            )
+            .fetch(&mut *transaction);
+            while let Some(row) = rows.try_next().await? {
+                stores.insert(row.jinxxy_user_id, row.jinxxy_username);
+            }
+        }
 
         // deal with global blanket
         {
@@ -835,37 +840,38 @@ impl JinxDb {
         // deal with product blankets
         {
             let mut product_result = sqlx::query!(
-                r#"SELECT product_id, role_id FROM product_role WHERE guild_id = ?"#,
+                r#"SELECT jinxxy_user_id, product_id, role_id FROM product_role WHERE guild_id = ?"#,
                 guild_id
             )
-            .map(|row| (RoleId::new(row.role_id as u64), row.product_id))
+            .map(|row| (RoleId::new(row.role_id as u64), row.jinxxy_user_id, row.product_id))
             .fetch(&mut *transaction);
-            while let Some((role, product_id)) = product_result.try_next().await? {
-                links
-                    .entry(role)
-                    .or_default()
-                    .push(LinkSource::ProductBlanket { product_id });
+            while let Some((role, jinxxy_user_id, product_id)) = product_result.try_next().await? {
+                links.entry(role).or_default().push(LinkSource::ProductBlanket {
+                    jinxxy_user_id,
+                    product_id,
+                });
             }
         }
 
         // deal with specific links
         {
             let mut product_version_result = sqlx::query!(
-                r#"SELECT product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,
+                r#"SELECT jinxxy_user_id, product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,
                 guild_id
             )
             .map(|row| {
                 (
                     RoleId::new(row.role_id as u64),
+                    row.jinxxy_user_id,
                     ProductVersionId::from_db_values(row.product_id, row.version_id),
                 )
             })
             .fetch(&mut *transaction);
-            while let Some((role, product_version_id)) = product_version_result.try_next().await? {
-                links
-                    .entry(role)
-                    .or_default()
-                    .push(LinkSource::ProductVersion { product_version_id });
+            while let Some((role, jinxxy_user_id, product_version_id)) = product_version_result.try_next().await? {
+                links.entry(role).or_default().push(LinkSource::ProductVersion {
+                    jinxxy_user_id,
+                    product_version_id,
+                });
             }
         }
 
@@ -1587,22 +1593,22 @@ pub struct GuildGumroadInfo {
 
 /// Helper struct returned by [`JinxDb::get_links`].
 pub struct Links {
-    pub stores: Vec<LinkedDisplayStore>,
+    /// store_id -> store_name map
+    pub stores: HashMap<String, String, ahash::RandomState>,
     pub links: HashMap<RoleId, Vec<LinkSource>, ahash::RandomState>,
-}
-
-/// Helper struct used by [`Links`]. This is the parts of a store needed for display only.
-#[derive(sqlx::FromRow)]
-pub struct LinkedDisplayStore {
-    pub jinxxy_user_id: String,
-    pub jinxxy_username: Option<String>,
 }
 
 /// Helper enum used by [`Links`]. This is any source for a product->role link.
 pub enum LinkSource {
     GlobalBlanket,
-    ProductBlanket { product_id: String },
-    ProductVersion { product_version_id: ProductVersionId },
+    ProductBlanket {
+        jinxxy_user_id: String,
+        product_id: String,
+    },
+    ProductVersion {
+        jinxxy_user_id: String,
+        product_version_id: ProductVersionId,
+    },
 }
 
 /// Helper struct returned by [`JinxDb::get_store_cache`] and taken by [`JinxDb::persist_store_cache`].
