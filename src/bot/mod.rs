@@ -108,8 +108,6 @@ pub struct Bot {
 impl Bot {
     pub async fn new() -> Result<Self, Error> {
         let db = JinxDb::open().await?;
-        debug!("DB opened");
-
         let discord_token = db.get_discord_token().await?.ok_or_else(|| {
             JinxError::new(
                 "discord token not provided. Re-run the application with the `init` subcommand to run first-time setup.",
