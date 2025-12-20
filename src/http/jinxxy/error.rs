@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::util::IsDeterministic;
 use crate::error::SafeDisplay;
 use bytes::Bytes;
 use reqwest::{Response, StatusCode};
@@ -125,10 +126,8 @@ impl JinxxyError {
         Self::Join(join_error)
     }
 
-    /// Check if an error looks like a 401.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_401(&self) -> bool {
+    /// Check if an error is a 401, handling cases where Jinxxy improperly sets the HTTP status code as 500.
+    pub fn is_401(&self) -> bool {
         match self {
             Self::HttpResponse(response) => match &response.body {
                 HttpBody::JsonErrorResponse(body) => response.status_code == 401 || body.looks_like_401(),
@@ -138,10 +137,8 @@ impl JinxxyError {
         }
     }
 
-    /// Check if an error looks like a 403.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_403(&self) -> bool {
+    /// Check if an error is a 403, handling cases where Jinxxy improperly sets the HTTP status code as 500.
+    pub fn is_403(&self) -> bool {
         match self {
             Self::HttpResponse(response) => match &response.body {
                 HttpBody::JsonErrorResponse(body) => response.status_code == 403 || body.looks_like_403(),
@@ -151,16 +148,43 @@ impl JinxxyError {
         }
     }
 
-    /// Check if an error looks like a 404.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_404(&self) -> bool {
+    /// Check if an error is a 404, handling cases where Jinxxy improperly sets the HTTP status code as 500.
+    pub fn is_404(&self) -> bool {
         match self {
             Self::HttpResponse(response) => match &response.body {
                 HttpBody::JsonErrorResponse(body) => response.status_code == 404 || body.looks_like_404(),
                 _ => false,
             },
             _ => false,
+        }
+    }
+
+    /// Check if this error was caused by an invalid Jinxxy API key
+    pub fn is_api_key_invalid(&self) -> bool {
+        self.is_401() || self.is_403()
+    }
+}
+
+impl IsDeterministic for JinxxyError {
+    fn is_deterministic(&self) -> bool {
+        match self {
+            JinxxyError::HttpResponse(e) => {
+                // treat all 4xx errors as deterministic, and all others as worth retrying
+                e.status_code.is_client_error()
+                    || matches!(
+                        &e.body,
+                        HttpBody::JsonErrorResponse(body)
+                        if body.looks_like_401()
+                            || body.looks_like_403()
+                            || body.looks_like_404()
+                    )
+            }
+            JinxxyError::HttpRequest(_) => false,
+            JinxxyError::HttpRead(_) => false,
+            JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives an arbitrary status code with an HTML error page, which web APIs are wont to do
+            JinxxyError::Join(_) => false,
+            JinxxyError::Impossible304 => true,
+            JinxxyError::UnsupportedPagination(_) => true,
         }
     }
 }
@@ -180,12 +204,6 @@ pub struct HttpResponse {
     status_code: StatusCode,
     headers: String,
     body: HttpBody,
-}
-
-impl HttpResponse {
-    pub fn status(&self) -> StatusCode {
-        self.status_code
-    }
 }
 
 #[derive(Debug)]

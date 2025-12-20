@@ -103,6 +103,6 @@ impl JinxError {
 
     /// Check if this error was caused by an invalid Jinxxy API key
     pub fn is_api_key_invalid(&self) -> bool {
-        matches!(self, JinxError::Jinxxy(jinx_error) if jinx_error.looks_like_401())
+        matches!(self, JinxError::Jinxxy(jinx_error) if jinx_error.is_api_key_invalid())
     }
 }

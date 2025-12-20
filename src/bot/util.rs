@@ -7,7 +7,6 @@ use crate::bot::{AUTOCOMPLETE_CHARACTER_LIMIT, CREATOR_COMMANDS, Context, OWNER_
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::JinxxyError;
 use crate::license;
 use poise::{CreateReply, serenity_prelude as serenity};
 use rand::distr::{Distribution, StandardUniform};
@@ -494,23 +493,9 @@ where
 
 /// Some item that is known to be either deterministic or non-deterministic. This behavior is useful to know, as if
 /// recreating this item will always yield the same result then there is no reason to recreate the item.
-pub trait Determinable {
+pub trait IsDeterministic {
     /// Check if this item is deterministic or non-deterministic.
     fn is_deterministic(&self) -> bool;
-}
-
-impl Determinable for JinxxyError {
-    fn is_deterministic(&self) -> bool {
-        match self {
-            JinxxyError::HttpResponse(e) => e.status() == 403 || e.status() == 404,
-            JinxxyError::HttpRequest(_) => false,
-            JinxxyError::HttpRead(_) => false,
-            JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives a 200 with a HTML error page, which web APIs are wont to do
-            JinxxyError::Join(_) => false,
-            JinxxyError::Impossible304 => true,
-            JinxxyError::UnsupportedPagination(_) => true,
-        }
-    }
 }
 
 /// Calls `provider` up to four times (three retry attempts maximum) until an `Ok` is returned.
@@ -519,7 +504,7 @@ pub async fn retry_thrice<Provider, T, ResultFuture, E>(provider: Provider) -> R
 where
     Provider: FnMut() -> ResultFuture,
     ResultFuture: Future<Output = Result<T, E>> + Sized,
-    E: Debug + Determinable,
+    E: Debug + IsDeterministic,
 {
     let mut retry_count: u8 = 0;
     retry(provider, move |result| match result {
