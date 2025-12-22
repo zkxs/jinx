@@ -6,7 +6,13 @@
       {
         "name": "default_jinxxy_user",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "default_jinxxy_user"
+          }
+        }
       }
     ],
     "parameters": {

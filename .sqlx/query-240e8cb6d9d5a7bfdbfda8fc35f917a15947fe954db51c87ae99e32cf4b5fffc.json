@@ -6,7 +6,13 @@
       {
         "name": "is_test: bool",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "test"
+          }
+        }
       }
     ],
     "parameters": {

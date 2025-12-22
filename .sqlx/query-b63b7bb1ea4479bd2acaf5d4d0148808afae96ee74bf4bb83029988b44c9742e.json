@@ -6,7 +6,13 @@
       {
         "name": "product_id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product",
+            "name": "product_id"
+          }
+        }
       }
     ],
     "parameters": {

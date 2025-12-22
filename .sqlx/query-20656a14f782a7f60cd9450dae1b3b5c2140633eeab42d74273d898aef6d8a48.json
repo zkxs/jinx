@@ -6,12 +6,24 @@
       {
         "name": "guild_id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user_guild",
+            "name": "guild_id"
+          }
+        }
       },
       {
         "name": "jinxxy_api_key",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user_guild",
+            "name": "jinxxy_api_key"
+          }
+        }
       }
     ],
     "parameters": {

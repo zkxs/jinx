@@ -6,22 +6,46 @@
       {
         "name": "jinxxy_user_id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "license_activation",
+            "name": "jinxxy_user_id"
+          }
+        }
       },
       {
         "name": "jinxxy_api_key",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user_guild",
+            "name": "jinxxy_api_key"
+          }
+        }
       },
       {
         "name": "license_id",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "license_activation",
+            "name": "license_id"
+          }
+        }
       },
       {
         "name": "jinxxy_username",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user",
+            "name": "jinxxy_username"
+          }
+        }
       }
     ],
     "parameters": {

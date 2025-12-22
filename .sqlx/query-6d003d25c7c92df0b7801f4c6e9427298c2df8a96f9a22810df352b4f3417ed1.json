@@ -6,7 +6,13 @@
       {
         "name": "role_id!",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "blanket_role_id"
+          }
+        }
       }
     ],
     "parameters": {

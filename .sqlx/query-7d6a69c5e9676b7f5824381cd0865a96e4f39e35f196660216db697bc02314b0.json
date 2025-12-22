@@ -6,7 +6,13 @@
       {
         "name": "jinxxy_api_key",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user_guild",
+            "name": "jinxxy_api_key"
+          }
+        }
       }
     ],
     "parameters": {

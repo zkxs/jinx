@@ -6,7 +6,13 @@
       {
         "name": "owner_id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "owner",
+            "name": "owner_id"
+          }
+        }
       }
     ],
     "parameters": {

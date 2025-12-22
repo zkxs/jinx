@@ -6,7 +6,13 @@
       {
         "name": "cache_time_unix_ms",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user",
+            "name": "cache_time_unix_ms"
+          }
+        }
       }
     ],
     "parameters": {
