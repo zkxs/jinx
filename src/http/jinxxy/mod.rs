@@ -10,11 +10,13 @@ use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
 use crate::db::JinxDb;
 use crate::error::JinxError;
+use crate::license::LicenseKey;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Response, header};
 use serde::de::DeserializeOwned;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::task::JoinSet;
@@ -96,14 +98,6 @@ pub async fn get_own_user(api_key: &str) -> JinxxyResult<AuthUser> {
     Ok(response)
 }
 
-/// Represents all allowed license formats
-#[derive(Clone)]
-pub enum LicenseKey<'a> {
-    Id(&'a str),
-    Short(&'a str),
-    Long(&'a str),
-}
-
 /// Get the license id corresponding to a license key, or `None` if the license key is invalid.
 ///
 /// Note that this function does **not** verify if a provided license ID is valid: it only converts
@@ -112,33 +106,35 @@ pub async fn get_license_id(api_key: &str, license: LicenseKey<'_>) -> JinxxyRes
     match license {
         LicenseKey::Id(license_id) => {
             // maybe one day I'll need to verify these, but not today
-            Ok(Some(license_id.to_string()))
+            Ok(Some(license_id.into_string()))
         }
-        LicenseKey::Short(license_key) | LicenseKey::Long(license_key) => {
-            // first, search for the license key
-            let search_key = if matches!(license, LicenseKey::Short(_)) {
-                "short_key"
-            } else {
-                "key"
-            };
-            static ENDPOINT: &str = "GET /licenses";
-            let start_time = Instant::now();
-            let response = HTTP_CLIENT
-                .get(format!("{JINXXY_BASE_URL}licenses")) // this does NOT work with `limit` set.
-                .headers(get_headers(api_key))
-                .query(&[(search_key, license_key)])
-                .send()
-                .await
-                .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
-            debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
-            let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
-            if let Some(result) = response.results.first() {
-                Ok(Some(result.id.to_string()))
-            } else {
-                debug!("could not look up user-provided license key");
-                Ok(None)
-            }
-        }
+        LicenseKey::Short(license_key) => get_license_id_impl(api_key, "short_key", license_key.get()).await,
+        LicenseKey::Long(license_key) => get_license_id_impl(api_key, "key", license_key.get()).await,
+    }
+}
+
+/// Actual API-hit used by [`get_license_id`]
+async fn get_license_id_impl(
+    api_key: &str,
+    search_key: &str,
+    license_key: Cow<'_, str>,
+) -> JinxxyResult<Option<String>> {
+    static ENDPOINT: &str = "GET /licenses";
+    let start_time = Instant::now();
+    let response = HTTP_CLIENT
+        .get(format!("{JINXXY_BASE_URL}licenses")) // this does NOT work with `limit` set.
+        .headers(get_headers(api_key))
+        .query(&[(search_key, license_key)])
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
+    if let Some(result) = response.results.first() {
+        Ok(Some(result.id.to_string()))
+    } else {
+        debug!("could not look up user-provided license key");
+        Ok(None)
     }
 }
 
@@ -150,7 +146,7 @@ pub async fn check_license_id(
     license_id: &str,
     inject_product_version_name: bool,
 ) -> JinxxyResult<Option<LicenseInfo>> {
-    check_license(api_key, LicenseKey::Id(license_id), inject_product_version_name).await
+    check_license(api_key, LicenseKey::from_id(license_id), inject_product_version_name).await
 }
 
 /// Get the license info corresponding to a license key, or `None` if the license key is invalid.
@@ -166,6 +162,7 @@ pub async fn check_license(
             // look up license directly by ID
             static ENDPOINT: &str = "GET /licenses/<id>";
             let start_time = Instant::now();
+            let license_id = license_id.get();
             let response = HTTP_CLIENT
                 .get(format!("{JINXXY_BASE_URL}licenses/{license_id}"))
                 .headers(get_headers(api_key))
@@ -191,46 +188,53 @@ pub async fn check_license(
                 }
             }
         }
-        LicenseKey::Short(license_key) | LicenseKey::Long(license_key) => {
-            // first, search for the license key
-            let search_key = if matches!(license, LicenseKey::Short(_)) {
-                "short_key"
-            } else {
-                "key"
-            };
-            static ENDPOINT: &str = "GET /licenses";
-            let start_time = Instant::now();
-            let response = HTTP_CLIENT
-                .get(format!("{JINXXY_BASE_URL}licenses"))
-                .headers(get_headers(api_key))
-                .query(&[(search_key, license_key)])
-                .send()
-                .await
-                .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
-            debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
-            let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
-            if let Some(result) = response.results.first() {
-                // now look up the license directly by ID
-                static ENDPOINT: &str = "GET /licenses/<id>";
-                let start_time = Instant::now();
-                let response = HTTP_CLIENT
-                    .get(format!("{}licenses/{}", JINXXY_BASE_URL, result.id))
-                    .headers(get_headers(api_key))
-                    .send()
-                    .await
-                    .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
-                debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
-                let response: dto::License = read_2xx_json(ENDPOINT, response).await?;
-                let mut response: LicenseInfo = response.into();
-                if inject_product_version_name {
-                    add_product_version_name_to_license_info(api_key, &mut response).await?;
-                }
-                Ok(Some(response))
-            } else {
-                debug!("could not look up user-provided license key");
-                Ok(None)
-            }
+        LicenseKey::Short(license_key) => {
+            check_license_impl(api_key, "short_key", license_key.get(), inject_product_version_name).await
         }
+        LicenseKey::Long(license_key) => {
+            check_license_impl(api_key, "key", license_key.get(), inject_product_version_name).await
+        }
+    }
+}
+
+/// Actual API-hit used by [`check_license`]
+pub async fn check_license_impl(
+    api_key: &str,
+    search_key: &str,
+    license_key: Cow<'_, str>,
+    inject_product_version_name: bool,
+) -> JinxxyResult<Option<LicenseInfo>> {
+    static ENDPOINT: &str = "GET /licenses";
+    let start_time = Instant::now();
+    let response = HTTP_CLIENT
+        .get(format!("{JINXXY_BASE_URL}licenses"))
+        .headers(get_headers(api_key))
+        .query(&[(search_key, license_key)])
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    let response: dto::LicenseList = read_2xx_json(ENDPOINT, response).await?;
+    if let Some(result) = response.results.first() {
+        // now look up the license directly by ID
+        static ENDPOINT: &str = "GET /licenses/<id>";
+        let start_time = Instant::now();
+        let response = HTTP_CLIENT
+            .get(format!("{}licenses/{}", JINXXY_BASE_URL, result.id))
+            .headers(get_headers(api_key))
+            .send()
+            .await
+            .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+        debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+        let response: dto::License = read_2xx_json(ENDPOINT, response).await?;
+        let mut response: LicenseInfo = response.into();
+        if inject_product_version_name {
+            add_product_version_name_to_license_info(api_key, &mut response).await?;
+        }
+        Ok(Some(response))
+    } else {
+        debug!("could not look up user-provided license key");
+        Ok(None)
     }
 }
 

@@ -7,8 +7,7 @@ use crate::bot::{CUSTOM_ID_CHARACTER_LIMIT, util};
 use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
-use crate::license;
-use crate::license::LicenseType;
+use crate::license::{ActivationValidation, LicenseType};
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
@@ -380,7 +379,7 @@ async fn handle_license_registration<'a>(
         };
 
         let user_id = modal_interaction.user.id;
-        let license_type = license::identify_license(license_key);
+        let license_type = LicenseType::identify(license_key);
 
         debug!(
             "got license in {} from <@{}> which looks like {}",
@@ -470,7 +469,7 @@ async fn handle_license_registration<'a>(
                     let activations =
                         util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
                             .await?;
-                    let validation = license::validate_jinxxy_license_activation(user_id, &activations);
+                    let validation = ActivationValidation::new(user_id, &activations);
                     (Some(activations), validation)
                 };
 
@@ -582,7 +581,7 @@ async fn handle_license_registration<'a>(
                         let activations =
                             util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
                                 .await?;
-                        validation = license::validate_jinxxy_license_activation(user_id, &activations);
+                        validation = ActivationValidation::new(user_id, &activations);
 
                         // log if multiple activations for different users
                         if validation.multiple {
