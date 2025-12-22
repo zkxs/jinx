@@ -20,7 +20,8 @@ opt-level = 3 # unoptimized sqlx macros can really slow down builds
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "time"] } # Async runtime
 tokio-graceful-shutdown = "0.19" # Handles SIGINT/SIGTERM/Ctrl+C
-poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next" } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1 + unreleased `next` branch + my two PRs applied
+poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next", default-features = false, features = ["cache", "handle_panics"] } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1 + unreleased `next` branch + my two PRs applied
+serenity = { version = "0.12", default-features = false, features = ["rustls_backend"] } # Required because `default-features = false` is broken on poise
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "brotli", "deflate", "zstd", "json", "http2", "rustls-tls"] } # HTTP client
 serde = "1" # Serialization
 serde_json = "1" # Serialization
@@ -34,8 +35,8 @@ ahash = "0.8" # faster hashing algorithm than std
 percent-encoding = "2" # URL encoding
 semver = "1" # Semver parsing (for update check)
 clap = { version = "4", features = ["derive"] } # command-line arg parsing
-trie-rs = "0.4"
-bytes = "1"
+trie-rs = "0.4" # autocompletion
+bytes = "1" # HTTP body handling
 
 [dev-dependencies]
 tracing-test = "0.2" # Allow tracing to print during unit tests
