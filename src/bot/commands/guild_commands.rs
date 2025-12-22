@@ -194,7 +194,11 @@ pub(in crate::bot) async fn create_post(
                 };
                 let embed = CreateEmbed::default()
                     .title("Jinxxy Product Registration")
-                    .description(format!("Press the button below to register a Jinxxy license key for any of {display_name} products. You can find your license key in your email receipt or at [jinxxy.com](<https://jinxxy.com/my/inventory>)."));
+                    .description(format!(
+                        "Press the button below to register a Jinxxy license key for any of {display_name} products. \
+                        You can find your license key in your email receipt or in \
+                        [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
+                    ));
                 let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
                     embed.thumbnail(profile_image_url)
                 } else {

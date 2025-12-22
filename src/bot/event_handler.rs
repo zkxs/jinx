@@ -227,6 +227,9 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             match custom_id {
                 // create the register form when a user presses the register button
                 (REGISTER_BUTTON_ID, jinxxy_user_id) => {
+                    //TODO: shove the following text into a text component once Serenity lets me
+                    // You can find your license key in your email receipt or in \
+                    // [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button.
                     let components = vec![CreateActionRow::InputText(
                         CreateInputText::new(InputTextStyle::Short, "Jinxxy License Key", LICENSE_KEY_ID)
                             .placeholder("XXXX-cd071c534191"),
@@ -424,7 +427,9 @@ async fn handle_license_registration<'a>(
                     "The provided Jinxxy license key was not valid or is already in use.\n\n\
                                     **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
                                     Please confirm you are providing the correct value to the correct bot. \
-                                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
+                                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`. \
+                                    You can find your license key in your email receipt or in \
+                                    [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
                 )
             };
             let embed = CreateEmbed::default()

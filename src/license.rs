@@ -16,7 +16,7 @@ const JINXXY_LONG_KEY_INDEX: usize = 1;
 const GUMROAD_KEY_INDEX: usize = 2;
 const NUMBER_KEY_INDEX: usize = 3;
 const PAYHIP_KEY_INDEX: usize = 4;
-const PI_KEY_INDEX: usize = 5;
+const JINXXY_TRANSACTION_ID_INDEX: usize = 5;
 static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
     RegexSet::new([
         r"^[A-Z]{4}-[a-f0-9]{12}$", // jinxxy short key `XXXX-cd071c534191`
@@ -24,7 +24,7 @@ static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
         r"^[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$", // gumroad key `ABCD1234-1234FEDC-0987A321-A2B3C5D6`
         r"^[0-9]+$",                                          // an integer number `3245554511053325533`
         r"^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$", // payhip key `WTKP4-66NL5-HMKQW-GFSCZ`
-        r"^pi_[A-Za-z0-9]{24}$", // I'm not sure what these are. Possible new Gumroad format?
+        r"^pi_[A-Za-z0-9]{24}$",                              // Jinxxy transaction ID
     ])
     .expect("Failed to compile license heuristic RegexSet")
 }); // in case you are wondering the above are not real keys: they're only examples
@@ -44,6 +44,7 @@ pub enum LicenseType {
     Gumroad,
     Integer,
     Payhip,
+    JinxxyTransactionId,
     Unknown,
     /// Not possible under current regex set, but we have the logic for it anyway
     Ambiguous,
@@ -77,6 +78,7 @@ impl LicenseType {
             LicenseType::Integer => None,
             LicenseType::Gumroad => None,
             LicenseType::Payhip => None,
+            LicenseType::JinxxyTransactionId => None,
             LicenseType::Unknown => None,
             LicenseType::Ambiguous => None,
         }
@@ -92,6 +94,7 @@ impl LicenseType {
             LicenseType::Integer => Some(LicenseKey::Id(license)),
             LicenseType::Gumroad => None,
             LicenseType::Payhip => None,
+            LicenseType::JinxxyTransactionId => None,
             LicenseType::Unknown => None,
             LicenseType::Ambiguous => None,
         }
@@ -106,6 +109,7 @@ impl Display for LicenseType {
             LicenseType::Gumroad => write!(f, "a Gumroad key"),
             LicenseType::Integer => write!(f, "a number"),
             LicenseType::Payhip => write!(f, "a Payhip key"),
+            LicenseType::JinxxyTransactionId => write!(f, "a Jinxxy transaction ID"),
             LicenseType::Unknown => write!(f, "an unknown value"),
             LicenseType::Ambiguous => write!(f, "an ambiguous value"),
         }
@@ -123,7 +127,7 @@ pub fn identify_license(license: &str) -> LicenseType {
         Some(GUMROAD_KEY_INDEX) => LicenseType::Gumroad,
         Some(NUMBER_KEY_INDEX) => LicenseType::Integer,
         Some(PAYHIP_KEY_INDEX) => LicenseType::Payhip,
-        Some(PI_KEY_INDEX) => LicenseType::Unknown,
+        Some(JINXXY_TRANSACTION_ID_INDEX) => LicenseType::JinxxyTransactionId,
         _ => LicenseType::Unknown,
     };
 
