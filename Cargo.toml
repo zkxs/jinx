@@ -37,6 +37,7 @@ semver = "1" # Semver parsing (for update check)
 clap = { version = "4", features = ["derive"] } # command-line arg parsing
 trie-rs = "0.4" # autocompletion
 bytes = "1" # HTTP body handling
+jiff = { version = "0.2", features = ["serde"] } # Timestamps
 
 [dev-dependencies]
 tracing-test = "0.2" # Allow tracing to print during unit tests

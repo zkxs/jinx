@@ -23,6 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{Duration, Instant};
+use jiff::Timestamp;
 use tracing::{error, info};
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
@@ -269,17 +270,20 @@ impl JinxDb {
         activator_user_id: u64,
         product_id: Option<&str>,
         version_id: Option<&str>,
+        created_at: &Timestamp,
     ) -> JinxResult<()> {
         let activator_user_id = activator_user_id as i64;
+        let created_at = created_at.as_second();
         let mut connection = self.write_connection().await?;
         sqlx::query!(
-            r#"INSERT OR IGNORE INTO license_activation (jinxxy_user_id, license_id, license_activation_id, activator_user_id, product_id, version_id) VALUES (?, ?, ?, ?, ?, ?)"#,
+            r#"INSERT OR IGNORE INTO license_activation (jinxxy_user_id, license_id, license_activation_id, activator_user_id, product_id, version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"#,
             jinxxy_user_id,
             license_id,
             license_activation_id,
             activator_user_id,
             product_id,
-            version_id
+            version_id,
+            created_at
         )
         .execute(&mut *connection)
         .await?;

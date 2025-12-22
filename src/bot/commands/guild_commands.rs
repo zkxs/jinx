@@ -18,6 +18,7 @@ use serenity::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
+use jiff::Timestamp;
 use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 
@@ -597,6 +598,7 @@ pub async fn lock_license(
         if let Some(license_id) = license_id {
             let activation_id =
                 jinxxy::create_license_activation(&store.jinxxy_api_key, &license_id, LOCKING_USER_ID).await?;
+            let created_at = Timestamp::now();
             context
                 .data()
                 .db
@@ -607,6 +609,7 @@ pub async fn lock_license(
                     LOCKING_USER_ID,
                     None,
                     None,
+                    &created_at,
                 )
                 .await?;
             success_reply(

@@ -14,7 +14,7 @@ const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
 const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 0;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 1;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -73,14 +73,6 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
-    // Index needed to look up all links by guild
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
-        .await?;
-    // Index needed to look up directly by api key for setting its validity
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup ON jinxxy_user_guild (jinxxy_api_key)"#)
-        .await?;
 
     // disk cache for product names
     connection
@@ -123,10 +115,6 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
-    // for joining by guild
-    connection
-        .execute(r#"CREATE INDEX IF NOT EXISTS product_role_lookup_by_guild ON product_role (guild_id)"#)
-        .await?;
 
     // product_version-specific role links
     connection
@@ -142,14 +130,10 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                ) STRICT, WITHOUT ROWID"#,
         )
         .await?;
-    // for joining by guild
-    connection
-        .execute(
-            r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_guild ON product_version_role (guild_id)"#,
-        )
-        .await?;
 
     // local mirror of license activations. Source of truth is the Jinxxy API.
+    // `created_at` is a unix timestamp (in seconds) representing when the license activation was originally created
+    // `verified_at` is a unix timestamp (in seconds) representing the last time the license activation was verified to still exist
     connection
         .execute(
             r#"CREATE TABLE IF NOT EXISTS license_activation (
@@ -159,15 +143,11 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    license_activation_id  TEXT NOT NULL,
                    product_id             TEXT NOT NULL,
                    version_id             TEXT,
+                   created_at             INTEGER,
+                   verified_at            INTEGER,
                    PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
                    FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT, WITHOUT ROWID"#,
-        )
-        .await?;
-    // for searching for activations given an activator user ID
-    connection
-        .execute(
-            r#"CREATE INDEX IF NOT EXISTS activation_lookup_by_activator ON license_activation (activator_user_id)"#,
         )
         .await?;
 
@@ -195,6 +175,42 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         );
         return Err(JinxError::new(message));
     }
+
+    let schema_version = (schema_minor_version, schema_patch_version);
+
+    // handle 2.0.0 -> 2.0.1 migration
+    if schema_version < (0, 1) {
+        connection
+            .execute(r#"ALTER TABLE license_activation ADD COLUMN created_at INTEGER"#)
+            .await?;
+        connection
+            .execute(r#"ALTER TABLE license_activation ADD COLUMN verified_at INTEGER"#)
+            .await?;
+    }
+
+    // Index needed to look up all links by guild
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
+        .await?;
+    // Index needed to look up directly by api key for setting its validity
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup ON jinxxy_user_guild (jinxxy_api_key)"#)
+        .await?;
+    // for joining by guild
+    connection
+        .execute(r#"CREATE INDEX IF NOT EXISTS product_role_lookup_by_guild ON product_role (guild_id)"#)
+        .await?;
+    connection
+        .execute(
+            r#"CREATE INDEX IF NOT EXISTS product_version_role_lookup_by_guild ON product_version_role (guild_id)"#,
+        )
+        .await?;
+    // for searching for activations given an activator user ID
+    connection
+        .execute(
+            r#"CREATE INDEX IF NOT EXISTS activation_lookup_by_activator ON license_activation (activator_user_id)"#,
+        )
+        .await?;
 
     // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
     // All applications should run "PRAGMA optimize;" after a schema change.

@@ -174,8 +174,6 @@ impl ApiCache {
         every time the task wakes. Additionally, the task is required to sleep a certain minimum interval every time it
         finishes work in order to prevent API spam and spinning in the case of bugs... there is a lot of fiddly
         timekeeping math at play here, so this code has been the subject of a disproportionate number of bugs.
-
-
          */
         {
             let db = db;

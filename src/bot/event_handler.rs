@@ -18,6 +18,7 @@ use serenity::{
 use std::borrow::Cow;
 use std::sync::LazyLock;
 use std::time::Duration;
+use jiff::Timestamp;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
@@ -544,6 +545,7 @@ async fn handle_license_registration<'a>(
                                         user_id.get(),
                                         Some(&license_info.product_id),
                                         license_info.version_id(),
+                                        &activation.created_at,
                                     )
                                     .await?;
                                 warn!(
@@ -566,6 +568,7 @@ async fn handle_license_registration<'a>(
                             jinxxy::create_license_activation(&api_key, &license_info.license_id, user_id.get())
                         })
                         .await?;
+                        let created_at = Timestamp::now();
                         context
                             .user_data
                             .db
@@ -576,6 +579,7 @@ async fn handle_license_registration<'a>(
                                 user_id.get(),
                                 Some(&license_info.product_id),
                                 license_info.version_id(),
+                                &created_at,
                             )
                             .await?;
                         let activations =

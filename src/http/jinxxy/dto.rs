@@ -3,9 +3,10 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, ProductVersionInfo, Username};
+use crate::http::jinxxy::{GetProfileImageUrl, GetUsername, ProductVersionInfo, Username, DISCORD_PREFIX};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
+use jiff::Timestamp;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
@@ -264,6 +265,8 @@ pub struct LicenseActivation {
     pub id: String,
     /// Custom description describing what this activation is for.
     pub description: String,
+    /// Time this activation was created
+    pub created_at: Timestamp,
 }
 
 impl LicenseActivation {
@@ -327,6 +330,7 @@ mod test {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
             description: "discord_177811898790707200".to_string(),
+            created_at: "2023-12-01T01:52:15.816Z".parse().expect("Expected valid Timestamp"),
         };
 
         let actual = activation
@@ -340,6 +344,7 @@ mod test {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
             description: "discord_17781189879070720575757890257892304570".to_string(),
+            created_at: "2023-12-01T01:52:15.816Z".parse().expect("Expected valid Timestamp"),
         };
 
         let fail = activation.try_into_user_id().is_none();
@@ -351,6 +356,7 @@ mod test {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
             description: "discord_17781foo".to_string(),
+            created_at: "2023-12-01T01:52:15.816Z".parse().expect("Expected valid Timestamp"),
         };
 
         let fail = activation.try_into_user_id().is_none();
@@ -362,6 +368,7 @@ mod test {
         let activation = LicenseActivation {
             id: "3557172628961625518".to_string(),
             description: "foo".to_string(),
+            created_at: "2023-12-01T01:52:15.816Z".parse().expect("Expected valid Timestamp"),
         };
 
         let fail = activation.try_into_user_id().is_none();
