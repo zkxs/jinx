@@ -8,6 +8,7 @@ use crate::bot::{Data, Error, REGISTER_MODAL_ID};
 use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
 use crate::license::{ActivationValidation, LicenseType};
+use jiff::Timestamp;
 use poise::{FrameworkContext, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
@@ -18,7 +19,6 @@ use serenity::{
 use std::borrow::Cow;
 use std::sync::LazyLock;
 use std::time::Duration;
-use jiff::Timestamp;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 

@@ -9,6 +9,7 @@ use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
+use jiff::Timestamp;
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
 use serenity::{
@@ -18,7 +19,6 @@ use serenity::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
-use jiff::Timestamp;
 use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 

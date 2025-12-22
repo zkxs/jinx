@@ -7,6 +7,7 @@ mod schema_v2;
 use crate::error::JinxError;
 use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
+use jiff::Timestamp;
 use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, RoleId, UserId};
@@ -23,7 +24,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use jiff::Timestamp;
 use tracing::{error, info};
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
@@ -74,7 +74,9 @@ impl JinxDb {
         let new_db = !Path::new(DB_V2_FILENAME).is_file();
         let write_pool = pool_options_write.connect_with(connect_options_write).await?;
         let mut write_connection = write_pool.acquire().await?;
-        schema_v2::init(&mut write_connection).await?;
+        write_connection
+            .transaction(|transaction| Box::pin(schema_v2::init(transaction)))
+            .await?;
 
         let read_pool = pool_options_read.connect_with(connect_options_read).await?;
         let db = JinxDb {
@@ -108,7 +110,9 @@ impl JinxDb {
                     .pragma("trusted_schema", "OFF");
                 let mut v1_connection = connect_options_v1.connect().await?;
                 // handle any pending migrations on the v1 db
-                schema_v1::init(&mut v1_connection).await?;
+                v1_connection
+                    .transaction(|transaction| Box::pin(schema_v1::init(transaction)))
+                    .await?;
 
                 // perform the big migration
                 {
@@ -262,6 +266,7 @@ impl JinxDb {
     }
 
     /// Locally record that we've activated a license for a user
+    #[allow(clippy::too_many_arguments)]
     pub async fn activate_license(
         &self,
         jinxxy_user_id: &str,
