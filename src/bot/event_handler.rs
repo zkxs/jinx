@@ -382,7 +382,6 @@ async fn handle_license_registration<'a>(
                 Cow::Owned(default_id)
             }
         };
-
         let user_id = modal_interaction.user.id;
         let license_type = LicenseType::identify(license_key);
 
@@ -485,27 +484,36 @@ async fn handle_license_registration<'a>(
 
                     // send a notification to the guild owner bot log if it's set up for this guild
                     if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                        let jinxxy_store_name = context
+                            .user_data
+                            .db
+                            .get_store_username(&jinxxy_user_id)
+                            .await?
+                            .map(Cow::Owned)
+                            .unwrap_or(Cow::Borrowed(jinxxy_user_id.as_ref()));
                         let message = if validation.locked {
                             format!(
-                                "<@{}> attempted to activate a locked license. An admin can unlock this license with the `/unlock_license` command.",
-                                user_id.get()
+                                "<@{}> attempted to activate the locked license `{}` for store {}. An admin can unlock this license with the `/unlock_license` command.",
+                                user_id.get(),
+                                jinxxy_store_name,
+                                license_info.license_id,
                             )
                         } else {
                             let mut message = format!(
-                                "<@{}> attempted to activate a license that has already been used by:",
-                                user_id.get()
+                                "<@{}> attempted to activate the license `{}` for store {} that has already been used by:",
+                                user_id.get(),
+                                jinxxy_store_name,
+                                license_info.license_id,
                             );
                             activations
                                 .iter()
                                 .flat_map(|vec| vec.iter())
                                 .flat_map(|activation| activation.try_into_user_id())
                                 .for_each(|user_id| message.push_str(format!("\n- <@{user_id}>").as_str()));
+                            message.push_str("\n`/deactivate_license` command.");
                             message
                         };
-                        info!(
-                            "in {} for license id {}, {}",
-                            guild_id, license_info.license_id, message
-                        );
+                        info!("in {}, {}", guild_id, message);
                         let embed = CreateEmbed::default()
                             .title("Activation Attempt Failed")
                             .description(message)

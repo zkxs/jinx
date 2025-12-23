@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jinxxy_username FROM jinxxy_user WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "jinxxy_username",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_user",
+            "name": "jinxxy_username"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "338fe12a8747185377245d1ca77d3c6b1f36378ff42591ccdc623ea112884d0f"
+}

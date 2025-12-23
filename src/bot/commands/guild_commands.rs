@@ -164,7 +164,7 @@ pub(in crate::bot) async fn create_post(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(store) = context.data().db.get_store_link(guild, &store_name).await? {
+    let reply = if let Some(store) = context.data().db.get_store_link_by_username(guild, &store_name).await? {
         match jinxxy::get_own_user(&store.jinxxy_api_key).await {
             Ok(jinxxy_user) => {
                 // might as well do a sanity check while I've got the data in scope. This shouldn't ever fail.
@@ -412,7 +412,12 @@ pub async fn deactivate_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+    let reply = if let Some(store) = context
+        .data()
+        .db
+        .get_store_link_by_username(guild_id, &store_name)
+        .await?
+    {
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = context
@@ -473,7 +478,12 @@ pub async fn license_info(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+    let reply = if let Some(store) = context
+        .data()
+        .db
+        .get_store_link_by_username(guild_id, &store_name)
+        .await?
+    {
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
@@ -603,7 +613,12 @@ pub async fn lock_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+    let reply = if let Some(store) = context
+        .data()
+        .db
+        .get_store_link_by_username(guild_id, &store_name)
+        .await?
+    {
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(
@@ -677,7 +692,12 @@ pub async fn unlock_license(
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
-    let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
+    let reply = if let Some(store) = context
+        .data()
+        .db
+        .get_store_link_by_username(guild_id, &store_name)
+        .await?
+    {
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let remote_activations = jinxxy::get_license_activations(
@@ -1160,7 +1180,7 @@ pub(in crate::bot) async fn list_links(context: Context<'_>) -> Result<(), Error
 pub(in crate::bot) async fn list_links_impl(context: Context<'_>, guild_id: GuildId, sudo: bool) -> Result<(), Error> {
     let assignable_roles = util::assignable_roles(&context, guild_id).await?;
     // all links from the db for this guild, even across multiple stores
-    let link_info = context.data().db.get_links(guild_id).await?;
+    let link_info = context.data().db.get_role_links(guild_id).await?;
 
     // handle deleted roles
     let mut linked_roles: Vec<RoleId> = link_info.links.keys().copied().collect();

@@ -529,7 +529,11 @@ impl JinxDb {
 
     /// Get a specific store link for this guild using the provided username. Returns `None` if no link
     /// with that username exists.
-    pub async fn get_store_link(&self, guild: GuildId, jinxxy_username: &str) -> JinxResult<Option<LinkedStore>> {
+    pub async fn get_store_link_by_username(
+        &self,
+        guild: GuildId,
+        jinxxy_username: &str,
+    ) -> JinxResult<Option<LinkedStore>> {
         let guild_id = guild.get() as i64;
         let result = sqlx::query_as!(
             LinkedStore,
@@ -543,6 +547,18 @@ impl JinxDb {
         )
         .fetch_optional(&self.read_pool)
         .await?;
+        Ok(result)
+    }
+
+    /// Get cached username for this store. Returns `None` if no store with this ID exists OR if it has no cached username.
+    pub async fn get_store_username(&self, jinxxy_user_id: &str) -> JinxResult<Option<String>> {
+        let result = sqlx::query_scalar!(
+            r#"SELECT jinxxy_username FROM jinxxy_user WHERE jinxxy_user_id = ?"#,
+            jinxxy_user_id,
+        )
+        .fetch_optional(&self.read_pool)
+        .await?
+        .flatten();
         Ok(result)
     }
 
@@ -878,7 +894,7 @@ impl JinxDb {
     }
 
     /// get an aggregate all role links for a guild
-    pub async fn get_links(&self, guild: GuildId) -> JinxResult<Links> {
+    pub async fn get_role_links(&self, guild: GuildId) -> JinxResult<Links> {
         let guild_id = guild.get() as i64;
         let mut connection = self.read_pool.acquire().await?;
         let mut transaction = connection.begin().await?;
@@ -1668,7 +1684,7 @@ pub struct GuildGumroadInfo {
     pub gumroad_failure_count: u64,
 }
 
-/// Helper struct returned by [`JinxDb::get_links`].
+/// Helper struct returned by [`JinxDb::get_role_links`].
 pub struct Links {
     /// store_id -> store_name map
     pub stores: HashMap<String, String, ahash::RandomState>,
