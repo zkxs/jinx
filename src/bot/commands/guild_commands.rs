@@ -656,23 +656,26 @@ pub async fn unlock_license(
         let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(&store.jinxxy_api_key, &license_id).await?;
-            let lock_activation_id = activations
+            let mut lock_activation_ids = activations
                 .into_iter()
-                .find(|activation| activation.is_lock())
-                .map(|activation| activation.id);
+                .filter(|activation| activation.is_lock())
+                .map(|activation| activation.id)
+                .peekable();
 
-            let message = if let Some(lock_activation_id) = lock_activation_id {
-                jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &lock_activation_id).await?;
-                context
-                    .data()
-                    .db
-                    .deactivate_license(&store.jinxxy_user_id, &license_id, &lock_activation_id, LOCKING_USER_ID)
-                    .await?;
-                format!("License `{license}` is now unlocked and may be used to grant roles.")
-            } else {
+            let message = if lock_activation_ids.peek().is_none() {
                 format!(
                     "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
                 )
+            } else {
+                for lock_activation_id in lock_activation_ids {
+                    jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &lock_activation_id).await?;
+                    context
+                        .data()
+                        .db
+                        .deactivate_license(&store.jinxxy_user_id, &license_id, &lock_activation_id, LOCKING_USER_ID)
+                        .await?;
+                }
+                format!("License `{license}` is now unlocked and may be used to grant roles.")
             };
 
             success_reply("Success", message)

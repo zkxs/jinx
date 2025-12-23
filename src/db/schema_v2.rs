@@ -213,7 +213,9 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                      FROM license_activation"#
         ).await?;
         connection.execute("DROP TABLE license_activation").await?;
-        connection.execute("ALTER TABLE new_license_activation RENAME TO license_activation").await?;
+        connection
+            .execute("ALTER TABLE new_license_activation RENAME TO license_activation")
+            .await?;
     }
 
     // Index needed to look up all links by guild
