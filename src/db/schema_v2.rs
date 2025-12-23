@@ -14,7 +14,7 @@ const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
 const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 1;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 2;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -141,7 +141,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    license_id             TEXT NOT NULL,
                    activator_user_id      INTEGER NOT NULL,
                    license_activation_id  TEXT NOT NULL,
-                   product_id             TEXT NOT NULL,
+                   product_id             TEXT,
                    version_id             TEXT,
                    created_at             INTEGER,
                    verified_at            INTEGER,
@@ -186,6 +186,34 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         connection
             .execute(r#"ALTER TABLE license_activation ADD COLUMN verified_at INTEGER"#)
             .await?;
+    }
+
+    // handle 2.0.1 -> 2.0.2 migration
+    if schema_version < (0, 2) {
+        // removing NOT NULL constraint from product_id
+        connection
+            .execute(
+                r#"CREATE TABLE IF NOT EXISTS new_license_activation (
+                   jinxxy_user_id         TEXT NOT NULL,
+                   license_id             TEXT NOT NULL,
+                   activator_user_id      INTEGER NOT NULL,
+                   license_activation_id  TEXT NOT NULL,
+                   product_id             TEXT,
+                   version_id             TEXT,
+                   created_at             INTEGER,
+                   verified_at            INTEGER,
+                   PRIMARY KEY            (jinxxy_user_id, license_id, activator_user_id, license_activation_id),
+                   FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
+               ) STRICT, WITHOUT ROWID"#,
+            )
+            .await?;
+        connection.execute(
+            r#"INSERT INTO new_license_activation
+                     SELECT jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id, created_at, verified_at
+                     FROM license_activation"#
+        ).await?;
+        connection.execute("DROP TABLE license_activation").await?;
+        connection.execute("ALTER TABLE new_license_activation RENAME TO license_activation").await?;
     }
 
     // Index needed to look up all links by guild
