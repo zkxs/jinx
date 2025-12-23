@@ -428,11 +428,11 @@ async fn handle_license_registration<'a>(
             } else {
                 format!(
                     "The provided Jinxxy license key was not valid or is already in use.\n\n\
-                                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
-                                    Please confirm you are providing the correct value to the correct bot. \
-                                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`. \
-                                    You can find your license key in your email receipt or in \
-                                    [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
+                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
+                    Please confirm you are providing the correct value to the correct bot. \
+                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`. \
+                    You can find your license key in your email receipt or in \
+                    [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
                 )
             };
             let embed = CreateEmbed::default()
@@ -493,7 +493,7 @@ async fn handle_license_registration<'a>(
                             .unwrap_or(Cow::Borrowed(jinxxy_user_id.as_ref()));
                         let message = if validation.locked {
                             format!(
-                                "<@{}> attempted to activate the locked license `{}` for store {}. An admin can unlock this license with the `/unlock_license` command.",
+                                "<@{}> attempted to activate the locked license `{}` for store {}. You can unlock this license with the `/unlock_license` command.",
                                 user_id.get(),
                                 jinxxy_store_name,
                                 license_info.license_id,
@@ -510,12 +510,14 @@ async fn handle_license_registration<'a>(
                                 .flat_map(|vec| vec.iter())
                                 .flat_map(|activation| activation.try_into_user_id())
                                 .for_each(|user_id| message.push_str(format!("\n- <@{user_id}>").as_str()));
-                            message.push_str("\n`/deactivate_license` command.");
+                            message.push_str(
+                                "\nYou can unblock the license transfer with the `/deactivate_license` command.",
+                            );
                             message
                         };
                         info!("in {}, {}", guild_id, message);
                         let embed = CreateEmbed::default()
-                            .title("Activation Attempt Failed")
+                            .title("Activation Denied")
                             .description(message)
                             .color(Colour::ORANGE);
                         let bot_log_message = CreateMessage::default().embed(embed);
