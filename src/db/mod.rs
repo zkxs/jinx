@@ -341,6 +341,24 @@ impl JinxDb {
         Ok(delete_count != 0)
     }
 
+    /// Locally delete all locks for license, and return the number of deleted records.
+    pub async fn unlock_license(
+        &self,
+        jinxxy_user_id: &str,
+        license_id: &str,
+    ) -> JinxResult<u64> {
+        let mut connection = self.write_connection().await?;
+        let delete_count = sqlx::query!(
+            r#"DELETE FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND activator_user_id = 0"#,
+            jinxxy_user_id,
+            license_id,
+        )
+            .execute(&mut *connection)
+            .await?
+            .rows_affected();
+        Ok(delete_count)
+    }
+
     /// Locally check if a license is locked. This may be out of sync with Jinxxy! If the license is locked, it returns
     /// an arbitrary locking license_activation_id. This may not be the only lock! If the license is not locked, it returns None.
     pub async fn is_license_locked(&self, jinxxy_user_id: &str, license_id: &str) -> JinxResult<Option<String>> {

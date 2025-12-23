@@ -680,31 +680,42 @@ pub async fn unlock_license(
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activations = jinxxy::get_license_activations(
+            let remote_activations = jinxxy::get_license_activations(
                 &store.jinxxy_api_key,
                 &license_id,
                 Some(jinxxy::LOCKING_ACTIVATION_DESCRIPTION),
             )
             .await?;
-            let mut lock_activation_ids = activations
+            let mut remote_lock_activation_ids = remote_activations
                 .into_iter()
                 .filter(|activation| activation.is_lock()) // should not be needed with the search_query set
                 .map(|activation| activation.id)
                 .peekable();
 
-            let message = if lock_activation_ids.peek().is_none() {
-                format!(
-                    "License `{license}` not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server."
-                )
-            } else {
-                for lock_activation_id in lock_activation_ids {
-                    jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &lock_activation_id).await?;
-                    context
-                        .data()
-                        .db
-                        .deactivate_license(&store.jinxxy_user_id, &license_id, &lock_activation_id, LOCKING_USER_ID)
-                        .await?;
+            let message = if remote_lock_activation_ids.peek().is_none() {
+                // make sure local DB is clean too!
+                let delete_count = context
+                    .data()
+                    .db
+                    .unlock_license(&store.jinxxy_user_id, &license_id)
+                    .await?;
+                if delete_count == 0 {
+                    format!("No locks for `{license}` were found.")
+                } else {
+                    format!(
+                        "License `{license}` state was out of sync in Jinx's cache and in the Jinxxy API. This has been fixed, and the license is now unlcoed and may be used to grant role."
+                    )
                 }
+            } else {
+                for lock_activation_id in remote_lock_activation_ids {
+                    jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &lock_activation_id).await?;
+                }
+                // make sure our DB is a completely clean slate
+                context
+                    .data()
+                    .db
+                    .unlock_license(&store.jinxxy_user_id, &license_id)
+                    .await?;
                 format!("License `{license}` is now unlocked and may be used to grant roles.")
             };
 
