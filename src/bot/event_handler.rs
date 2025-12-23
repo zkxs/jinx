@@ -530,8 +530,8 @@ async fn handle_license_registration(
                             let mut message = format!(
                                 "<@{}> attempted to activate the license `{}` for store {} that has already been used by:",
                                 user_id.get(),
-                                jinxxy_store_name,
                                 license_info.license_id,
+                                jinxxy_store_name,
                             );
                             activations
                                 .iter()
