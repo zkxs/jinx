@@ -3,7 +3,7 @@
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
 use crate::bot::util::MessageExtensions;
-use crate::bot::{util, BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT};
+use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, util};
 use crate::bot::{Data, REGISTER_MODAL_ID};
 use crate::db::JinxDb;
 use crate::error::{JinxError, SafeDisplay};
@@ -199,10 +199,11 @@ impl EventHandler for Data {
             }
             // bot was added to a guild
             FullEvent::GuildCreate { guild, is_new, .. } => {
-                // is_new == Some(false) when we're just restarting the bot
-                // is_new == Some(true) when a new guild adds the bot
+                // is_new == None if the cache feature is disabled
+                // is_new == Some(false) when the guild is present in cache
+                // is_new == Some(true) when the guild is not present in cache
                 if !matches!(is_new, Some(false)) {
-                    info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
+                    debug!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
                 }
 
                 // reinstall guild commands
