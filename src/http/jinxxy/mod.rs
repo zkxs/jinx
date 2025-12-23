@@ -25,6 +25,9 @@ use tracing::{debug, error, warn};
 
 /// prefix used in activation descriptions
 const DISCORD_PREFIX: &str = "discord_";
+/// The exact license activation description used in locking activations.
+/// This must exactly match the ID used in [crate::license::LOCKING_USER_ID]
+pub const LOCKING_ACTIVATION_DESCRIPTION: &str = "discord_0";
 const JINXXY_BASE_URL: &str = "https://api.creators.jinxxy.com/v1/";
 /// Jinxxy API has a hard limit of 100 for page size beyond which it denies requests
 const PAGINATION_LIMIT: usize = 100;
@@ -254,11 +257,23 @@ async fn add_product_version_name_to_license_info(api_key: &str, license_info: &
     Ok(())
 }
 
-/// Get list of all license activations
-pub async fn get_license_activations(api_key: &str, license_id: &str) -> JinxxyResult<Vec<LicenseActivation>> {
+/// Get list of all license activations. If `search_query` is provided, it appears to filter the results based on exact
+/// matching the activation description, although this Jinxxy API feature is wholly undocumented.
+pub async fn get_license_activations(
+    api_key: &str,
+    license_id: &str,
+    search_query: Option<&str>,
+) -> JinxxyResult<Vec<LicenseActivation>> {
     static ENDPOINT: &str = "GET /licenses/<id>/activations";
     let start_time = Instant::now();
-    let url = format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}");
+    let url = if let Some(search_query) = search_query {
+        let search_query = utf8_percent_encode(search_query, NON_ALPHANUMERIC);
+        format!(
+            "{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}&search_query={search_query}"
+        )
+    } else {
+        format!("{JINXXY_BASE_URL}licenses/{license_id}/activations?limit={ACTIVATION_PAGINATION_LIMIT}")
+    };
     let response = HTTP_CLIENT
         .get(&url)
         .headers(get_headers(api_key))
@@ -277,6 +292,42 @@ pub async fn get_license_activations(api_key: &str, license_id: &str) -> JinxxyR
         Err(JinxxyError::UnsupportedPagination(nonce))
     } else {
         Ok(response.results)
+    }
+}
+
+/// Get a single license activation by its activation_id
+///
+/// Note that the Delete jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
+#[allow(dead_code)]
+pub async fn get_license_activation(
+    api_key: &str,
+    license_id: &str,
+    activation_id: &str,
+) -> JinxxyResult<Option<LicenseActivation>> {
+    static ENDPOINT: &str = "GET /licenses/<id>/activations/<id>";
+    let start_time = Instant::now();
+    let url = format!("{JINXXY_BASE_URL}licenses/{license_id}/activations/{activation_id}");
+    let response = HTTP_CLIENT
+        .get(&url)
+        .headers(get_headers(api_key))
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    if response.status().is_success() {
+        let response: LicenseActivation = read_any_json(ENDPOINT, response).await?;
+        Ok(Some(response))
+    } else {
+        debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
+        // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
+        let error = JinxxyError::from_response(ENDPOINT, response).await;
+        if error.is_404() {
+            //TODO: this is speculation as to how this will behave in the future
+            // license activation was not found
+            Ok(None)
+        } else {
+            Err(error)
+        }
     }
 }
 
@@ -299,6 +350,8 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
 }
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
+///
+/// Note that this jinxxy API has a bug where it doesn't delete license activations from the Retrieve API. List works as expected.
 pub async fn delete_license_activation(api_key: &str, license_id: &str, activation_id: &str) -> JinxxyResult<bool> {
     static ENDPOINT: &str = "DELETE /licenses/<id>/activations";
     let start_time = Instant::now();
@@ -315,7 +368,6 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
         Ok(true)
     } else {
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
-        // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
         let error = JinxxyError::from_response(ENDPOINT, response).await;
         if error.is_404() {
             // license was not found

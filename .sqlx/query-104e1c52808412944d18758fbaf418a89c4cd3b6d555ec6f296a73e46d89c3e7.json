@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT license_activation_id FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND activator_user_id = 0 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "license_activation_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "license_activation",
+            "name": "license_activation_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "104e1c52808412944d18758fbaf418a89c4cd3b6d555ec6f296a73e46d89c3e7"
+}

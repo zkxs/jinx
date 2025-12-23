@@ -349,7 +349,8 @@ pub async fn user_info(
                         .data()
                         .db
                         .is_license_locked(jinxxy_user_id.as_str(), license_info.license_id.as_str())
-                        .await?;
+                        .await?
+                        .is_some();
 
                     let username =
                         Username::format_discord_display_name(&license_info.user_id, license_info.username.as_deref());
@@ -486,7 +487,7 @@ pub async fn license_info(
                 async {
                     let api_key = store.jinxxy_api_key.to_owned();
                     let license_id = license_id.clone();
-                    jinxxy::get_license_activations(&api_key, &license_id).await
+                    jinxxy::get_license_activations(&api_key, &license_id, None).await
                 }
             );
             let mut local_license_users: Vec<u64> = local_license_users?;
@@ -596,9 +597,24 @@ pub async fn lock_license(
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
         let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activation_id =
-                jinxxy::create_license_activation(&store.jinxxy_api_key, &license_id, LOCKING_USER_ID).await?;
-            let created_at = Timestamp::now();
+            let activations = jinxxy::get_license_activations(
+                &store.jinxxy_api_key,
+                &license_id,
+                Some(jinxxy::LOCKING_ACTIVATION_DESCRIPTION),
+            )
+            .await?;
+            let mut lock_activation_ids = activations.into_iter().filter(|activation| activation.is_lock()); // should not be needed with the search_query set
+
+            let (activation_id, created_at) = if let Some(activation) = lock_activation_ids.next() {
+                // we'll bump the existing DB entry
+                (activation.id, activation.created_at)
+            } else {
+                // we'll create a new DB entry
+                let activation_id =
+                    jinxxy::create_license_activation(&store.jinxxy_api_key, &license_id, LOCKING_USER_ID).await?;
+                let created_at = Timestamp::now();
+                (activation_id, created_at)
+            };
             context
                 .data()
                 .db
@@ -655,10 +671,15 @@ pub async fn unlock_license(
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
         let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
-            let activations = jinxxy::get_license_activations(&store.jinxxy_api_key, &license_id).await?;
+            let activations = jinxxy::get_license_activations(
+                &store.jinxxy_api_key,
+                &license_id,
+                Some(jinxxy::LOCKING_ACTIVATION_DESCRIPTION),
+            )
+            .await?;
             let mut lock_activation_ids = activations
                 .into_iter()
-                .filter(|activation| activation.is_lock())
+                .filter(|activation| activation.is_lock()) // should not be needed with the search_query set
                 .map(|activation| activation.id)
                 .peekable();
 

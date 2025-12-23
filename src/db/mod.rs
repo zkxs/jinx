@@ -341,14 +341,15 @@ impl JinxDb {
         Ok(delete_count != 0)
     }
 
-    /// Locally check if a license is locked. This may be out of sync with Jinxxy!
-    pub async fn is_license_locked(&self, jinxxy_user_id: &str, license_id: &str) -> JinxResult<bool> {
+    /// Locally check if a license is locked. This may be out of sync with Jinxxy! If the license is locked, it returns
+    /// an arbitrary locking license_activation_id. This may not be the only lock! If the license is not locked, it returns None.
+    pub async fn is_license_locked(&self, jinxxy_user_id: &str, license_id: &str) -> JinxResult<Option<String>> {
         let result = sqlx::query_scalar!(
-            r#"SELECT EXISTS(SELECT * FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND activator_user_id = 0) AS "is_locked: bool""#,
+            r#"SELECT license_activation_id FROM license_activation WHERE jinxxy_user_id = ? AND license_id = ? AND activator_user_id = 0 LIMIT 1"#,
             jinxxy_user_id,
             license_id
         )
-        .fetch_one(&self.read_pool)
+        .fetch_optional(&self.read_pool)
         .await?;
         Ok(result)
     }

@@ -467,9 +467,10 @@ async fn handle_license_registration<'a>(
                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
                     (None, Default::default())
                 } else {
-                    let activations =
-                        util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
-                            .await?;
+                    let activations = util::retry_thrice(|| {
+                        jinxxy::get_license_activations(&api_key, &license_info.license_id, None)
+                    })
+                    .await?;
                     let validation = ActivationValidation::new(user_id, &activations);
                     (Some(activations), validation)
                 };
@@ -582,9 +583,10 @@ async fn handle_license_registration<'a>(
                                 &created_at,
                             )
                             .await?;
-                        let activations =
-                            util::retry_thrice(|| jinxxy::get_license_activations(&api_key, &license_info.license_id))
-                                .await?;
+                        let activations = util::retry_thrice(|| {
+                            jinxxy::get_license_activations(&api_key, &license_info.license_id, None)
+                        })
+                        .await?;
                         validation = ActivationValidation::new(user_id, &activations);
 
                         // log if multiple activations for different users
