@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO license_activation (jinxxy_user_id, license_id, license_activation_id, activator_user_id, product_id, version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "3bbe163caf621b4833fc54f04dfc8521a5f57124a45b01b64a616a2e89fc8f76"
+}

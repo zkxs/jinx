@@ -12,8 +12,7 @@ use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, RoleId, UserId};
 use sqlx::{
-    ConnectOptions, Connection, Encode, Executor, FromRow, Pool, Sqlite, SqliteConnection,
-    error::Error as SqlxError,
+    ConnectOptions, Connection, Encode, Error as SqlxError, Executor, FromRow, Pool, Sqlite, SqliteConnection,
     pool::PoolConnection,
     sqlite::{
         SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
@@ -24,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 const DB_V1_FILENAME: &str = "jinx.sqlite";
 const DB_V2_FILENAME: &str = "jinx2.sqlite";
@@ -265,7 +264,8 @@ impl JinxDb {
         Ok(low_priority_cache_expiry_time)
     }
 
-    /// Locally record that we've activated a license for a user
+    /// Locally record that we've activated a license for a user. Returns `true` if a row was created, or `false` if a row was not created
+    /// due to a constraint violation.
     #[allow(clippy::too_many_arguments)]
     pub async fn activate_license(
         &self,
@@ -276,12 +276,12 @@ impl JinxDb {
         product_id: Option<&str>,
         version_id: Option<&str>,
         created_at: &Timestamp,
-    ) -> JinxResult<()> {
+    ) -> JinxResult<bool> {
         let activator_user_id = activator_user_id as i64;
         let created_at = created_at.as_second();
         let mut connection = self.write_connection().await?;
-        sqlx::query!(
-            r#"INSERT OR IGNORE INTO license_activation (jinxxy_user_id, license_id, license_activation_id, activator_user_id, product_id, version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"#,
+        let result = sqlx::query!(
+            r#"INSERT INTO license_activation (jinxxy_user_id, license_id, license_activation_id, activator_user_id, product_id, version_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"#,
             jinxxy_user_id,
             license_id,
             license_activation_id,
@@ -291,8 +291,31 @@ impl JinxDb {
             created_at
         )
         .execute(&mut *connection)
-        .await?;
-        Ok(())
+        .await;
+        let result = match result {
+            Ok(_) => Ok(true),
+            Err(e) => match e {
+                SqlxError::Database(ref db_error) => {
+                    if db_error.is_unique_violation() {
+                        debug!(
+                            "activate_license unique violation: ({}, {}, {}, {})",
+                            jinxxy_user_id, license_id, license_activation_id, activator_user_id
+                        );
+                        Ok(false)
+                    } else if db_error.is_foreign_key_violation() {
+                        warn!(
+                            "activate_license FK violation: ({}, {}, {}, {})",
+                            jinxxy_user_id, license_id, license_activation_id, activator_user_id
+                        );
+                        Ok(false)
+                    } else {
+                        Err(e)
+                    }
+                }
+                _ => Err(e),
+            },
+        }?;
+        Ok(result)
     }
 
     /// Locally record that we've deactivated a license for a user. Returns `true` if a row was found and deleted, or `false` if no row was found to delete.
