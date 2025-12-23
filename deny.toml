@@ -73,8 +73,6 @@ ignore = [
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     { id = "RUSTSEC-2024-0388", reason = "derivative being unmaintained is not my problem to solve: it's on poise." },
-    { id = "RUSTSEC-2025-0057", reason = "fxhash being unmaintained is not my problem to solve: it's on serenity." },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile being unmaintained is not my problem to solve: it's on serenity for using old reqwest." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
 ]
@@ -105,7 +103,6 @@ allow = [
     "Apache-2.0 WITH LLVM-exception", # used by wasi
     "BSL-1.0", # used by ryu
     'CDLA-Permissive-2.0', # neither FSF nor OSI approved, but this is not really software. Needed by webpki-roots
-    "MPL-2.0", # used by webpki-roots
     "Unicode-3.0", # used by unicode-ident
     "Zlib", # used by miniz_oide, tinyvecs
 ]
@@ -224,31 +221,17 @@ skip = [
     { crate = "syn", reason = "macro-only" },
     # I've come to terms with lingering old versions for the following crates.
     # However, I'm pinning the specific old version so that I can track if new duplicates are introduced.
-    { crate = "base64@0.21.7", reason = "reqwest@0.11.27 uses old version" },
-    { crate = "bitflags@1.3.2", reason = "reqwest@0.11.27 uses old version" },
     { crate = "hashbrown@0.14.5", reason = "serenity@0.12.4 uses old version" },
-    { crate = "http@0.2.12", reason = "reqwest@0.11.27 and hyper@0.14.30 use old version" },
-    { crate = "rustls@0.21.12", reason = "reqwest@0.11.27 uses old version" },
-    { crate = "rustls-webpki@0.101.7", reason = "reqwest@0.11.27 uses old version" },
-    { crate = "tokio-rustls@0.24.1", reason = "reqwest@0.11.27 uses old version" },
-    { crate = "webpki-roots@0.25.4", reason = "reqwest@0.11.27 uses old version" },
     { crate = "thiserror@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
     { crate = "thiserror-impl@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
     { crate = "getrandom@0.2", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand@0.8", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand_chacha@0.3", reason = "rand@0.9 upgrade in progress for many crates"},
     { crate = "rand_core@0.6", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "reqwest@0.11", reason = "used by serenity"},
-    { crate = "h2@0.3", reason = "used by reqwest@0.11.27"},
-    { crate = "http-body@0.4", reason = "used by reqwest@0.11.27"},
-    { crate = "hyper@0.14", reason = "used by reqwest@0.11.27"},
-    { crate = "hyper-rustls@0.24", reason = "used by reqwest@0.11.27"},
-    { crate = "rustls@0.22", reason = "used by reqwest@0.11.27"},
-    { crate = "rustls-webpki@0.102", reason = "used by reqwest@0.11.27"},
-    { crate = "sync_wrapper@0.1", reason = "used by reqwest@0.11.27"},
-    { crate = "tokio-rustls@0.25", reason = "used by reqwest@0.11.27"},
-    { crate = "webpki-roots@0.26", reason = "used by reqwest@0.11.27"},
-    { crate = "socket2@0.5", reason = "used by reqwest@0.11.27"},
+    { crate = "rustls@0.22", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
+    { crate = "rustls-webpki@0.102", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
+    { crate = "tokio-rustls@0.25", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
+    { crate = "webpki-roots@0.26", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
