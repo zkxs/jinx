@@ -1,7 +1,7 @@
 # Jinx
 
 Jinx is a free, open source Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
-license keys. Note that Jinx is not affiliated with Jinxxy: this is an independent project.
+license keys. Note that the Jinx bot is not affiliated with Jinxxy: this is an independent project.
 
 > [!IMPORTANT]
 > **[Click here to add the bot to your server][bot install]**  
@@ -18,6 +18,9 @@ Features include:
   - For extremely simple setup, you can set a wildcard role granted for all of your products.
   - For fine-grained setup, you can configure different role grants for different versions of the same products.
   - No limit on number of linked products or roles. (Some similar bots support a maximum of 25 products due to a certain Discord limitation).
+- Multiple Jinxxy stores per Discord server
+  - Want to share a single Discord server with your partner? Jinx supports it!
+  - Linking multiple Discord servers to a single store also works
 
 If you have suggestions, feedback, or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
 
@@ -57,25 +60,20 @@ Make note of the API key when you create it: we'll need it shortly. The form sho
 
 Finally, back in your Discord server run the following slash commands:
 
-1. Run the `/add_store <api_key>` command in your Sever and provide your API key. This is one-time setup.
+1. Run the `/add_store <api_key>` command in your sever and provide your Jinxxy API key.
 2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations)
    to. I recommend you make this channel private so only you and your trusted moderators can see it. You will probably
    need to grant Jinx permission to send messages to this channel.
-3. Run the `/link_product` command for each Jinxxy product you want to link to a role. You do not need a distinct role for
-   each product. Any product can grant any role, or even multiple roles! If you make a mistake, use `/unlink_product` to fix it.
+3. Run the `/link_product` command to create a product→role link. You can reuse the same role for
+   multiple products. Products can even grant multiple roles! If you make a mistake, use `/unlink_product` to fix it.
    For even more ways to link products to roles, check out the rest of the [role management commands](docs/command-reference.md#role-management-commands).
 4. Check your work using `/list_links`
 5. When you're ready, run `/create_post <store_name>` in the channel of your choosing to have Jinx create a button users can click to
    register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
    you may want to delete and recreate the post, as it will not automatically update.
 
-I recommend testing everything with a test license. You can create a 100% discount code or create an unlisted free
+If you want to verify the bot works you can create a 100% discount code or create an unlisted free
 product to create test license keys.
-
-### Self-hosting
-
-You may also wish to self-host this bot. [Self-hosting instructions](docs/self-hosting.md) are provided, but the process
-is moderately technical.
 
 ## Administrator Commands
 

@@ -25,7 +25,7 @@ static GLOBAL_ANY_LICENSE_REGEX: LazyLock<RegexSet> = LazyLock::new(|| {
         r"^[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$", // gumroad key `ABCD1234-1234FEDC-0987A321-A2B3C5D6`
         r"^[0-9]+$",                                          // an integer number `3245554511053325533`
         r"^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$", // payhip key `WTKP4-66NL5-HMKQW-GFSCZ`
-        r"^pi_[A-Za-z0-9]{24}$",                              // Jinxxy transaction ID
+        r"^pi_[A-Za-z0-9]{24}$",                              // Jinxxy transaction ID `pi_3eAsf8AfuGlZm49dadf3224f`
     ])
     .expect("Failed to compile license heuristic RegexSet")
 }); // in case you are wondering the above are not real keys: they're only examples
