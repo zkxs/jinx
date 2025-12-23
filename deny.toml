@@ -221,17 +221,11 @@ skip = [
     { crate = "syn", reason = "macro-only" },
     # I've come to terms with lingering old versions for the following crates.
     # However, I'm pinning the specific old version so that I can track if new duplicates are introduced.
-    { crate = "hashbrown@0.14.5", reason = "serenity@0.12.4 uses old version" },
-    { crate = "thiserror@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
-    { crate = "thiserror-impl@1.0.69", reason = "tokio-graceful-shutdown@0.15.2 uses old version" },
-    { crate = "getrandom@0.2", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand@0.8", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand_chacha@0.3", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rand_core@0.6", reason = "rand@0.9 upgrade in progress for many crates"},
-    { crate = "rustls@0.22", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
-    { crate = "rustls-webpki@0.102", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
-    { crate = "tokio-rustls@0.25", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
-    { crate = "webpki-roots@0.26", reason = "used by serenity@0.12.57 / tokio-tungstenite@0.21.0"},
+    { crate = "hashbrown@0.14", reason = "serenity uses old version" },
+    { crate = "hashbrown@0.15", reason = "serenity uses old version" },
+    { crate = "foldhash@0.1", reason = "serenity uses old version" },
+    { crate = "getrandom@0.2", reason = "used by rustls"},
+    { crate = "webpki-roots@0.26", reason = "used by serenity / tokio-tungstenite@0.26.0"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
@@ -257,7 +251,9 @@ unknown-git = "deny"
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
-allow-git = []
+allow-git = [
+    "https://github.com/serenity-rs/serenity.git?branch=next"
+]
 
 [sources.allow-org]
 # github.com organizations to allow git sources for

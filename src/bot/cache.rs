@@ -317,7 +317,7 @@ impl ApiCache {
                                     // if the queue is now empty no reason to go again
                                     let queue_empty = queue.is_empty();
                                     if queue_empty {
-                                        warn!("stopping work loop because queue is empty!");
+                                        debug!("stopping work loop because queue is empty!");
                                     }
                                     work_remaining &= !queue_empty;
 

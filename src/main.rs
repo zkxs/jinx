@@ -7,8 +7,6 @@ use clap::Parser;
 use std::process::ExitCode;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
-use tokio::time::Duration;
-use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -18,6 +16,7 @@ mod db;
 mod error;
 mod http;
 mod license;
+mod signal;
 mod time;
 
 /// constants generated in build.rs
@@ -115,14 +114,7 @@ async fn main() -> ExitCode {
                 env!("CARGO_PKG_VERSION"),
                 constants::GIT_COMMIT_HASH
             );
-
-            let result = Toplevel::new(async |subsystem: &mut SubsystemHandle| {
-                subsystem.start(SubsystemBuilder::new("Discord bot", bot_subsystem));
-            })
-            .catch_signals()
-            .handle_shutdown_requests(Duration::from_millis(1000))
-            .await;
-
+            let result = run_bot().await;
             if SHOULD_RESTART.load(atomic::Ordering::Acquire) {
                 info!("restarting now: {:?}", result);
                 ExitCode::SUCCESS
@@ -134,19 +126,18 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn bot_subsystem(subsystem: &mut SubsystemHandle) -> Result<(), Error> {
+async fn run_bot() -> Result<(), Error> {
     let mut bot = Bot::new().await?;
-    tokio::select! {
-        _ = subsystem.on_shutdown_requested() => {
-            info!("external shutdown requested");
-            bot.close().await; // once this finishes, the bot.start() task will be canceled
-            Ok(())
-        },
-        result = bot.start() => {
-            info!("bot subsystem stopped itself");
-            result
-        }
-    }
+    let signal_waiter = signal::register_signals().expect("Failed to register shutdown signals");
+    let shutdown_trigger = bot.get_shutdown_trigger();
+    let shutdown_task = tokio::task::spawn(async move {
+        signal_waiter.await;
+        info!("external shutdown requested");
+        shutdown_trigger();
+    });
+    bot.start().await?;
+    shutdown_task.abort();
+    Ok(())
 }
 
 /// Initialize logging to stdout

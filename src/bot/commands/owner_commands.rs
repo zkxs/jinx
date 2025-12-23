@@ -8,8 +8,7 @@ use crate::bot::{Context, HOURS_PER_DAY, SECONDS_PER_HOUR, util};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername};
-use poise::CreateReply;
-use poise::serenity_prelude as serenity;
+use poise::{CreateReply, serenity_prelude as serenity};
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
 use tokio::time::{Duration, Instant};
@@ -41,14 +40,13 @@ pub(in crate::bot) async fn owner_stats(
     let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
     let log_channel_count = context.data().db.log_channel_count().await?;
-    let user_count = context.serenity_context().cache.user_count();
     let cached_guild_count = context.serenity_context().cache.guild_count();
     let shard_count = context.serenity_context().cache.shard_count();
     let mut shard_list = String::new();
     {
-        let shard_manager = context.framework().shard_manager();
-        let lock = shard_manager.runners.lock().await;
-        for (shard_id, info) in &*lock {
+        for runner in context.serenity_context().runners.iter() {
+            let shard_id = runner.key();
+            let (info, _sender) = runner.value();
             shard_list.push_str(format!("\n- {} {:?} {}", shard_id, info.latency, info.stage).as_str());
         }
     }
@@ -60,7 +58,6 @@ pub(in crate::bot) async fn owner_stats(
 
     let message = format!(
         "db_size={db_size} KiB\n\
-        cached users={user_count}\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
         log channels={log_channel_count}\n\
@@ -169,7 +166,7 @@ pub(in crate::bot) async fn clear_cache(context: Context<'_>) -> Result<(), Erro
 pub(in crate::bot) async fn exit(context: Context<'_>) -> Result<(), Error> {
     info!("starting shutdown…");
     context.send(success_reply("Success", "Shutting down now!")).await?;
-    context.framework().shard_manager.shutdown_all().await;
+    context.serenity_context().shutdown_all();
     Ok(())
 }
 
@@ -185,7 +182,7 @@ pub(in crate::bot) async fn restart(context: Context<'_>) -> Result<(), Error> {
     info!("starting restart…");
     context.send(success_reply("Success", "Restarting now!")).await?;
     SHOULD_RESTART.store(true, atomic::Ordering::Release);
-    context.framework().shard_manager.shutdown_all().await;
+    context.serenity_context().shutdown_all();
     Ok(())
 }
 
@@ -244,7 +241,7 @@ async fn announce_internal<const TEST_ONLY: bool>(
     let channel_count = channels.len();
     let mut successful_messages: usize = 0;
     for channel in channels {
-        match channel.send_message(context, message.clone()).await {
+        match message.clone().execute(context.as_ref(), channel).await {
             Ok(_) => successful_messages += 1,
             Err(e) => warn!("Error sending message to {}: {:?}", channel, e),
         }
@@ -323,8 +320,8 @@ pub(in crate::bot) async fn verify_guild(
                 fn to_guild_data(guild: GuildRef) -> GuildData {
                     GuildData {
                         owner_id: guild.owner_id,
-                        name: guild.name.clone(),
-                        description: guild.description.clone(),
+                        name: guild.name.to_string(),
+                        description: guild.description.as_deref().map(|s| s.to_string()),
                         thumbnail_url: guild.icon.map(|icon| {
                             format!(
                                 "https://cdn.discordapp.com/icons/{}/{}.webp?size=128",
@@ -335,7 +332,10 @@ pub(in crate::bot) async fn verify_guild(
                     }
                 }
 
-                if let Some(guild) = guild_id.to_guild_cached(&context).map(|guild| to_guild_data(guild)) {
+                if let Some(guild) = guild_id
+                    .to_guild_cached(context.as_ref())
+                    .map(|guild| to_guild_data(guild))
+                {
                     // guild was valid!
                     let verify_embed = if let Some(expected_owner_id) = owner_id {
                         // we have an expected owner to check
@@ -371,7 +371,7 @@ pub(in crate::bot) async fn verify_guild(
                                     .title(format!("API Verification Success: {unique_name}"))
                                     .color(Colour::DARK_GREEN);
                                 let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
-                                    embed.thumbnail(profile_image_url)
+                                    embed.thumbnail(profile_image_url.to_owned())
                                 } else {
                                     embed
                                 };
@@ -486,7 +486,7 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
                 Err(_) => "E",
                 _ => "?",
             };
-            let name = guild_id.name(context);
+            let name = guild_id.name(context.as_ref());
             let name_str = name.as_deref().unwrap_or("");
             lines.push_str(format!("{:20} {admin_code} {name_str}\n", guild_id.get()).as_str())
         }

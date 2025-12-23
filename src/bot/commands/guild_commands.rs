@@ -10,11 +10,10 @@ use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use jiff::Timestamp;
-use poise::CreateReply;
-use poise::serenity_prelude as serenity;
+use poise::{CreateReply, serenity_prelude as serenity};
 use serenity::{
-    ButtonStyle, ChannelId, Colour, CreateActionRow, CreateAutocompleteResponse, CreateButton, CreateEmbed,
-    CreateMessage, GuildId, RoleId,
+    ButtonStyle, Colour, CreateActionRow, CreateAutocompleteResponse, CreateButton, CreateComponent, CreateEmbed,
+    CreateMessage, GenericChannelId, GuildId, RoleId,
 };
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -68,7 +67,7 @@ pub(in crate::bot) async fn stats(context: Context<'_>) -> Result<(), Error> {
 )]
 pub(in crate::bot) async fn set_log_channel(
     context: Context<'_>,
-    #[description = "user to query licenses for"] channel: Option<ChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
+    #[description = "user to query licenses for"] channel: Option<GenericChannelId>, // we can't use Channel here because it throws FrameworkError::ArgumentParse on access problems, which cannot be handled cleanly.
 ) -> Result<(), Error> {
     context.defer_ephemeral().await?;
 
@@ -83,7 +82,7 @@ pub(in crate::bot) async fn set_log_channel(
                 .title("Configuration Changed")
                 .description("I will now log to this channel.");
             let message = CreateMessage::default().embed(embed);
-            let test_result = channel.send_message(context, message).await.map(|_| ());
+            let test_result = message.execute(context.as_ref(), channel).await.map(|_| ());
 
             match test_result {
                 Ok(()) => {
@@ -119,7 +118,7 @@ pub(in crate::bot) async fn set_log_channel(
 }
 
 /// Initializes autocomplete data, and then does the store name autocomplete
-async fn store_name_autocomplete(context: Context<'_>, store_name_prefix: &str) -> CreateAutocompleteResponse {
+async fn store_name_autocomplete<'a>(context: Context<'_>, store_name_prefix: &str) -> CreateAutocompleteResponse<'a> {
     match context.guild_id() {
         Some(guild_id) => {
             match context
@@ -196,9 +195,7 @@ pub(in crate::bot) async fn create_post(
                 let embed = CreateEmbed::default()
                     .title("Jinxxy Product Registration")
                     .description(format!(
-                        "Press the button below to register a Jinxxy license key for any of {display_name} products. \
-                        You can find your license key in your email receipt or in \
-                        [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
+                        "Press the button below to register a Jinxxy license key for any of {display_name} products."
                     ));
                 let embed = if let Some(profile_image_url) = display_user.profile_image_url() {
                     embed.thumbnail(profile_image_url)
@@ -208,14 +205,13 @@ pub(in crate::bot) async fn create_post(
 
                 // embed the store ID into the register button
                 // note that custom id can be AT MOST 100 characters long or Discord will explode
-                let components = vec![CreateActionRow::Buttons(vec![
-                    CreateButton::new(format!("{}:{}", REGISTER_BUTTON_ID, jinxxy_user.id))
-                        .label("Register")
-                        .style(ButtonStyle::Primary),
-                ])];
-                let message = CreateMessage::default().embed(embed).components(components);
-
-                if let Err(e) = channel.send_message(context, message).await {
+                let buttons = [CreateButton::new(format!("{}:{}", REGISTER_BUTTON_ID, jinxxy_user.id))
+                    .label("Register")
+                    .style(ButtonStyle::Primary)];
+                let action_row = CreateActionRow::Buttons(buttons.as_ref().into());
+                let components = [CreateComponent::ActionRow(action_row)];
+                let message = CreateMessage::default().embed(embed).components(&components);
+                if let Err(e) = message.execute(context.as_ref(), channel).await {
                     warn!("Error in /create_post when sending message: {:?}", e);
                     error_reply(
                         "Error Creating Post",
@@ -487,8 +483,9 @@ pub async fn license_info(
         let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
+            let db_copy = context.data().db.clone();
             let (local_license_users, license_info, remote_license_users) = tokio::join!(
-                context.data().db.get_license_users(&store.jinxxy_user_id, &license_id),
+                db_copy.get_license_users(&store.jinxxy_user_id, &license_id),
                 async {
                     let api_key = store.jinxxy_api_key.to_owned();
                     let license_id = license_id.clone();
@@ -756,7 +753,7 @@ pub async fn unlock_license(
 }
 
 /// Initializes autocomplete data, and then does the product autocomplete
-async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> CreateAutocompleteResponse {
+async fn product_autocomplete<'a>(context: Context<'_>, product_prefix: &str) -> CreateAutocompleteResponse<'a> {
     match context.guild_id() {
         Some(guild_id) => {
             match context
@@ -780,7 +777,10 @@ async fn product_autocomplete(context: Context<'_>, product_prefix: &str) -> Cre
 }
 
 /// Initializes autocomplete data, and then does the product version autocomplete
-async fn product_version_autocomplete(context: Context<'_>, product_prefix: &str) -> CreateAutocompleteResponse {
+async fn product_version_autocomplete<'a>(
+    context: Context<'_>,
+    product_prefix: &str,
+) -> CreateAutocompleteResponse<'a> {
     match context.guild_id() {
         Some(guild_id) => {
             match context
@@ -1332,7 +1332,9 @@ pub(in crate::bot) async fn grant_missing_roles(
             if !member.roles.contains(&role) {
                 message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
                 missing_users += 1;
-                member.add_role(context, role).await?;
+                member
+                    .add_role(context.as_ref(), role, Some("/grant_missing_roles"))
+                    .await?;
             }
         }
         write!(
@@ -1361,7 +1363,7 @@ pub(in crate::bot) async fn grant_missing_roles(
             .title("Missing Roles Granted")
             .description(log_message);
         let bot_log_message = CreateMessage::default().embed(embed);
-        let bot_log_result = log_channel.send_message(context, bot_log_message).await;
+        let bot_log_result = bot_log_message.execute(context.as_ref(), log_channel).await;
         if let Err(e) = bot_log_result {
             warn!("Error logging to log channel in {}: {:?}", guild_id.get(), e);
         }

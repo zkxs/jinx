@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs, io};
 
-const COPYRIGHT_YEAR: u32 = 2025;
+static COPYRIGHT_YEAR: &str = "2024-2025";
 
 fn main() -> io::Result<()> {
     let out_dir: PathBuf = env::var("OUT_DIR").expect("bad out dir?").into();

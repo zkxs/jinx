@@ -3,18 +3,19 @@
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
 use crate::bot::util::MessageExtensions;
-use crate::bot::{CUSTOM_ID_CHARACTER_LIMIT, util};
-use crate::bot::{Data, Error, REGISTER_MODAL_ID};
+use crate::bot::{util, BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT};
+use crate::bot::{Data, REGISTER_MODAL_ID};
+use crate::db::JinxDb;
 use crate::error::{JinxError, SafeDisplay};
 use crate::http::jinxxy;
 use crate::license::{ActivationValidation, LicenseType};
 use jiff::Timestamp;
-use poise::{FrameworkContext, serenity_prelude as serenity};
+use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
-    ActionRowComponent, ChannelId, Colour, CreateActionRow, CreateEmbed, CreateInputText, CreateInteractionResponse,
-    CreateMessage, CreateModal, EditInteractionResponse, FullEvent, GuildId, InputTextStyle, Interaction,
-    ModalInteraction,
+    Colour, Component, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateLabel, CreateMessage,
+    CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Event, EventHandler, FullEvent,
+    GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -42,330 +43,365 @@ thread_local! {
     static EASTER_EGG_2_REGEX: Regex = GLOBAL_EASTER_EGG_2_REGEX.clone();
 }
 
-/// Event handler implementation. Errors are handled in [`error_handler`](crate::bot::error_handler::error_handler)
-/// under the `FrameworkError::EventHandler` match.
-pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event: &'a FullEvent) -> Result<(), Error> {
-    match event {
-        // bot was added to a guild
-        FullEvent::GuildCreate { guild, is_new } => {
-            // is_new == Some(false) when we're just restarting the bot
-            // is_new == Some(true) when a new guild adds the bot
-            if !matches!(is_new, Some(false)) {
-                info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
-            }
+#[async_trait]
+impl EventHandler for Data {
+    fn filter_event(&self, _context: &Context, event: &Event) -> bool {
+        matches!(
+            event,
+            Event::GuildCreate(_)
+                | Event::GuildDelete(_)
+                | Event::GuildRoleDelete(_)
+                | Event::MessageCreate(_)
+                | Event::MessageUpdate(_)
+                | Event::Ready(_)
+                | Event::Resumed(_)
+                | Event::InteractionCreate(_)
+        )
+    }
 
-            // reinstall guild commands
-            //TODO: when the bot starts we might receive a flurry of GuildCreate events leading to ratelimit issues when we attempt to reinstall the commands with no delay.
-            // I might be able to figure out some sort of work queue for if that ever becomes a problem. All we need is a serenity::Http and a GuildId so we should be good to handle this from a background task.
-            let guild_command_reinstall_result = util::set_guild_commands(
-                &context.serenity_context.http,
-                &context.user_data.db,
-                guild.id,
-                None,
-                None,
-            )
-            .await;
-            if let Err(e) = guild_command_reinstall_result {
-                error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
-            }
-        }
-        // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete
-        FullEvent::GuildDelete { incomplete, full } => {
-            // If unavailable is false, the bot was removed from the guild, either by being kicked or banned.
-            // If unavailable is true, the guild went offline due to an outage.
-            // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
-            if !incomplete.unavailable {
-                // need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
-                let deleted_stores = context.user_data.db.delete_guild(incomplete.id).await?;
-                for jinxxy_user_id in deleted_stores {
-                    context
-                        .user_data
-                        .api_cache
-                        .unregister_store_in_cache(jinxxy_user_id)
-                        .await?;
-                }
-                info!("GuildDelete guild={:?} full={:?}", incomplete, full)
-            }
-        }
-        /*
-        the docs claim this happens "when the cache has received and inserted all data from
-        guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
-        ALSO happens every single time any new guild is added.
-        */
-        FullEvent::CacheReady { guilds } => {
-            debug!("cache ready! {} guilds.", guilds.len());
-        }
-        // I'm curious if this ever happens. I'll debug log it for now and worry about it later.
-        FullEvent::Ratelimit { data } => {
-            warn!("Ratelimit event: {:?}", data);
-        }
-        // handle incoming messages (channel/DM/etc)
-        FullEvent::Message { new_message } => {
-            /*
-            fun fact: even without MESSAGE_CONTENT intent, we still get message content in a few exceptional cases:
-            - Content in messages that an app sends
-            - Content in DMs with the app
-            - Content in which the app is mentioned
-            - Content of the message a message context menu command is used on
-
-            So, basically any case where Discord thinks a user may actually intend for the bot to see the message.
-            */
-
-            if new_message
-                .fixed_is_private(context.serenity_context)
-                .await
-                .unwrap_or(true)
-            {
-                debug!(
-                    "Received DM id={}; channel={}; author={}: {}",
-                    new_message.id.get(),
-                    new_message.channel_id.get(),
-                    new_message.author.id.get(),
-                    new_message.content,
-                );
-
-                if !new_message.author.bot {
-                    let reply_content = "I am a Discord bot that grants roles to users when they register Jinxxy license keys. \
-                    I do not work from DMs: I needs to be used in a server.\n\
-                    For documentation, see <https://github.com/zkxs/jinx>\n\
-                    For support, join https://discord.gg/aKkA6m26f9";
-                    if let Err(e) = new_message.reply_ping(context.serenity_context, reply_content).await {
-                        warn!("Unable to reply to DM. Error: {:?}", e);
+    async fn dispatch(&self, context: &Context, event: &FullEvent) {
+        match event {
+            // handle component interactions
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(component_interaction),
+                ..
+            } => {
+                // our custom ids are a static prefix followed by a ':', and then some dynamic value
+                let custom_id = component_interaction.data.custom_id.as_str();
+                let custom_id = match custom_id.split_once(':') {
+                    Some((key, value)) => (key, Some(value)),
+                    None => (custom_id, None),
+                };
+                #[allow(clippy::single_match)]
+                // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
+                match custom_id {
+                    // create the register form when a user presses the register button
+                    (REGISTER_BUTTON_ID, jinxxy_user_id) => {
+                        let text = CreateTextDisplay::new(
+                            "You can find your license key in your email receipt, or in your \
+                            [Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button.",
+                        );
+                        let input = CreateInputText::new(InputTextStyle::Short, LICENSE_KEY_ID)
+                            .placeholder("XXXX-cd071c534191");
+                        let label = CreateLabel::input_text("Jinxxy License Key", input);
+                        let components = [
+                            CreateModalComponent::TextDisplay(text),
+                            CreateModalComponent::Label(label),
+                        ];
+                        // proxy the jinxxy_user_id from the register button into the modal
+                        // note that custom id can be AT MOST 100 characters long or Discord will explode
+                        let custom_id = if let Some(jinxxy_user_id) = jinxxy_user_id {
+                            format!("{REGISTER_MODAL_ID}:{jinxxy_user_id}")
+                        } else {
+                            REGISTER_MODAL_ID.to_string()
+                        };
+                        if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
+                            let modal =
+                                CreateModal::new(custom_id, "Jinxxy License Registration").components(&components);
+                            let response = CreateInteractionResponse::Modal(modal);
+                            if let Err(e) = component_interaction.create_response(&context.http, response).await {
+                                warn!("Error creating response to license registration modal: {e:?}");
+                            }
+                        } else {
+                            warn!("Tried to create a custom modal ID longer than {CUSTOM_ID_CHARACTER_LIMIT}");
+                            return;
+                        }
+                    }
+                    (event_type, event_key) => {
+                        warn!("Unknown component interaction custom_id: {event_type}:{event_key:?}");
                     }
                 }
-            } else if new_message.mentions_me(context.serenity_context).await.unwrap_or(false) {
-                if let Some(guild_id) = new_message.guild_id {
-                    debug!(
-                        "Mentioned! guild={}; id={}; channel={}; author={}: {}",
+            }
+            // handle modal interactions
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Modal(modal_interaction),
+                ..
+            } => {
+                // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
+                if let Err(e) = modal_interaction.defer_ephemeral(&context.http).await {
+                    warn!("Error deferring modal interaction {e:?}");
+                    return;
+                }
+
+                // our custom ids are a static prefix followed by a ':', and then some dynamic value
+                let custom_id = modal_interaction.data.custom_id.as_str();
+                let custom_id = match custom_id.split_once(':') {
+                    Some((key, value)) => (key, Some(value)),
+                    None => (custom_id, None),
+                };
+                // likely to add more matches later, so I'm suppressing this lint because it's obnoxious to switch between `if let` and `match`
+                #[allow(clippy::single_match)]
+                match custom_id {
+                    // this is the code that handles a user submitting the register form. All the license activation logic lives here.
+                    (REGISTER_MODAL_ID, jinxxy_user_id) => {
+                        let start_time = Instant::now();
+                        if let Err(e) =
+                            handle_license_registration(self, context, modal_interaction, jinxxy_user_id).await
+                        {
+                            let elapsed_ms = start_time.elapsed().as_millis();
+                            let nonce: u64 = util::generate_nonce();
+                            let nonce = format!("{nonce:016X}");
+                            error!("NONCE[{nonce}] Error registering license after {elapsed_ms}ms: {e:?}");
+                            let safe_display = e.safe_display();
+                            let embed = CreateEmbed::default()
+                                .title("Registration Failure")
+                                .description(format!("Caused by: {safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
+                                .color(Colour::RED);
+                            let edit = EditInteractionResponse::default().embed(embed);
+                            if let Err(e) = modal_interaction.edit_response(&context.http, edit).await {
+                                warn!("Error edit register modal response: {e:?}");
+                                return;
+                            }
+                        }
+                    }
+                    (event_type, event_key) => {
+                        warn!("Unknown modal interaction custom_id: {event_type}:{event_key:?}");
+                    }
+                }
+            }
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Command(command_interaction),
+                ..
+            } => {
+                debug!(
+                    "command \"{}\" invoked in {:?} by <@{}>",
+                    command_interaction.data.name,
+                    command_interaction.guild_id.map(|guild| guild.get()),
+                    command_interaction.user.id.get()
+                );
+            }
+            FullEvent::GuildRoleDelete {
+                guild_id,
+                removed_role_id,
+                removed_role_data_if_available,
+                ..
+            } => {
+                match self.db.delete_role(*guild_id, *removed_role_id).await {
+                    Ok(deleted) => {
+                        if deleted != 0 {
+                            // only log role deletions if they were actually in the DB
+                            info!(
+                                "role {} was removed from guild {}. Data = {:?}",
+                                removed_role_id.get(),
+                                guild_id.get(),
+                                removed_role_data_if_available
+                            )
+                        }
+                    }
+                    Err(e) => error!(
+                        "Error cleaning up deleted role {} from guild {}. Data = {:?}; Error = {:?}",
+                        removed_role_id.get(),
                         guild_id.get(),
-                        new_message.id.get(),
-                        new_message.channel_id.get(),
-                        new_message.author.id.get(),
-                        new_message.content
-                    );
-                } else {
+                        removed_role_data_if_available,
+                        e
+                    ),
+                };
+            }
+            // bot was added to a guild
+            FullEvent::GuildCreate { guild, is_new, .. } => {
+                // is_new == Some(false) when we're just restarting the bot
+                // is_new == Some(true) when a new guild adds the bot
+                if !matches!(is_new, Some(false)) {
+                    info!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
+                }
+
+                // reinstall guild commands
+                //TODO: when the bot starts we might receive a flurry of GuildCreate events leading to ratelimit issues when we attempt to reinstall the commands with no delay.
+                // I might be able to figure out some sort of work queue for if that ever becomes a problem. All we need is a serenity::Http and a GuildId so we should be good to handle this from a background task.
+                let guild_command_reinstall_result =
+                    util::set_guild_commands(&context.http, &self.db, guild.id, None, None).await;
+                if let Err(e) = guild_command_reinstall_result {
+                    error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
+                }
+            }
+            // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete
+            FullEvent::GuildDelete { incomplete, full, .. } => {
+                // If unavailable is false, the bot was removed from the guild, either by being kicked or banned.
+                // If unavailable is true, the guild went offline due to an outage.
+                // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
+                if !incomplete.unavailable {
+                    // need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
+                    let deleted_stores = match self.db.delete_guild(incomplete.id).await {
+                        Ok(deleted_stores) => deleted_stores,
+                        Err(e) => {
+                            warn!("Error propogating guild delete to DB: {e:?}");
+                            return;
+                        }
+                    };
+                    for jinxxy_user_id in deleted_stores {
+                        let result = self.api_cache.unregister_store_in_cache(jinxxy_user_id).await;
+                        if let Err(e) = result {
+                            warn!("Error unregistering store in cache during guild delete: {e:?}");
+                            return;
+                        }
+                    }
+                    info!("GuildDelete guild={:?} full={:?}", incomplete, full)
+                }
+            }
+            // handle incoming messages (channel/DM/etc)
+            FullEvent::Message { new_message, .. } => {
+                /*
+                fun fact: even without MESSAGE_CONTENT intent, we still get message content in a few exceptional cases:
+                - Content in messages that an app sends
+                - Content in DMs with the app
+                - Content in which the app is mentioned
+                - Content of the message a message context menu command is used on
+
+                So, basically any case where Discord thinks a user may actually intend for the bot to see the message.
+                */
+
+                if new_message.fixed_is_private(context).await.unwrap_or(true) {
                     debug!(
-                        "Mentioned in non-guild-context id={}; channel={}; author={}: {}",
+                        "Received DM id={}; channel={}; author={}: {}",
                         new_message.id.get(),
                         new_message.channel_id.get(),
                         new_message.author.id.get(),
                         new_message.content,
                     );
-                }
 
-                // only enable easter eggs if the mentioning user is an owner
-                let can_easter_egg =
-                    !new_message.author.bot && context.user_data.db.is_user_owner(new_message.author.id.get()).await?;
-
-                // since we got mentioned we might as well do something funny here
-                if can_easter_egg && EASTER_EGG_1_REGEX.with(|regex| regex.is_match(new_message.content.as_str())) {
-                    // Easter egg 1: when the owner says something matching a specific regex, try to reply
-                    if let Err(e) = new_message.reply_ping(context.serenity_context, "no, you! 😳").await {
-                        warn!(
-                            "Unable to reply to owner easter-egg 1 prompt. Falling back to reaction. Error: {:?}",
-                            e
-                        );
-                        if let Err(e) = new_message.react(context.serenity_context, '😳').await {
-                            warn!("Unable to react to owner easter-egg 1 prompt: {:?}", e);
+                    if !new_message.author.bot() {
+                        let reply_content = "I am a Discord bot that grants roles to users when they register Jinxxy license keys. \
+                    I do not work from DMs: I needs to be used in a server.\n\
+                    For documentation, see <https://github.com/zkxs/jinx>\n\
+                    For support, join https://discord.gg/aKkA6m26f9";
+                        if let Err(e) = new_message.reply_ping(&context.http, reply_content).await {
+                            warn!("Unable to reply to DM. Error: {:?}", e);
                         }
                     }
-                } else if can_easter_egg
-                    && EASTER_EGG_2_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
-                {
-                    // Easter egg 2: when the owner says something matching a specific regex, try to reply
-                    if let Err(e) = new_message.reply_ping(context.serenity_context, "…you are… 😩").await {
-                        warn!(
-                            "Unable to reply to owner easter-egg 2 prompt. Falling back to reaction. Error: {:?}",
-                            e
+                } else if new_message.mentions_me(context).await.unwrap_or(false) {
+                    if let Some(guild_id) = new_message.guild_id {
+                        debug!(
+                            "Mentioned! guild={}; id={}; channel={}; author={}: {}",
+                            guild_id.get(),
+                            new_message.id.get(),
+                            new_message.channel_id.get(),
+                            new_message.author.id.get(),
+                            new_message.content
                         );
-                        if let Err(e) = new_message.react(context.serenity_context, '😩').await {
-                            warn!("Unable to react to owner easter-egg 2 prompt: {:?}", e);
-                        }
+                    } else {
+                        debug!(
+                            "Mentioned in non-guild-context id={}; channel={}; author={}: {}",
+                            new_message.id.get(),
+                            new_message.channel_id.get(),
+                            new_message.author.id.get(),
+                            new_message.content,
+                        );
                     }
-                } else {
-                    // if anyone mentions the bot and we haven't already done the Easter egg, then try and add a reaction
-                    let result = new_message.react(context.serenity_context, '👀').await;
-                    if let Err(e) = result {
-                        warn!("Unable to react to bot mention: {:?}", e);
+
+                    // only enable easter eggs if the mentioning user is an owner
+                    let can_easter_egg = !new_message.author.bot() && {
+                        match self.db.is_user_owner(new_message.author.id.get()).await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                warn!("Error checking if easter egger is owner: {e:?}");
+                                return;
+                            }
+                        }
+                    };
+
+                    // since we got mentioned we might as well do something funny here
+                    if can_easter_egg && EASTER_EGG_1_REGEX.with(|regex| regex.is_match(new_message.content.as_str())) {
+                        // Easter egg 1: when the owner says something matching a specific regex, try to reply
+                        if let Err(e) = new_message.reply_ping(&context.http, "no, you! 😳").await {
+                            warn!(
+                                "Unable to reply to owner easter-egg 1 prompt. Falling back to reaction. Error: {:?}",
+                                e
+                            );
+                            if let Err(e) = new_message.react(&context.http, '😳').await {
+                                warn!("Unable to react to owner easter-egg 1 prompt: {:?}", e);
+                            }
+                        }
+                    } else if can_easter_egg
+                        && EASTER_EGG_2_REGEX.with(|regex| regex.is_match(new_message.content.as_str()))
+                    {
+                        // Easter egg 2: when the owner says something matching a specific regex, try to reply
+                        if let Err(e) = new_message.reply_ping(&context.http, "…you are… 😩").await {
+                            warn!(
+                                "Unable to reply to owner easter-egg 2 prompt. Falling back to reaction. Error: {:?}",
+                                e
+                            );
+                            if let Err(e) = new_message.react(&context.http, '😩').await {
+                                warn!("Unable to react to owner easter-egg 2 prompt: {:?}", e);
+                            }
+                        }
+                    } else {
+                        // if anyone mentions the bot and we haven't already done the Easter egg, then try and add a reaction
+                        let result = new_message.react(&context.http, '👀').await;
+                        if let Err(e) = result {
+                            warn!("Unable to react to bot mention: {:?}", e);
+                        }
                     }
                 }
             }
-        }
-        // handle when messages are edited
-        FullEvent::MessageUpdate {
-            old_if_available,
-            new,
-            event,
-        } => {
-            // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
-            // this DOES work on DMs
-            if event.fixed_is_private(context.serenity_context).await.unwrap_or(true) {
-                if let Some(new) = new {
+            // handle when messages are edited
+            FullEvent::MessageUpdate {
+                old_if_available,
+                event,
+                ..
+            } => {
+                // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
+                // this DOES work on DMs
+                if event.fixed_is_private(context).await.unwrap_or(true) {
                     if let Some(old) = old_if_available {
                         debug!(
                             "DM {} updated:\nold: {}\nnew: {}",
-                            event.id.get(),
+                            event.message.id.get(),
                             old.content,
-                            new.content
+                            event.message.content
                         );
                     } else {
-                        debug!("DM {} updated: {}", event.id.get(), new.content);
+                        debug!("DM {} updated: {}", event.message.id.get(), event.message.content);
                     }
+                }
+            }
+            FullEvent::ShardsReady { total_shards, .. } => {
+                debug!("{total_shards} shards ready. Registering global commands…");
+                let commands_to_create = poise::builtins::create_application_commands(BAKED_GLOBAL_COMMANDS.as_slice());
+                if let Err(e) = context.http.create_global_commands(&commands_to_create).await {
+                    error!("Error registering global commands: {e:?}");
                 } else {
-                    debug!("DM {} updated", event.id.get());
+                    debug!("global commands registered!");
                 }
             }
-        }
-        // handle component interactions
-        FullEvent::InteractionCreate {
-            interaction: Interaction::Component(component_interaction),
-        } => {
-            // our custom ids are a static prefix followed by a ':', and then some dynamic value
-            let custom_id = component_interaction.data.custom_id.as_str();
-            let custom_id = match custom_id.split_once(':') {
-                Some((key, value)) => (key, Some(value)),
-                None => (custom_id, None),
-            };
-            #[allow(clippy::single_match)]
-            // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
-            match custom_id {
-                // create the register form when a user presses the register button
-                (REGISTER_BUTTON_ID, jinxxy_user_id) => {
-                    //TODO: shove the following text into a text component once Serenity lets me
-                    // You can find your license key in your email receipt or in \
-                    // [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button.
-                    let components = vec![CreateActionRow::InputText(
-                        CreateInputText::new(InputTextStyle::Short, "Jinxxy License Key", LICENSE_KEY_ID)
-                            .placeholder("XXXX-cd071c534191"),
-                    )];
-                    // proxy the jinxxy_user_id from the register button into the modal
-                    // note that custom id can be AT MOST 100 characters long or Discord will explode
-                    let custom_id = if let Some(jinxxy_user_id) = jinxxy_user_id {
-                        format!("{REGISTER_MODAL_ID}:{jinxxy_user_id}")
-                    } else {
-                        REGISTER_MODAL_ID.to_string()
-                    };
-                    if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
-                        let modal = CreateModal::new(custom_id, "Jinxxy License Registration").components(components);
-                        let response = CreateInteractionResponse::Modal(modal);
-                        component_interaction
-                            .create_response(context.serenity_context, response)
-                            .await?;
-                    } else {
-                        Err(JinxError::new("Tried to create a custom ID longer than "))?;
-                    }
-                }
-                (event_type, event_key) => {
-                    warn!("Unknown component interaction custom_id: {event_type}:{event_key:?}");
-                }
+            /*
+            the docs claim this happens "when the cache has received and inserted all data from
+            guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
+            ALSO happens every single time any new guild is added.
+            */
+            FullEvent::CacheReady { guilds, .. } => {
+                debug!("cache ready! {} guilds.", guilds.len());
             }
+            _ => {}
         }
-        // handle modal interactions
-        FullEvent::InteractionCreate {
-            interaction: Interaction::Modal(modal_interaction),
-        } => {
-            // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
-            modal_interaction.defer_ephemeral(context.serenity_context).await?;
-
-            // our custom ids are a static prefix followed by a ':', and then some dynamic value
-            let custom_id = modal_interaction.data.custom_id.as_str();
-            let custom_id = match custom_id.split_once(':') {
-                Some((key, value)) => (key, Some(value)),
-                None => (custom_id, None),
-            };
-            // likely to add more matches later, so I'm suppressing this lint because it's obnoxious to switch between `if let` and `match`
-            #[allow(clippy::single_match)]
-            match custom_id {
-                // this is the code that handles a user submitting the register form. All the license activation logic lives here.
-                (REGISTER_MODAL_ID, jinxxy_user_id) => {
-                    let start_time = Instant::now();
-                    if let Err(e) = handle_license_registration(context, modal_interaction, jinxxy_user_id).await {
-                        let elapsed_ms = start_time.elapsed().as_millis();
-                        let nonce: u64 = util::generate_nonce();
-                        let nonce = format!("{nonce:016X}");
-                        error!("NONCE[{nonce}] Error registering license after {elapsed_ms}ms: {e:?}");
-                        let safe_display = e.safe_display();
-                        let embed = CreateEmbed::default()
-                            .title("Registration Failure")
-                            .description(format!("Caused by: {safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
-                            .color(Colour::RED);
-                        let edit = EditInteractionResponse::default().embed(embed);
-                        modal_interaction.edit_response(context.serenity_context, edit).await?;
-                    }
-                }
-                (event_type, event_key) => {
-                    warn!("Unknown modal interaction custom_id: {event_type}:{event_key:?}");
-                }
-            }
-        }
-        FullEvent::InteractionCreate {
-            interaction: Interaction::Command(command_interaction),
-        } => {
-            debug!(
-                "command \"{}\" invoked in {:?} by <@{}>",
-                command_interaction.data.name,
-                command_interaction.guild_id.map(|guild| guild.get()),
-                command_interaction.user.id.get()
-            );
-        }
-        FullEvent::GuildRoleDelete {
-            guild_id,
-            removed_role_id,
-            removed_role_data_if_available,
-        } => {
-            match context.user_data.db.delete_role(*guild_id, *removed_role_id).await {
-                Ok(deleted) => {
-                    if deleted != 0 {
-                        // only log role deletions if they were actually in the DB
-                        info!(
-                            "role {} was removed from guild {}. Data = {:?}",
-                            removed_role_id.get(),
-                            guild_id.get(),
-                            removed_role_data_if_available
-                        )
-                    }
-                }
-                Err(e) => error!(
-                    "Error cleaning up deleted role {} from guild {}. Data = {:?}; Error = {:?}",
-                    removed_role_id.get(),
-                    guild_id.get(),
-                    removed_role_data_if_available,
-                    e
-                ),
-            };
-        }
-        _ => {}
     }
 
-    Ok(())
+    async fn ratelimit(&self, data: RatelimitInfo) {
+        // I'm curious if this ever happens. I'll debug log it for now and worry about it later.
+        warn!("Ratelimit event: {:?}", data);
+    }
 }
 
-async fn handle_license_registration<'a>(
-    context: FrameworkContext<'a, Data, Error>,
+async fn handle_license_registration(
+    data: &Data,
+    context: &Context,
     modal_interaction: &ModalInteraction,
     jinxxy_user_id: Option<&str>,
 ) -> Result<(), JinxError> {
     let start_time = Instant::now();
-    let license_key = modal_interaction
-        .data
-        .components
-        .iter()
-        .flat_map(|row| row.components.iter())
-        .find_map(|component| {
-            if let ActionRowComponent::InputText(input_text) = component {
-                if input_text.custom_id == LICENSE_KEY_ID {
-                    input_text
-                        .value
-                        .as_deref()
-                        .map(|value| value.trim())
-                        .filter(|value| !value.is_empty())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        });
+    let license_key = modal_interaction.data.components.iter().find_map(|component| {
+        if let Component::Label(label) = component
+            && let LabelComponent::InputText(input_text) = &label.component
+            && input_text.custom_id == LICENSE_KEY_ID
+        {
+            input_text
+                .value
+                .as_deref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+        } else {
+            None
+        }
+    });
     if let Some(license_key) = license_key {
         let guild_id = modal_interaction
             .guild_id
@@ -376,7 +412,7 @@ async fn handle_license_registration<'a>(
             None => {
                 // handle the case where we got a legacy button and therefore don't have an included jinxxy user id
                 // we try and load it from the DB (which should work) and bitch if it fails
-                let default_id = context.user_data.db.get_default_jinxxy_user_id(guild_id).await?;
+                let default_id = data.db.get_default_jinxxy_user_id(guild_id).await?;
                 let default_id = default_id
                     .ok_or_else(|| JinxError::new("legacy register button did not have a default store set"))?;
                 Cow::Owned(default_id)
@@ -420,7 +456,7 @@ async fn handle_license_registration<'a>(
             }
 
             if matches!(license_type, LicenseType::Gumroad) {
-                context.user_data.db.increment_gumroad_failure_count(guild_id).await?;
+                data.db.increment_gumroad_failure_count(guild_id).await?;
             }
 
             let description = if license_type.is_jinxxy_license() {
@@ -428,11 +464,9 @@ async fn handle_license_registration<'a>(
             } else {
                 format!(
                     "The provided Jinxxy license key was not valid or is already in use.\n\n\
-                    **This bot only supports Jinxxy keys**, but you appear to have provided {license_type}. \
+                    This bot only supports **Jinxxy** keys, but you appear to have provided **{license_type}**. \
                     Please confirm you are providing the correct value to the correct bot. \
-                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`. \
-                    You can find your license key in your email receipt or in \
-                    [your Jinxxy inventory](<https://jinxxy.com/my/inventory>) by pressing the \"View Item\" button."
+                    Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
                 )
             };
             let embed = CreateEmbed::default()
@@ -441,18 +475,13 @@ async fn handle_license_registration<'a>(
                 .color(Colour::RED);
             let edit = EditInteractionResponse::default().embed(embed);
             modal_interaction
-                .edit_response(context.serenity_context, edit)
+                .edit_response(&context.http, edit)
                 .await
                 .map_err(JinxError::from)?;
             Ok::<(), JinxError>(())
         };
 
-        if let Some(api_key) = context
-            .user_data
-            .db
-            .get_jinxxy_api_key(guild_id, &jinxxy_user_id)
-            .await?
-        {
+        if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id, &jinxxy_user_id).await? {
             let license = license_type.create_untrusted_jinxxy_license(license_key);
             let license_response = if let Some(license) = license {
                 util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?
@@ -483,9 +512,8 @@ async fn handle_license_registration<'a>(
                     // some other user has already activated this license. This is the NORMAL fail case. The other fail cases are abnormal.
 
                     // send a notification to the guild owner bot log if it's set up for this guild
-                    if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
-                        let jinxxy_store_name = context
-                            .user_data
+                    if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
+                        let jinxxy_store_name = data
                             .db
                             .get_store_username(&jinxxy_user_id)
                             .await?
@@ -521,7 +549,7 @@ async fn handle_license_registration<'a>(
                             .description(message)
                             .color(Colour::ORANGE);
                         let bot_log_message = CreateMessage::default().embed(embed);
-                        send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
+                        send_bot_log_message(data.db.clone(), context, guild_id, log_channel, bot_log_message);
                     }
 
                     send_fail_message().await?;
@@ -538,8 +566,7 @@ async fn handle_license_registration<'a>(
                     }
 
                     // check our db to see if we have a record there
-                    let activation_present_in_db = context
-                        .user_data
+                    let activation_present_in_db = data
                         .db
                         .has_user_license_activations(&jinxxy_user_id, user_id.get(), &license_info.license_id)
                         .await?;
@@ -550,9 +577,7 @@ async fn handle_license_registration<'a>(
 
                         if !activation_present_in_db {
                             if let Some(activation) = activations.iter().flatten().next() {
-                                context
-                                    .user_data
-                                    .db
+                                data.db
                                     .activate_license(
                                         &jinxxy_user_id,
                                         &license_info.license_id,
@@ -584,9 +609,7 @@ async fn handle_license_registration<'a>(
                         })
                         .await?;
                         let created_at = Timestamp::now();
-                        context
-                            .user_data
-                            .db
+                        data.db
                             .activate_license(
                                 &jinxxy_user_id,
                                 &license_info.license_id,
@@ -628,7 +651,7 @@ async fn handle_license_registration<'a>(
                         );
 
                         // also send a notification to the guild owner bot log if it's set up for this guild
-                        if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                        if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
                             let message = format!(
                                 "<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
                                 user_id.get()
@@ -638,13 +661,12 @@ async fn handle_license_registration<'a>(
                                 .description(message)
                                 .color(Colour::RED);
                             let bot_log_message = CreateMessage::default().embed(embed);
-                            send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
+                            send_bot_log_message(data.db.clone(), context, guild_id, log_channel, bot_log_message);
                         }
                     }
 
                     if grant_roles {
-                        let roles = context
-                            .user_data
+                        let roles = data
                             .db
                             .get_role_grants(guild_id, &license_info.new_product_version_id())
                             .await?;
@@ -671,14 +693,13 @@ async fn handle_license_registration<'a>(
                             - 15m after an acked interaction
                              */
                             let edit = EditInteractionResponse::default().embed(embed);
-                            let user_notification_result =
-                                modal_interaction.edit_response(context.serenity_context, edit).await;
+                            let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
                             if let Err(error) = user_notification_result {
                                 error!("Error notifying user of license activation: {:?}", error);
                             }
 
                             // also send a notification to the guild owner bot log if it's set up for this guild
-                            if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                            if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
                                 let owner_message = format!(
                                     "<@{}> has registered the {} product, which has no configured roles!",
                                     user_id.get(),
@@ -689,7 +710,7 @@ async fn handle_license_registration<'a>(
                                     .color(Colour::GOLD)
                                     .description(owner_message);
                                 let bot_log_message = CreateMessage::default().embed(embed);
-                                send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
+                                send_bot_log_message(data.db.clone(), context, guild_id, log_channel, bot_log_message);
                             }
                         } else {
                             let mut client_message = format!(
@@ -702,7 +723,7 @@ async fn handle_license_registration<'a>(
                             );
                             let mut errors: String = String::new();
                             for role in roles {
-                                match member.add_role(context.serenity_context, role).await {
+                                match member.add_role(&context.http, role, Some("license registration")).await {
                                     Ok(()) => {
                                         let bullet_point = format!("\n- <@&{}>", role.get());
                                         client_message.push_str(bullet_point.as_str());
@@ -736,14 +757,13 @@ async fn handle_license_registration<'a>(
                             - 15m after an acked interaction
                              */
                             let edit = EditInteractionResponse::default().embed(embed);
-                            let user_notification_result =
-                                modal_interaction.edit_response(context.serenity_context, edit).await;
+                            let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
                             if let Err(error) = user_notification_result {
                                 error!("Error notifying user of license activation: {:?}", error);
                             }
 
                             // also send a notification to the guild owner bot log if it's set up for this guild
-                            if let Some(log_channel) = context.user_data.db.get_log_channel(guild_id).await? {
+                            if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
                                 let embed = CreateEmbed::default()
                                     .title("License Activation")
                                     .description(owner_message);
@@ -757,7 +777,7 @@ async fn handle_license_registration<'a>(
                                         .color(Colour::RED);
                                     bot_log_message.embed(error_embed)
                                 };
-                                send_bot_log_message(&context, guild_id, log_channel, bot_log_message);
+                                send_bot_log_message(data.db.clone(), context, guild_id, log_channel, bot_log_message);
                             }
                         }
                     } else {
@@ -775,7 +795,7 @@ async fn handle_license_registration<'a>(
                 .description("Jinxxy API key is not set: please contact the server administrator for support.")
                 .color(Colour::RED);
             let edit = EditInteractionResponse::default().embed(embed);
-            let user_notification_result = modal_interaction.edit_response(context.serenity_context, edit).await;
+            let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
             if let Err(error) = user_notification_result {
                 error!("Error notifying user of unset API key: {:?}", error);
             }
@@ -787,7 +807,7 @@ async fn handle_license_registration<'a>(
             .description("You must provide a license key")
             .color(Colour::RED);
         let edit = EditInteractionResponse::default().embed(embed);
-        let user_notification_result = modal_interaction.edit_response(context.serenity_context, edit).await;
+        let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
         if let Err(error) = user_notification_result {
             error!("Error notifying user of missing license key: {:?}", error);
         }
@@ -809,14 +829,14 @@ async fn handle_license_registration<'a>(
 ///
 /// If any attempt to notify of a misconfigured log channel succeeds, the log channel will be unset, otherise it will be left alone.
 fn send_bot_log_message(
-    context: &FrameworkContext<'_, Data, Error>,
+    db: JinxDb,
+    context: &Context,
     guild_id: GuildId,
-    log_channel: ChannelId,
-    bot_log_message: CreateMessage,
+    log_channel: GenericChannelId,
+    bot_log_message: CreateMessage<'static>,
 ) {
-    let cache = context.serenity_context.cache.clone();
-    let http = context.serenity_context.http.clone();
-    let db = context.user_data.db.clone();
+    let cache = context.cache.clone();
+    let http = context.http.clone();
     tokio::task::spawn(async move {
         let result = log_channel.send_message(&http, bot_log_message).await;
         if let Err(mystery_error) = result {
@@ -867,7 +887,7 @@ fn send_bot_log_message(
                                     let message = CreateMessage::default()
                                         .content(format!("<@&{}>, my log channel <#{}> is no longer working. Please use `/set_log_channel` to fix it.", nag_role.get(), log_channel.get()));
                                     for (_position, channel_id) in channels {
-                                        match channel_id.send_message((&cache, http.as_ref()), message.clone()).await {
+                                        match message.clone().execute(&http, channel_id.widen()).await {
                                             Ok(_) => {
                                                 // WE DID IT
                                                 info!(

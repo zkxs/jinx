@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2024 jinx contributors.
+// This file is part of jinx. Copyright © 2024-2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::util;
@@ -56,10 +56,6 @@ impl<'a> PoiseError<'a> {
 /// Error handler to add extra, custom logging for Poise/Serenity errors.
 pub async fn error_handler(error: FrameworkError<'_, Data, Error>) {
     let error: Option<PoiseError> = match error {
-        FrameworkError::Setup { ctx, error, .. } => PoiseError::debug("Setup", ctx, error),
-        FrameworkError::EventHandler { framework, error, .. } => {
-            PoiseError::debug("Event handler", framework.serenity_context, error)
-        }
         FrameworkError::Command { ctx, error, .. } => PoiseError::debug_cmd("Command", ctx, error),
         FrameworkError::SubcommandRequired { ctx, .. } => PoiseError::new_cmd("Subcommand required", ctx),
         FrameworkError::CommandPanic { ctx, payload, .. } => {

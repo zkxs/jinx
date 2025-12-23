@@ -3,7 +3,7 @@
 
 //! Utils used by bot commands.
 
-use crate::bot::{AUTOCOMPLETE_CHARACTER_LIMIT, CREATOR_COMMANDS, Context, OWNER_COMMANDS};
+use crate::bot::{AUTOCOMPLETE_CHARACTER_LIMIT, BAKED_CREATOR_COMMANDS, BAKED_OWNER_COMMANDS, Context, Error};
 use crate::db::JinxDb;
 use crate::error::JinxError;
 use crate::http::jinxxy;
@@ -13,17 +13,17 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serenity::{
-    AutocompleteChoice, Cache, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed,
-    Error as SerenityError, GuildId, Http, Message, MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
+    AutocompleteChoice, Cache, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, Error as SerenityError,
+    GenericChannelId, GuildId, Http, Member, Message, MessageFlags, MessageType, MessageUpdateEvent, Permissions, Role,
+    RoleId,
 };
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 use tracing::{debug, error, warn};
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Check if the calling user is a bot owner
 pub(super) async fn check_owner(context: Context<'_>) -> Result<bool, Error> {
@@ -54,11 +54,11 @@ pub async fn set_guild_commands(
     } else {
         db.has_jinxxy_linked(guild_id).await?
     };
-    let owner_commands = owner.then_some(OWNER_COMMANDS.iter()).into_iter().flatten();
-    let creator_commands = creator.then_some(CREATOR_COMMANDS.iter()).into_iter().flatten();
+    let owner_commands = owner.then_some(BAKED_OWNER_COMMANDS.iter()).into_iter().flatten();
+    let creator_commands = creator.then_some(BAKED_CREATOR_COMMANDS.iter()).into_iter().flatten();
     let command_iter = owner_commands.chain(creator_commands);
     let commands = poise::builtins::create_application_commands(command_iter);
-    guild_id.set_commands(http, commands).await?;
+    guild_id.set_commands(http.as_ref(), &commands).await?;
     Ok(())
 }
 
@@ -81,13 +81,14 @@ pub async fn trusted_license_to_id(api_key: &str, license: &str) -> Result<Optio
 }
 
 pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Option<RoleId>, Error> {
-    let guild = guild_id
-        .to_guild_cached(cache)
+    let guild = cache
+        .as_ref()
+        .guild(guild_id)
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
     let roles = &guild.roles;
     let max_role = roles
         .iter()
-        .filter_map(|(role_id, role)| role.mentionable.then_some((role.position, *role_id)))
+        .filter_map(|role| role.mentionable().then_some((role.position, role.id)))
         .max_by(|(position_a, role_id_a), (position_b, role_id_b)| {
             // bigger position is better, then smaller role_id is better
             position_a.cmp(position_b).then(role_id_b.cmp(role_id_a))
@@ -97,13 +98,14 @@ pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: Guil
 }
 
 pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Vec<(u16, ChannelId)>, Error> {
-    let guild = guild_id
-        .to_guild_cached(cache)
+    let guild = cache
+        .as_ref()
+        .guild(guild_id)
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
     let mut channels = guild
         .channels
         .iter()
-        .map(|(channel_id, channel)| (channel.position, *channel_id))
+        .map(|channel| (channel.position, channel.id))
         .collect::<Vec<_>>();
     channels.sort_unstable_by(|(pos_a, id_a), (pos_b, id_b)| pos_a.cmp(pos_b).then(id_b.cmp(id_a)));
     Ok(channels)
@@ -114,11 +116,26 @@ pub(super) fn role_name(
     guild_id: GuildId,
     role_id: RoleId,
 ) -> Result<Option<String>, Error> {
-    let guild = guild_id
-        .to_guild_cached(cache)
+    let guild = cache
+        .as_ref()
+        .guild(guild_id)
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
-    let role_name = guild.roles.get(&role_id).map(|role| role.name.clone());
+    let role_name = guild.roles.get(&role_id).map(|role| role.name.to_string());
     Ok(role_name)
+}
+
+/// Reimplementation of a removed Serenity function to get member permissions without a channel as context.
+///
+/// Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
+/// This is nonsensical because I want to see if a member has Manage Roles, which cannot be overridden at the channel level.
+/// It also causes problems, as `context.guild_channel()` fails in threads and stage text channels: https://github.com/zkxs/jinx/issues/8
+#[inline]
+fn permissions(context: &Context<'_>, member: &Member) -> Result<Permissions, Error> {
+    let guild = context
+        .cache()
+        .guild(member.guild_id)
+        .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
+    Ok(guild.member_permissions(member))
 }
 
 pub(super) async fn assignable_roles(
@@ -127,30 +144,25 @@ pub(super) async fn assignable_roles(
 ) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
     let bot_id = context.framework().bot_id();
     let bot_member = guild_id.member(context, bot_id).await?;
-
-    // Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
-    // This is nonsensical because I want to see if a member has Manage Roles, which cannot be overridden at the channel level.
-    // It also causes problems, as `context.guild_channel()` fails in threads and stage text channels: https://github.com/zkxs/jinx/issues/8
-    #[allow(deprecated)]
-    let permissions = bot_member.permissions(context)?;
-
+    let permissions = permissions(context, &bot_member)?;
     let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
         // Despite the above deprecation text I pass a channel in regardless, here.
         // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
-        let guild = guild_id
-            .to_guild_cached(context)
+        let guild = context
+            .cache()
+            .guild(guild_id)
             .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
         let highest_role = guild.member_highest_role(&bot_member);
         if let Some(highest_role) = highest_role {
             let everyone_id = guild.role_by_name("@everyone").map(|role| role.id);
             let mut roles: Vec<&Role> = guild
                 .roles
-                .values()
+                .iter()
                 .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
                 .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
-                .filter(|role| !role.managed) // managed roles can't be managed
+                .filter(|role| !role.managed()) // managed roles can't be managed
                 .collect();
-            roles.sort_unstable_by(|a, b| u16::cmp(&b.position, &a.position));
+            roles.sort_unstable_by(|a, b| b.position.cmp(&a.position));
             roles.into_iter().map(|role| role.id).collect()
         } else {
             // bot has no roles (this should not be possible)
@@ -170,8 +182,9 @@ pub(super) fn deleted_roles(
     guild_id: GuildId,
     known_roles: impl Iterator<Item = RoleId>,
 ) -> Result<Vec<RoleId>, Error> {
-    let guild = guild_id
-        .to_guild_cached(cache)
+    let guild = cache
+        .as_ref()
+        .guild(guild_id)
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
     let roles = &guild.roles;
     Ok(known_roles.filter(|role| !roles.contains_key(role)).collect())
@@ -180,31 +193,30 @@ pub(super) fn deleted_roles(
 pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -> Result<bool, Error> {
     let bot_id = context.framework().bot_id();
     let bot_member = guild_id.member(context, bot_id).await?;
-
-    // same deprecation warning as above in `assignable_roles`
-    #[allow(deprecated)]
-    let permissions = bot_member.permissions(context)?;
+    let permissions = permissions(context, &bot_member)?;
     Ok(permissions.administrator())
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-pub fn create_role_warning_from_roles(
+pub fn create_role_warning_from_roles<'a>(
     assignable_roles: &HashSet<RoleId, ahash::RandomState>,
     roles: impl Iterator<Item = RoleId>,
-) -> Option<CreateEmbed> {
+) -> Option<CreateEmbed<'a>> {
     let roles: HashSet<RoleId, ahash::RandomState> = roles.into_iter().collect();
     let mut unassignable_roles: Vec<RoleId> = roles.difference(assignable_roles).copied().collect();
     create_role_warning(&mut unassignable_roles)
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-pub fn create_role_warning_from_unassignable(unassignable_roles: impl Iterator<Item = RoleId>) -> Option<CreateEmbed> {
+pub fn create_role_warning_from_unassignable<'a>(
+    unassignable_roles: impl Iterator<Item = RoleId>,
+) -> Option<CreateEmbed<'a>> {
     let mut unassignable_roles: Vec<RoleId> = unassignable_roles.into_iter().collect();
     create_role_warning(&mut unassignable_roles)
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
-fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmbed> {
+fn create_role_warning<'a>(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmbed<'a>> {
     if unassignable_roles.is_empty() {
         None
     } else {
@@ -225,7 +237,7 @@ fn create_role_warning(unassignable_roles: &mut Vec<RoleId>) -> Option<CreateEmb
 }
 
 /// Create a simple success reply
-pub fn success_reply(title: impl Into<String>, message: impl Into<String>) -> CreateReply {
+pub fn success_reply<'a>(title: impl Into<Cow<'a, str>>, message: impl Into<Cow<'a, str>>) -> CreateReply<'a> {
     let embed = CreateEmbed::default()
         .title(title)
         .description(message)
@@ -234,7 +246,7 @@ pub fn success_reply(title: impl Into<String>, message: impl Into<String>) -> Cr
 }
 
 /// Create a simple error reply
-pub fn error_reply(title: impl Into<String>, message: impl Into<String>) -> CreateReply {
+pub fn error_reply<'a>(title: impl Into<Cow<'a, str>>, message: impl Into<Cow<'a, str>>) -> CreateReply<'a> {
     let embed = CreateEmbed::default()
         .title(title)
         .description(message)
@@ -321,20 +333,17 @@ pub trait MessageExtensions {
     /// Meanwhile, Message.guild_id says: "This value will only be present if this message was received over the gateway, therefore do not use this to check if message is in DMs, it is not a reliable method."
     ///
     /// Fuck me, I guess. This check attempts to fix Serenity's shit.
-    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> Result<bool, SerenityError>;
+    async fn fixed_is_private(&self, cache_http: impl serenity::CacheHttp) -> Result<bool, SerenityError>;
 }
 
 impl<T> MessageExtensions for T
 where
     T: GetChannelId + GetGuildId + GetMessageKind + GetMessageFlags,
 {
-    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> Result<bool, SerenityError> {
+    async fn fixed_is_private(&self, cache_http: impl serenity::CacheHttp) -> Result<bool, SerenityError> {
         if self.get_guild_id().is_none() {
-            if self
-                .get_kind()
-                .map(|kind| matches!(kind, MessageType::Regular | MessageType::InlineReply))
-                .unwrap_or(false)
-            {
+            let kind = self.get_kind();
+            if kind == MessageType::Regular || kind == MessageType::InlineReply {
                 if self
                     .get_flags()
                     .map(|flags| {
@@ -365,7 +374,7 @@ where
                     }
                 }
             } else {
-                // the message was not a regular message, or we couldn't get the message kind
+                // the message was not a regular message
                 Ok(false)
             }
         } else {
@@ -376,18 +385,18 @@ where
 }
 
 trait GetChannelId {
-    fn get_channel_id(&self) -> ChannelId;
+    fn get_channel_id(&self) -> GenericChannelId;
 }
 
 impl GetChannelId for Message {
-    fn get_channel_id(&self) -> ChannelId {
+    fn get_channel_id(&self) -> GenericChannelId {
         self.channel_id
     }
 }
 
 impl GetChannelId for MessageUpdateEvent {
-    fn get_channel_id(&self) -> ChannelId {
-        self.channel_id
+    fn get_channel_id(&self) -> GenericChannelId {
+        self.message.channel_id
     }
 }
 
@@ -403,22 +412,22 @@ impl GetGuildId for Message {
 
 impl GetGuildId for MessageUpdateEvent {
     fn get_guild_id(&self) -> Option<GuildId> {
-        self.guild_id
+        self.message.guild_id
     }
 }
 
 trait GetMessageKind {
-    fn get_kind(&self) -> Option<MessageType>;
+    fn get_kind(&self) -> MessageType;
 }
 
 impl GetMessageKind for Message {
-    fn get_kind(&self) -> Option<MessageType> {
-        Some(self.kind)
+    fn get_kind(&self) -> MessageType {
+        self.kind
     }
 }
 impl GetMessageKind for MessageUpdateEvent {
-    fn get_kind(&self) -> Option<MessageType> {
-        self.kind
+    fn get_kind(&self) -> MessageType {
+        self.message.kind
     }
 }
 
@@ -434,7 +443,7 @@ impl GetMessageFlags for Message {
 
 impl GetMessageFlags for MessageUpdateEvent {
     fn get_flags(&self) -> Option<MessageFlags> {
-        self.flags.flatten()
+        self.message.flags
     }
 }
 
@@ -531,8 +540,10 @@ where
 }
 
 /// Create an autocomplete response from strings
-pub fn create_autocomplete_response<T: Into<String>>(choices: impl Iterator<Item = T>) -> CreateAutocompleteResponse {
-    let choice_vec = choices
+pub fn create_autocomplete_response<'a, T: Into<Cow<'a, str>>>(
+    choices: impl Iterator<Item = T>,
+) -> CreateAutocompleteResponse<'a> {
+    let choice_vec: Cow<'a, [AutocompleteChoice<'a>]> = choices
         .into_iter()
         .map(|choice| AutocompleteChoice::from(choice))
         .collect();

@@ -9,15 +9,16 @@ pub mod util;
 
 use crate::bot::cache::ApiCache;
 use crate::bot::error_handler::error_handler;
-use crate::bot::event_handler::event_handler;
 use crate::db::{JinxDb, SqliteWalCheckpoint};
 use crate::error::JinxError;
 use commands::*;
 use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
-use serenity::{ActivityData, Client, Colour, CreateEmbed, CreateMessage, GatewayIntents};
-use std::sync::LazyLock;
+use serenity::{
+    ActivityData, Client, ClientBuilder, Colour, CreateEmbed, CreateMessage, GatewayIntents, ShardRunnerMessage, Token,
+};
+use std::sync::{Arc, LazyLock};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -48,49 +49,52 @@ pub static MISSING_STORE_LINK_MESSAGE: &str = "No linked store with that usernam
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
 /// commands to be installed globally
-static GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| vec![add_store(), help(), version()]);
+static GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
 
 /// commands to be installed only after successful Jinxxy init
-static CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
-    vec![
-        create_post(),
-        deactivate_license(),
-        grant_missing_roles(),
-        license_info(),
-        link_product(),
-        link_product_version(),
-        list_links(),
-        lock_license(),
-        set_log_channel(),
-        set_wildcard_role(),
-        stats(),
-        unlink_product(),
-        unlink_product_version(),
-        unlock_license(),
-        unset_wildcard_role(),
-        user_info(),
-    ]
-});
+static CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
+    create_post,
+    deactivate_license,
+    grant_missing_roles,
+    license_info,
+    link_product,
+    link_product_version,
+    list_links,
+    lock_license,
+    set_log_channel,
+    set_wildcard_role,
+    stats,
+    unlink_product,
+    unlink_product_version,
+    unlock_license,
+    unset_wildcard_role,
+    user_info,
+];
 
 /// commands to be installed only for owner-owned guilds
-static OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> = LazyLock::new(|| {
-    vec![
-        announce(),
-        announce_test(),
-        clear_cache(),
-        debug_product_cache(),
-        exit(),
-        misconfigured_guilds(),
-        owner_stats(),
-        restart(),
-        set_cache_expiry_time(),
-        set_test(),
-        sudo_list_links(),
-        unfuck_cache(),
-        verify_guild(),
-        whois(),
-    ]
-});
+static OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
+    announce,
+    announce_test,
+    clear_cache,
+    debug_product_cache,
+    exit,
+    misconfigured_guilds,
+    owner_stats,
+    restart,
+    set_cache_expiry_time,
+    set_test,
+    sudo_list_links,
+    unfuck_cache,
+    verify_guild,
+    whois,
+];
+
+static BAKED_GLOBAL_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
+    LazyLock::new(|| GLOBAL_COMMANDS.iter().map(|f| f()).collect());
+static BAKED_CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
+    LazyLock::new(|| CREATOR_COMMANDS.iter().map(|f| f()).collect());
+static BAKED_OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
+    LazyLock::new(|| OWNER_COMMANDS.iter().map(|f| f()).collect());
 
 /// User data, which is stored and accessible in all command invocations. Cloning is by-reference.
 #[derive(Clone)]
@@ -99,13 +103,17 @@ struct Data {
     api_cache: ApiCache,
 }
 
+struct BotBuilder {
+    client_builder: ClientBuilder,
+    db: JinxDb,
+}
+
 pub struct Bot {
     client: Client,
     db: JinxDb,
-    api_cache: ApiCache,
 }
 
-impl Bot {
+impl BotBuilder {
     pub async fn new() -> Result<Self, Error> {
         let db = JinxDb::open().await?;
         let discord_token = db.get_discord_token().await?.ok_or_else(|| {
@@ -113,151 +121,108 @@ impl Bot {
                 "discord token not provided. Re-run the application with the `init` subcommand to run first-time setup.",
             )
         })?;
+        let discord_token = Token::try_from(discord_token)?;
         let intents = GatewayIntents::GUILDS
             .union(GatewayIntents::GUILD_MESSAGES)
             .union(GatewayIntents::DIRECT_MESSAGES);
-
-        let framework_db_clone = db.clone();
-        let api_cache = ApiCache::new(db.clone());
-        let framework_api_cache_clone = api_cache.clone();
-        let framework = poise::Framework::builder()
-            .options(poise::FrameworkOptions {
-                // all commands must appear in this list otherwise poise won't recognize interactions for them
-                // this vec is terribly redundant, but because we can't clone Command and it ONLY takes a Vec<Command>, this is the only option.
-                commands: vec![
-                    add_store(),
-                    announce(),
-                    announce_test(),
-                    clear_cache(),
-                    create_post(),
-                    deactivate_license(),
-                    debug_product_cache(),
-                    exit(),
-                    grant_missing_roles(),
-                    help(),
-                    license_info(),
-                    link_product(),
-                    link_product_version(),
-                    list_links(),
-                    lock_license(),
-                    misconfigured_guilds(),
-                    owner_stats(),
-                    restart(),
-                    set_cache_expiry_time(),
-                    set_log_channel(),
-                    set_test(),
-                    set_wildcard_role(),
-                    stats(),
-                    sudo_list_links(),
-                    unfuck_cache(),
-                    unlink_product(),
-                    unlink_product_version(),
-                    unlock_license(),
-                    unset_wildcard_role(),
-                    user_info(),
-                    verify_guild(),
-                    version(),
-                    whois(),
-                ],
-                event_handler: |ctx, event| Box::pin(event_handler(ctx, event)),
-                on_error: |e| Box::pin(error_handler(e)),
-                initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
-                prefix_options: PrefixFrameworkOptions {
-                    // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
-                    prefix: None,
-                    additional_prefixes: Vec::new(),
-                    dynamic_prefix: None,
-                    stripped_dynamic_prefix: None,
-                    mention_as_prefix: false,
-                    edit_tracker: None,
-                    execute_untracked_edits: false,
-                    ignore_edits_if_not_yet_responded: true,
-                    execute_self_messages: false,
-                    ignore_bots: true,
-                    ignore_thread_creation: true,
-                    case_insensitive_commands: false,
-                    non_command_message: None,
-                    ..Default::default()
-                },
+        let commands = GLOBAL_COMMANDS
+            .iter()
+            .chain(CREATOR_COMMANDS.iter())
+            .chain(OWNER_COMMANDS.iter())
+            .map(|c| c())
+            .collect();
+        let options = poise::FrameworkOptions {
+            commands, // all commands must appear in this list otherwise poise won't recognize interactions for them
+            on_error: |e| Box::pin(error_handler(e)),
+            initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
+            prefix_options: PrefixFrameworkOptions {
+                // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
+                prefix: None,
+                additional_prefixes: Vec::new(),
+                dynamic_prefix: None,
+                stripped_dynamic_prefix: None,
+                mention_as_prefix: false,
+                edit_tracker: None,
+                execute_untracked_edits: false,
+                ignore_edits_if_not_yet_responded: true,
+                execute_self_messages: false,
+                ignore_bots: true,
+                ignore_thread_creation: true,
+                case_insensitive_commands: false,
+                non_command_message: None,
                 ..Default::default()
-            })
-            .setup(|ctx, _ready, _framework| {
-                Box::pin(async move {
-                    let db = framework_db_clone;
-                    let api_cache = framework_api_cache_clone;
-
-                    debug!("registering global commands…");
-                    let commands_to_create = poise::builtins::create_application_commands(GLOBAL_COMMANDS.as_slice());
-                    ctx.http.create_global_commands(&commands_to_create).await?;
-
-                    // set up the task to periodically optimize the DB
-                    {
-                        let db = db.clone();
-                        tokio::task::spawn(async move {
-                            loop {
-                                // 1 day per optimize. Startup optimize is handled on DB init.
-                                tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
-                                let start = Instant::now();
-                                if let Err(e) = db.optimize().await {
-                                    error!("Error optimizing DB: {:?}", e);
-                                }
-                                let elapsed = start.elapsed();
-                                info!("optimized db in {}ms", elapsed.as_millis());
-                            }
-                        });
-                    }
-
-                    // set up the task to periodically checkpoint the DB
-                    {
-                        let db = db.clone();
-                        tokio::task::spawn(async move {
-                            // an extra 30 minute phase shift so this doesn't align with the 24h optimize
-                            tokio::time::sleep(Duration::from_secs(30 * SECONDS_PER_MINUTE)).await;
-                            loop {
-                                // 1 hour per checkpoint. We do not checkpoint on startup.
-                                tokio::time::sleep(Duration::from_secs(SECONDS_PER_HOUR)).await;
-                                let start = Instant::now();
-                                let result = db.checkpoint(SqliteWalCheckpoint::Passive).await;
-                                let elapsed = start.elapsed();
-                                match result {
-                                    Ok(result) => info!("checkpointed db in {}ms. {}", elapsed.as_millis(), result),
-                                    Err(e) => error!("error checkpointing db after {}ms: {:?}", elapsed.as_millis(), e),
-                                }
-                            }
-                        });
-                    }
-
-                    debug!("framework setup complete");
-                    Ok(Data { db, api_cache })
-                })
-            })
-            .build();
-        debug!("framework built");
-
+            },
+            ..Default::default()
+        };
+        let framework = poise::Framework::new(options);
         let distinct_user_count = db
             .distinct_user_count()
             .await
             .expect("Failed to read distinct user count from DB");
         debug!("fetched initial distinct_user_count");
 
-        let client = serenity::ClientBuilder::new(discord_token, intents)
+        let client_builder = ClientBuilder::new(discord_token, intents)
             .activity(ActivityData::custom(get_activity_string(distinct_user_count)))
-            .framework(framework)
-            .await
-            .expect("Failed to set bot's initial activity");
-        debug!("client built");
+            .framework(Box::new(framework));
 
-        let bot = Self { client, db, api_cache };
+        let bot = Self { client_builder, db };
         Ok(bot)
     }
 
-    pub async fn start(&mut self) -> Result<(), Error> {
-        debug!("Starting background jobs…");
+    pub async fn build(self) -> Result<Bot, Error> {
+        let BotBuilder { client_builder, db } = self;
+
+        debug!("Building client…");
+        let api_cache = ApiCache::new(db.clone());
+        let data = Arc::new(Data {
+            db: db.clone(),
+            api_cache: api_cache.clone(),
+        });
+        let client_builder = client_builder.data(data.clone()).event_handler(data);
+        let client = client_builder.await.expect("Failed to create bot client");
+        debug!("Client built… Starting background jobs…");
+
+        // set up the task to periodically optimize the DB
+        {
+            let db = db.clone();
+            tokio::task::spawn(async move {
+                loop {
+                    // 1 day per optimize. Startup optimize is handled on DB init.
+                    tokio::time::sleep(Duration::from_secs(SECONDS_PER_DAY)).await;
+                    let start = Instant::now();
+                    if let Err(e) = db.optimize().await {
+                        error!("Error optimizing DB: {:?}", e);
+                    }
+                    let elapsed = start.elapsed();
+                    info!("optimized db in {}ms", elapsed.as_millis());
+                }
+            });
+        }
+
+        // set up the task to periodically checkpoint the DB
+        {
+            let db = db.clone();
+            tokio::task::spawn(async move {
+                // an extra 30 minute phase shift so this doesn't align with the 24h optimize
+                tokio::time::sleep(Duration::from_secs(30 * SECONDS_PER_MINUTE)).await;
+                loop {
+                    // 1 hour per checkpoint. We do not checkpoint on startup.
+                    tokio::time::sleep(Duration::from_secs(SECONDS_PER_HOUR)).await;
+                    let start = Instant::now();
+                    let result = db.checkpoint(SqliteWalCheckpoint::Passive).await;
+                    let elapsed = start.elapsed();
+                    match result {
+                        Ok(result) => info!("checkpointed db in {}ms. {}", elapsed.as_millis(), result),
+                        Err(e) => error!("error checkpointing db after {}ms: {:?}", elapsed.as_millis(), e),
+                    }
+                }
+            });
+        }
+
         // set up the task to periodically perform gumroad nags
         {
-            let db = self.db.clone();
-            let http = self.client.http.clone();
-            let cache = self.client.cache.clone();
+            let db = db.clone();
+            let http = client.http.clone();
             tokio::task::spawn(async move {
                 // initial delay of 60 seconds before the first nag wave
                 tokio::time::sleep(Duration::from_secs(60)).await;
@@ -281,11 +246,7 @@ impl Bot {
                                     .description(message)
                                     .color(Colour::ORANGE);
                                 let message = CreateMessage::default().embed(embed);
-                                match pending_nag
-                                    .log_channel_id
-                                    .send_message((&cache, http.as_ref()), message)
-                                    .await
-                                {
+                                match message.execute(http.as_ref(), pending_nag.log_channel_id).await {
                                     Ok(_message) => match db.increment_gumroad_nag_count(pending_nag.guild_id).await {
                                         Ok(()) => {
                                             sent_nag_count += 1;
@@ -330,8 +291,8 @@ impl Bot {
 
         // set up the task to periodically set the bot's status
         {
-            let db = self.db.clone();
-            let shard_manager = self.client.shard_manager.clone();
+            let db = db.clone();
+            let runners = client.shard_manager.runners.clone();
             tokio::task::spawn(async move {
                 let mut distinct_user_count = db
                     .distinct_user_count()
@@ -349,10 +310,15 @@ impl Bot {
                                 // only do the expensive bit if the count has actually changed
                                 distinct_user_count = new_distinct_user_count;
                                 let custom_activity = get_activity_string(new_distinct_user_count);
-                                for runner in shard_manager.runners.lock().await.values() {
-                                    runner
-                                        .runner_tx
-                                        .set_activity(Some(ActivityData::custom(custom_activity.as_str())));
+                                for runner in runners.iter() {
+                                    let (_, sender) = runner.value();
+                                    let result = sender.unbounded_send(ShardRunnerMessage::SetPresence {
+                                        activity: Some(Some(ActivityData::custom(custom_activity.as_str()))),
+                                        status: None,
+                                    });
+                                    if let Err(e) = result {
+                                        warn!("Error updating bot activity: {e:?}");
+                                    }
                                 }
                                 true
                             } else {
@@ -378,13 +344,23 @@ impl Bot {
         }
 
         debug!("Background jobs started. Starting API cache registration…");
-
         // register all stores in API cache
-        for jinxxy_user_id in self.db.get_all_stores().await? {
-            self.api_cache.register_store_in_cache(jinxxy_user_id).await?;
+        for jinxxy_user_id in db.get_all_stores().await? {
+            api_cache.register_store_in_cache(jinxxy_user_id).await?;
         }
+        debug!("API cache registration complete.");
 
-        debug!("API cache registration complete. Starting client event handler…");
+        Ok(Bot { client, db })
+    }
+}
+
+impl Bot {
+    pub async fn new() -> Result<Self, Error> {
+        BotBuilder::new().await?.build().await
+    }
+
+    pub async fn start(&mut self) -> Result<(), Error> {
+        debug!("Starting client event handler…");
 
         // note that client.start() does NOT do sharding. If sharding is needed you need to use one of the alternative start functions
         // https://docs.rs/serenity/latest/serenity/gateway/index.html#sharding
@@ -399,10 +375,11 @@ impl Bot {
     }
 
     /// Shutdown all bot shards
-    pub async fn close(&self) {
-        self.client.shard_manager.shutdown_all().await;
-        self.db.close().await;
-        debug!("DB closed!");
+    pub fn get_shutdown_trigger(&self) -> impl FnOnce() + Send + use<> {
+        let shutdown_shards = self.client.shard_manager.get_shutdown_trigger();
+        move || {
+            shutdown_shards();
+        }
     }
 }
 

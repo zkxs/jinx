@@ -10,7 +10,7 @@ use crate::time::SimpleTime;
 use jiff::Timestamp;
 use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude as serenity;
-use serenity::{ChannelId, GuildId, RoleId, UserId};
+use serenity::{GenericChannelId, GuildId, RoleId, UserId};
 use sqlx::{
     ConnectOptions, Connection, Encode, Error as SqlxError, Executor, FromRow, Pool, Sqlite, SqliteConnection,
     pool::PoolConnection,
@@ -1151,7 +1151,7 @@ impl JinxDb {
     }
 
     /// Get bot log channel
-    pub async fn get_log_channel(&self, guild: GuildId) -> JinxResult<Option<ChannelId>> {
+    pub async fn get_log_channel(&self, guild: GuildId) -> JinxResult<Option<GenericChannelId>> {
         let guild_id = guild.get() as i64;
 
         // inner optional is for if the guild has no log channel set
@@ -1159,19 +1159,21 @@ impl JinxDb {
         let channel_id = sqlx::query_scalar!(r#"SELECT log_channel_id FROM guild WHERE guild_id = ?"#, guild_id)
             .fetch_optional(&self.read_pool)
             .await?;
-        let channel_id = channel_id.flatten().map(|channel_id| ChannelId::new(channel_id as u64));
+        let channel_id = channel_id
+            .flatten()
+            .map(|channel_id| GenericChannelId::new(channel_id as u64));
         Ok(channel_id)
     }
 
     /// Get all bot log channels.
     /// If `TEST_ONLY` is true, then only returns non-production servers. Otherwise, returns all servers.
-    pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> JinxResult<Vec<ChannelId>> {
+    pub async fn get_log_channels<const TEST_ONLY: bool>(&self) -> JinxResult<Vec<GenericChannelId>> {
         let result = if TEST_ONLY {
             // only non-production servers
             sqlx::query!(
                 r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL AND guild.test"#
             )
-                .map(|row| ChannelId::new(row.channel_id as u64))
+                .map(|row| GenericChannelId::new(row.channel_id as u64))
                 .fetch_all(&self.read_pool)
                 .await
         } else {
@@ -1179,7 +1181,7 @@ impl JinxDb {
             sqlx::query!(
                 r#"SELECT DISTINCT log_channel_id AS "channel_id!" FROM guild WHERE log_channel_id IS NOT NULL"#
             )
-            .map(|row| ChannelId::new(row.channel_id as u64))
+            .map(|row| GenericChannelId::new(row.channel_id as u64))
             .fetch_all(&self.read_pool)
             .await
         }?;
@@ -1187,7 +1189,7 @@ impl JinxDb {
     }
 
     /// Set or unset bot log channel
-    pub async fn set_log_channel(&self, guild: GuildId, channel: Option<ChannelId>) -> JinxResult<()> {
+    pub async fn set_log_channel(&self, guild: GuildId, channel: Option<GenericChannelId>) -> JinxResult<()> {
         let guild_id = guild.get() as i64;
         let channel_id = channel.map(|channel| channel.get() as i64);
         let mut connection = self.write_connection().await?;
@@ -1300,7 +1302,7 @@ impl JinxDb {
         )
             .map(|row| GuildGumroadInfo {
                 guild_id: GuildId::new(row.guild_id as u64),
-                log_channel_id: ChannelId::new(row.log_channel_id as u64),
+                log_channel_id: GenericChannelId::new(row.log_channel_id as u64),
                 gumroad_failure_count: row.gumroad_failure_count as u64,
             })
             .fetch_all(&self.read_pool)
@@ -1680,7 +1682,7 @@ mod helper {
 /// Helper struct returned by [`JinxDb::get_guilds_pending_gumroad_nag`]
 pub struct GuildGumroadInfo {
     pub guild_id: GuildId,
-    pub log_channel_id: ChannelId,
+    pub log_channel_id: GenericChannelId,
     pub gumroad_failure_count: u64,
 }
 
