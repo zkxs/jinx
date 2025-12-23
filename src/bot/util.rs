@@ -13,8 +13,8 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serenity::{
-    AutocompleteChoice, Cache, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, GuildId, Http,
-    Message, MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
+    AutocompleteChoice, Cache, CacheHttp, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed,
+    Error as SerenityError, GuildId, Http, Message, MessageFlags, MessageType, MessageUpdateEvent, Role, RoleId,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -321,14 +321,14 @@ pub trait MessageExtensions {
     /// Meanwhile, Message.guild_id says: "This value will only be present if this message was received over the gateway, therefore do not use this to check if message is in DMs, it is not a reliable method."
     ///
     /// Fuck me, I guess. This check attempts to fix Serenity's shit.
-    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> bool;
+    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> Result<bool, SerenityError>;
 }
 
 impl<T> MessageExtensions for T
 where
     T: GetChannelId + GetGuildId + GetMessageKind + GetMessageFlags,
 {
-    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> bool {
+    async fn fixed_is_private(&self, cache_http: impl CacheHttp) -> Result<bool, SerenityError> {
         if self.get_guild_id().is_none() {
             if self
                 .get_kind()
@@ -338,41 +338,39 @@ where
                 if self
                     .get_flags()
                     .map(|flags| {
-                        matches!(
-                            flags,
+                        flags.intersects(
                             MessageFlags::IS_CROSSPOST
                                 | MessageFlags::IS_VOICE_MESSAGE
                                 | MessageFlags::EPHEMERAL
                                 | MessageFlags::LOADING
-                                | MessageFlags::URGENT
+                                | MessageFlags::URGENT,
                         )
                     })
                     .unwrap_or(false)
                 {
                     // the message has some weird flags set, so even if it's TECHNICALLY a private message it's definitely not a normal one
-                    false
+                    Ok(false)
                 } else {
                     // we couldn't get flags, or they looked normal
-                    match self.get_channel_id().to_channel(cache_http).await {
-                        Ok(channel) => channel.private().is_some(),
+                    match cache_http.http().get_channel(self.get_channel_id()).await {
+                        Ok(channel) => Ok(channel.private().is_some()),
                         Err(e) => {
-                            // couldn't get the channel from the cache
                             warn!(
                                 "Could not determine if {} is a private channel: {:?}",
                                 self.get_channel_id().get(),
                                 e
                             );
-                            false
+                            Err(e)
                         }
                     }
                 }
             } else {
                 // the message was not a regular message, or we couldn't get the message kind
-                false
+                Ok(false)
             }
         } else {
-            // guild is not set, so it's definitely not a DM
-            false
+            // guild is set, so it's definitely not a DM
+            Ok(false)
         }
     }
 }

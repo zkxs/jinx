@@ -111,7 +111,11 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
             So, basically any case where Discord thinks a user may actually intend for the bot to see the message.
             */
 
-            if new_message.fixed_is_private(context.serenity_context).await {
+            if new_message
+                .fixed_is_private(context.serenity_context)
+                .await
+                .unwrap_or(true)
+            {
                 debug!(
                     "Received DM id={}; channel={}; author={}: {}",
                     new_message.id.get(),
@@ -195,7 +199,7 @@ pub async fn event_handler<'a>(context: FrameworkContext<'a, Data, Error>, event
         } => {
             // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
             // this DOES work on DMs
-            if event.fixed_is_private(context.serenity_context).await {
+            if event.fixed_is_private(context.serenity_context).await.unwrap_or(true) {
                 if let Some(new) = new {
                     if let Some(old) = old_if_available {
                         debug!(
