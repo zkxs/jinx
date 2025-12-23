@@ -413,7 +413,7 @@ pub async fn deactivate_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
-        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
+        let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = context
                 .data()
@@ -474,7 +474,7 @@ pub async fn license_info(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
-        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
+        let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             // look up license usage info from local DB and from Jinxxy concurrently
             let (local_license_users, license_info, remote_license_users) = tokio::join!(
@@ -508,7 +508,7 @@ pub async fn license_info(
                     .map(|info| info.product_version_name.as_str())
                     .unwrap_or("`null`");
 
-                let message = if local_license_users.is_empty() {
+                let message = if remote_license_users.is_empty() {
                     format!(
                         "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nNo registered users.",
                         license_info.license_id, license_info.short_key, license_info.key, product_name, version_name
@@ -518,8 +518,8 @@ pub async fn license_info(
                         "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nRegistered users:",
                         license_info.license_id, license_info.short_key, license_info.key, product_name, version_name
                     );
-                    for user_id in &local_license_users {
-                        if *user_id == 0 {
+                    for user_id in &remote_license_users {
+                        if *user_id == LOCKING_USER_ID {
                             message.push_str("\n- **LOCKED** (prevents further use)");
                         } else {
                             message.push_str(format!("\n- <@{user_id}>").as_str());
@@ -539,15 +539,15 @@ pub async fn license_info(
                 }
             } else {
                 // license is invalid... but we somehow found it in the license list search by key?
-                // that or an ID was provided directly
-                let message = if local_license_users.is_empty() {
+                // that or an invalid ID was provided directly
+                let message = if remote_license_users.is_empty() {
                     format!(
                         "License `{license} not found: please verify that the key is correct and belongs to the Jinxxy account linked to this Discord server.`"
                     )
                 } else {
                     let mut message = format!("License `{license}` not found, but somehow has users:");
-                    for user_id in local_license_users {
-                        if user_id == 0 {
+                    for user_id in &remote_license_users {
+                        if *user_id == LOCKING_USER_ID {
                             message.push_str("\n- **LOCKED** (prevents further use)");
                         } else {
                             message.push_str(format!("\n- <@{user_id}>").as_str());
@@ -556,7 +556,16 @@ pub async fn license_info(
                     message.push_str("\nThis may indicate that the license has been revoked on the Jinxxy side.");
                     message
                 };
-                error_reply("License Info Validation Error", message)
+                let reply = error_reply("License Info Validation Error", message);
+                if local_license_users == remote_license_users {
+                    reply
+                } else {
+                    let embed = CreateEmbed::default()
+                        .title("Activator mismatch")
+                        .description("The local and remote activator lists do not match. This is really weird and you should tell the bot dev about it, because chances are you are the first person seeing this message ever.")
+                        .color(Colour::RED);
+                    reply.embed(embed)
+                }
             }
         } else {
             error_reply(
@@ -595,7 +604,7 @@ pub async fn lock_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
-        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
+        let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(
                 &store.jinxxy_api_key,
@@ -669,7 +678,7 @@ pub async fn unlock_license(
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
     let reply = if let Some(store) = context.data().db.get_store_link(guild_id, &store_name).await? {
-        let license_id = util::license_to_id(&store.jinxxy_api_key, &license).await?;
+        let license_id = util::trusted_license_to_id(&store.jinxxy_api_key, &license).await?;
         if let Some(license_id) = license_id {
             let activations = jinxxy::get_license_activations(
                 &store.jinxxy_api_key,

@@ -64,7 +64,7 @@ pub async fn set_guild_commands(
 
 /// Get a license ID from whatever the heck the user provided. This can proxy IDs through, so it may
 /// not be suitable for untrusted applications where you don't want to allow users to pass IDs directly.
-pub async fn license_to_id(api_key: &str, license: &str) -> Result<Option<String>, Error> {
+pub async fn trusted_license_to_id(api_key: &str, license: &str) -> Result<Option<String>, Error> {
     let license_type = LicenseType::identify(license);
     let license_id = if license_type.is_integer() {
         Some(license.to_string())
