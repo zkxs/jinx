@@ -53,10 +53,10 @@ const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 const GUILD_COMMAND_VERSION: i64 = 0;
 
 /// commands to be installed globally
-static GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
+const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
 
 /// commands to be installed only after successful Jinxxy init
-static CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
+const CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     create_post,
     deactivate_license,
     grant_missing_roles,
@@ -76,7 +76,7 @@ static CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
 ];
 
 /// commands to be installed only for owner-owned guilds
-static OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
+const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     announce,
     announce_test,
     clear_cache,
