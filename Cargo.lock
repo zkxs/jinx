@@ -1390,7 +1390,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/zkxs/poise.git?branch=zkxs-next-2#4c23aed76594f54e92205fb5eb7fa93942e496f6"
+source = "git+https://github.com/zkxs/poise.git?branch=zkxs-next-2#0ec10cde12ddf71d6cde9af561805e978aba6625"
 dependencies = [
  "async-trait",
  "derivative",
@@ -1408,7 +1408,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/zkxs/poise.git?branch=zkxs-next-2#4c23aed76594f54e92205fb5eb7fa93942e496f6"
+source = "git+https://github.com/zkxs/poise.git?branch=zkxs-next-2#0ec10cde12ddf71d6cde9af561805e978aba6625"
 dependencies = [
  "darling",
  "proc-macro2",
