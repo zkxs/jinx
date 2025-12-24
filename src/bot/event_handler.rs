@@ -496,6 +496,13 @@ async fn handle_license_registration(
                     .as_ref()
                     .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
 
+                let jinxxy_store_name = data
+                    .db
+                    .get_store_username(&jinxxy_user_id)
+                    .await?
+                    .map(Cow::Owned)
+                    .unwrap_or(Cow::Borrowed(jinxxy_user_id.as_ref()));
+
                 let (activations, mut validation) = if license_info.activations == 0 {
                     // API call saving check: we already know how many validations there are, so if there are 0 we don't need to query them
                     (None, Default::default())
@@ -514,18 +521,12 @@ async fn handle_license_registration(
 
                     // send a notification to the guild owner bot log if it's set up for this guild
                     if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
-                        let jinxxy_store_name = data
-                            .db
-                            .get_store_username(&jinxxy_user_id)
-                            .await?
-                            .map(Cow::Owned)
-                            .unwrap_or(Cow::Borrowed(jinxxy_user_id.as_ref()));
                         let message = if validation.locked {
                             format!(
                                 "<@{}> attempted to activate the locked license `{}` for store {}. You can unlock this license with the `/unlock_license` command.",
                                 user_id.get(),
-                                jinxxy_store_name,
                                 license_info.license_id,
+                                jinxxy_store_name,
                             )
                         } else {
                             let mut message = format!(
@@ -654,8 +655,10 @@ async fn handle_license_registration(
                         // also send a notification to the guild owner bot log if it's set up for this guild
                         if let Some(log_channel) = data.db.get_log_channel(guild_id).await? {
                             let message = format!(
-                                "<@{}> attempted to activate a deadlocked license. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
-                                user_id.get()
+                                "<@{}> attempted to activate a deadlocked license `{}` for store {}. It shouldn't be possible, but multiple users have already activated this license. An admin can use the `/deactivate_license` command to fix this manually.",
+                                user_id.get(),
+                                license_info.license_id,
+                                jinxxy_store_name,
                             );
                             let embed = CreateEmbed::default()
                                 .title("Activation Error")
