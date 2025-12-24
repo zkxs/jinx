@@ -119,14 +119,14 @@ impl LicenseType {
 impl Display for LicenseType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LicenseType::JinxxyShort => write!(f, "a Jinxxy short key"),
-            LicenseType::JinxxyLong => write!(f, "a Jinxxy long key"),
-            LicenseType::Gumroad => write!(f, "a Gumroad key"),
-            LicenseType::Integer => write!(f, "a number"),
-            LicenseType::Payhip => write!(f, "a Payhip key"),
-            LicenseType::JinxxyTransactionId => write!(f, "a Jinxxy transaction ID"),
-            LicenseType::Unknown => write!(f, "an unknown value"),
-            LicenseType::Ambiguous => write!(f, "an ambiguous value"),
+            LicenseType::JinxxyShort => write!(f, "a **Jinxxy short key**"),
+            LicenseType::JinxxyLong => write!(f, "a **Jinxxy long key**"),
+            LicenseType::Gumroad => write!(f, "a **Gumroad key**"),
+            LicenseType::Integer => write!(f, "an **unknown value**"),
+            LicenseType::Payhip => write!(f, "a **Payhip key**"),
+            LicenseType::JinxxyTransactionId => write!(f, "a **transaction ID**"),
+            LicenseType::Unknown => write!(f, "an **unknown value**"),
+            LicenseType::Ambiguous => write!(f, "an **ambiguous value**"),
         }
     }
 }

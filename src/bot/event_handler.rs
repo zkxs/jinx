@@ -465,7 +465,7 @@ async fn handle_license_registration(
             } else {
                 format!(
                     "The provided Jinxxy license key was not valid or is already in use.\n\n\
-                    This bot only supports **Jinxxy** keys, but you appear to have provided **{license_type}**. \
+                    This bot only supports **Jinxxy keys**, but you appear to have provided {license_type}. \
                     Please confirm you are providing the correct value to the correct bot. \
                     Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
                 )
