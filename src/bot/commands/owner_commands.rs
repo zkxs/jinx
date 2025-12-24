@@ -29,7 +29,9 @@ pub(in crate::bot) async fn owner_stats(
     #[description = "if \"False\", response will be public. Defaults to True."] ephemeral: Option<bool>,
 ) -> Result<(), Error> {
     let start = Instant::now();
-    let db_size = context.data().db.size().await?.div_ceil(1024);
+    let db_size = context.data().db.size().await?;
+    let db_total_bytes = db_size.total_bytes().div_ceil(1024);
+    let db_free_bytes = db_size.free_bytes().div_ceil(1024);
     let configured_guild_count = context.data().db.guild_count().await?;
     let license_activation_count = context.data().db.license_activation_count().await?;
     let distinct_user_count = context.data().db.distinct_user_count().await?;
@@ -57,7 +59,8 @@ pub(in crate::bot) async fn owner_stats(
     let elapsed_micros = start.elapsed().as_micros();
 
     let message = format!(
-        "db_size={db_size} KiB\n\
+        "db_size={db_total_bytes} KiB\n\
+        db_free={db_free_bytes} KiB\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
         log channels={log_channel_count}\n\

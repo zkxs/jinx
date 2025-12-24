@@ -12,7 +12,7 @@ use poise::futures_util::TryStreamExt;
 use poise::serenity_prelude as serenity;
 use serenity::{GenericChannelId, GuildId, RoleId, UserId};
 use sqlx::{
-    ConnectOptions, Connection, Encode, Error as SqlxError, Executor, FromRow, Pool, Sqlite, SqliteConnection,
+    ConnectOptions, Connection, Encode, Error as SqlxError, Executor, FromRow, Pool, Row, Sqlite, SqliteConnection,
     pool::PoolConnection,
     sqlite::{
         SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePoolOptions, SqliteRow,
@@ -20,7 +20,7 @@ use sqlx::{
     },
 };
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
@@ -1052,11 +1052,22 @@ impl JinxDb {
         Ok(result)
     }
 
-    /// Get DB size in bytes
-    pub async fn size(&self) -> JinxResult<u64> {
+    /// Get DB size statistics
+    pub async fn size(&self) -> JinxResult<SqliteDatabaseSize> {
+        // tragically sqlx doesn't understand the column names of pragma functions, so we can't use the checked macro
         let result =
-            sqlx::query!(r#"SELECT page_count * page_size AS "size!" FROM pragma_page_count(), pragma_page_size()"#)
-                .map(|row| row.size as u64)
+            sqlx::query(r#"SELECT page_count, freelist_count, page_size FROM pragma_page_count(), pragma_freelist_count(), pragma_page_size()"#)
+                .try_map(|row: SqliteRow| {
+                    let page_count: i64 = row.try_get("page_count")?;
+                    let freelist_count: i64 = row.try_get("freelist_count")?;
+                    let page_size: i64 = row.try_get("page_size")?;
+                    let row = SqliteDatabaseSize {
+                        page_count: page_count as u64,
+                        freelist_count: freelist_count as u64,
+                        page_size: page_size as u64,
+                    };
+                    Ok(row)
+                })
                 .fetch_one(&self.read_pool)
                 .await?;
         Ok(result)
@@ -1826,5 +1837,45 @@ impl Display for SqliteWalCheckpointResults {
             self.checkpointed,
             self.remaining()
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct SqliteDatabaseSize {
+    page_count: u64,
+    freelist_count: u64,
+    page_size: u64,
+}
+
+#[allow(dead_code)]
+impl SqliteDatabaseSize {
+    /// Number of total pages in the DB, including both used pages and unused "freelist" pages.
+    pub fn page_count(&self) -> u64 {
+        self.page_count
+    }
+
+    /// Number of unused "freelist" pages in the DB.
+    pub fn freelist_count(&self) -> u64 {
+        self.freelist_count
+    }
+
+    /// DB's page size. 4096 by default, and the sqlite folks advise against tweaking it.
+    pub fn page_size(&self) -> u64 {
+        self.page_size
+    }
+
+    /// Total bytes used by the DB, including both used and unused "freelist" pages.
+    pub fn total_bytes(&self) -> u64 {
+        self.page_count * self.page_size
+    }
+
+    /// Bytes unused by the DB, including only unused "freelist" pages.
+    pub fn free_bytes(&self) -> u64 {
+        self.freelist_count * self.page_size
+    }
+
+    /// Bytes used by the DB, excluding unused "freelist" pages.
+    pub fn used_bytes(&self) -> u64 {
+        (self.page_count - self.freelist_count) * self.page_size
     }
 }
