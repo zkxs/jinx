@@ -132,7 +132,6 @@ async fn run_bot() -> Result<(), Error> {
     let shutdown_trigger = bot.get_shutdown_trigger();
     let shutdown_task = tokio::task::spawn(async move {
         signal_waiter.await;
-        info!("external shutdown requested");
         shutdown_trigger();
     });
     bot.start().await?;

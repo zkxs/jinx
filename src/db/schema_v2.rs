@@ -14,7 +14,7 @@ const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
 const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 2;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 3;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -43,6 +43,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    gumroad_nag_count      INTEGER NOT NULL DEFAULT 0,
                    blanket_role_id        INTEGER,
                    default_jinxxy_user    TEXT,
+                   command_version        INTEGER,
                    FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT"#,
         )
@@ -215,6 +216,13 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         connection.execute("DROP TABLE license_activation").await?;
         connection
             .execute("ALTER TABLE new_license_activation RENAME TO license_activation")
+            .await?;
+    }
+
+    // handle 2.0.2 -> 2.0.3 migration
+    if schema_version < (0, 3) {
+        connection
+            .execute(r#"ALTER TABLE guild ADD COLUMN command_version INTEGER"#)
             .await?;
     }
 

@@ -48,6 +48,10 @@ pub static MISSING_STORE_LINK_MESSAGE: &str = "No linked store with that usernam
 
 const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
+/// Version number for the guild commands that is incremented whenever a command's definition (not code!) changes,
+/// or a new command is added
+const GUILD_COMMAND_VERSION: i64 = 0;
+
 /// commands to be installed globally
 static GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
 

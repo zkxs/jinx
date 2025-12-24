@@ -452,7 +452,7 @@ impl JinxDb {
 
         // note that if the guild's row is somehow not present, this is a no-op, which is totally fine.
         sqlx::query!(
-            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL
+            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL, command_version = NULL
                WHERE guild_id = ?"#,
             guild_id
         )
@@ -643,6 +643,31 @@ impl JinxDb {
                ON CONFLICT (guild_id) DO UPDATE SET blanket_role_id = excluded.blanket_role_id"#,
             guild_id,
             role_id
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Get installed slash command version
+    pub async fn get_command_version(&self, guild: GuildId) -> JinxResult<Option<i64>> {
+        let guild_id = guild.get() as i64;
+        let result = sqlx::query_scalar!(r#"SELECT command_version FROM guild WHERE guild_id = ?"#, guild_id)
+            .fetch_optional(&self.read_pool)
+            .await?
+            .flatten();
+        Ok(result)
+    }
+
+    /// Set or unset installed slash command version
+    pub async fn set_command_version(&self, guild: GuildId, version: i64) -> JinxResult<()> {
+        let guild_id = guild.get() as i64;
+        let mut connection = self.write_connection().await?;
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, command_version) VALUES (?, ?)
+               ON CONFLICT (guild_id) DO UPDATE SET command_version = excluded.command_version"#,
+            guild_id,
+            version
         )
         .execute(&mut *connection)
         .await?;

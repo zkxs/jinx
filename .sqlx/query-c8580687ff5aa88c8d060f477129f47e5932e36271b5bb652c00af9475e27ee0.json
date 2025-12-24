@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT command_version FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "command_version",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "command_version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c8580687ff5aa88c8d060f477129f47e5932e36271b5bb652c00af9475e27ee0"
+}
