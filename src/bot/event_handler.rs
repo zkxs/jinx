@@ -223,7 +223,7 @@ impl EventHandler for Data {
 
                 // if installed version is older than expected, or if installed version is unset:
                 if installed_version
-                    .map(|installed| installed < GUILD_COMMAND_VERSION)
+                    .map(|installed| installed != GUILD_COMMAND_VERSION)
                     .unwrap_or(true)
                 {
                     // then we need to reinstall the guild commands
