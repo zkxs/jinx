@@ -404,7 +404,7 @@ impl BotBuilder {
 
                     // when the bot starts we receive a flurry of GuildCreate events leading to ratelimit issues
                     // when we attempt to reinstall the commands with no delay.
-                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    tokio::time::sleep(Duration::from_millis(750)).await;
                 }
                 debug!("GuildCreateEvent handler task is shutting down");
             });
