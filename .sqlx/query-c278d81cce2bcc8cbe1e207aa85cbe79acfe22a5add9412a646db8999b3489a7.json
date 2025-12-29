@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT blanket_role_id AS \"role_id!\" from guild WHERE guild_id = ?1 AND blanket_role_id IS NOT NULL\n               UNION SELECT role_id AS \"role_id!\" FROM product_role WHERE guild_id = ?1 AND product_id = ?2\n               UNION SELECT role_id AS \"role_id!\" FROM product_version_role WHERE guild_id = ?1 AND product_id = ?2 AND version_id = ?3",
+  "describe": {
+    "columns": [
+      {
+        "name": "role_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "blanket_role_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c278d81cce2bcc8cbe1e207aa85cbe79acfe22a5add9412a646db8999b3489a7"
+}

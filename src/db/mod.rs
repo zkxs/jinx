@@ -822,12 +822,9 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let result = sqlx::query!(
-            r#"SELECT blanket_role_id AS "role_id!" from guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
-               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ? AND product_id = ?
-               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ? AND product_id = ? AND version_id = ?"#,
-            guild_id,
-            guild_id,
-            product_id,
+            r#"SELECT blanket_role_id AS "role_id!" from guild WHERE guild_id = ?1 AND blanket_role_id IS NOT NULL
+               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ?1 AND product_id = ?2
+               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ?1 AND product_id = ?2 AND version_id = ?3"#,
             guild_id,
             product_id,
             version_id
@@ -885,15 +882,11 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
         let result = sqlx::query!(
-            r#"SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE guild_id = ? AND blanket_role_id = ?
-               UNION SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_role USING (guild_id, jinxxy_user_id, product_id) WHERE guild_id = ? AND role_id = ?
-               UNION SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_version_role USING (guild_id, jinxxy_user_id, product_id, version_id) WHERE guild_id = ? AND role_id = ?"#,
+            r#"SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE guild_id = ?1 AND blanket_role_id = ?2
+               UNION SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_role USING (guild_id, jinxxy_user_id, product_id) WHERE guild_id = ?1 AND role_id = ?2
+               UNION SELECT DISTINCT activator_user_id AS "user_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_version_role USING (guild_id, jinxxy_user_id, product_id, version_id) WHERE guild_id = ?1 AND role_id = ?2"#,
             guild_id,
             role_id,
-            guild_id,
-            role_id,
-            guild_id,
-            role_id
         )
         .map(|row| UserId::new(row.user_id as u64))
         .fetch_all(&self.read_pool)
@@ -905,11 +898,9 @@ impl JinxDb {
     pub async fn get_linked_roles(&self, guild: GuildId) -> JinxResult<Vec<RoleId>> {
         let guild_id = guild.get() as i64;
         let result = sqlx::query!(
-            r#"SELECT blanket_role_id AS "role_id!" FROM guild WHERE guild_id = ? AND blanket_role_id IS NOT NULL
-               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ?
-               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ?"#,
-            guild_id,
-            guild_id,
+            r#"SELECT blanket_role_id AS "role_id!" FROM guild WHERE guild_id = ?1 AND blanket_role_id IS NOT NULL
+               UNION SELECT role_id AS "role_id!" FROM product_role WHERE guild_id = ?1
+               UNION SELECT role_id AS "role_id!" FROM product_version_role WHERE guild_id = ?1"#,
             guild_id,
         )
         .map(|row| RoleId::new(row.role_id as u64))
