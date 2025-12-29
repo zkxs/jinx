@@ -13,10 +13,12 @@ use crate::db::{JinxDb, SqliteWalCheckpoint};
 use crate::error::JinxError;
 use commands::*;
 use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
+use serenity::all::GuildId;
 use serenity::{
     ActivityData, Client, ClientBuilder, Colour, CreateEmbed, CreateMessage, GatewayIntents, ShardRunnerMessage, Token,
 };
 use std::sync::{Arc, LazyLock};
+use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
@@ -100,11 +102,14 @@ static BAKED_CREATOR_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
 static BAKED_OWNER_COMMANDS: LazyLock<Vec<Command<Data, Error>>> =
     LazyLock::new(|| OWNER_COMMANDS.iter().map(|f| f()).collect());
 
-/// User data, which is stored and accessible in all command invocations. Cloning is by-reference.
+/// User data, which is stored and accessible in all command invocations. Cloning is by-reference. This does double-duty
+/// as the event-handler, meaning all its fields are also available to the event-handler via `self`.
 #[derive(Clone)]
 struct Data {
     db: JinxDb,
     api_cache: ApiCache,
+    /// Used to send `FullEvent::GuildCreate` to a background job
+    guild_create_event_tx: mpsc::Sender<GuildCreateEvent>,
 }
 
 struct BotBuilder {
@@ -112,8 +117,11 @@ struct BotBuilder {
     db: JinxDb,
 }
 
+/// This is given after creating all resources the bot needs to start. It provides functions to safely shut down the bot.
 pub struct Bot {
+    /// The serenity client. We need this to handle bot shutdown.
     client: Client,
+    /// The db. We need this to handle bot shutdown.
     db: JinxDb,
 }
 
@@ -178,9 +186,13 @@ impl BotBuilder {
 
         debug!("Building client…");
         let api_cache = ApiCache::new(db.clone());
+        const GUILD_CREATE_EVENT_QUEUE_SIZE: usize = 1024;
+        let (guild_create_event_tx, guild_create_event_rx) =
+            mpsc::channel::<GuildCreateEvent>(GUILD_CREATE_EVENT_QUEUE_SIZE);
         let data = Arc::new(Data {
             db: db.clone(),
             api_cache: api_cache.clone(),
+            guild_create_event_tx,
         });
         let client_builder = client_builder.data(data.clone()).event_handler(data);
         let client = client_builder.await.expect("Failed to create bot client");
@@ -347,6 +359,57 @@ impl BotBuilder {
             });
         }
 
+        // set up the task to install guild commands with some rate limit
+        {
+            let mut rx = guild_create_event_rx;
+            let db = db.clone();
+            let http = client.http.clone();
+            tokio::task::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    // we may need to reinstall guild commands, time to do some checks
+
+                    // check DB for the record of what we last installed to this guild
+                    let installed_version = match db.get_command_version(event.guild).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Error checking guild {} command version: {:?}", event.guild.get(), e);
+                            return;
+                        }
+                    };
+
+                    // this guild was not in the DB, so log it
+                    if installed_version.is_none() {
+                        // is_new == None if the cache feature is disabled
+                        // is_new == Some(false) when the guild is present in cache
+                        // is_new == Some(true) when the guild is not present in cache
+                        debug!("GuildCreate guild={} is_new={:?}", event.guild.get(), event.is_new);
+                    }
+
+                    // if installed version is older than expected, or if installed version is unset:
+                    if installed_version
+                        .map(|installed| installed != GUILD_COMMAND_VERSION)
+                        .unwrap_or(true)
+                    {
+                        // then we need to reinstall the guild commands
+                        if let Err(e) = util::set_guild_commands(&http, &db, event.guild, None, None).await {
+                            error!("Error setting guild commands for guild {}: {:?}", event.guild.get(), e);
+                            return;
+                        }
+                        // and finally record that we just did that
+                        if let Err(e) = db.set_command_version(event.guild, GUILD_COMMAND_VERSION).await {
+                            error!("Error setting guild {} command version: {:?}", event.guild.get(), e);
+                            return;
+                        }
+                    }
+
+                    // when the bot starts we receive a flurry of GuildCreate events leading to ratelimit issues
+                    // when we attempt to reinstall the commands with no delay.
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+                debug!("GuildCreateEvent handler task is shutting down");
+            });
+        }
+
         debug!("Background jobs started. Starting API cache registration…");
         // register all stores in API cache
         for jinxxy_user_id in db.get_all_stores().await? {
@@ -389,4 +452,9 @@ impl Bot {
 
 fn get_activity_string(distinct_user_count: u64) -> String {
     format!("Helping {distinct_user_count} users register Jinxxy products")
+}
+
+struct GuildCreateEvent {
+    guild: GuildId,
+    is_new: Option<bool>,
 }

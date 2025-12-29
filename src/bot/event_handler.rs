@@ -3,7 +3,7 @@
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
 use crate::bot::util::MessageExtensions;
-use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GUILD_COMMAND_VERSION, util};
+use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GuildCreateEvent, util};
 use crate::bot::{Data, REGISTER_MODAL_ID};
 use crate::db::JinxDb;
 use crate::error::{JinxError, SafeDisplay};
@@ -199,43 +199,16 @@ impl EventHandler for Data {
             }
             // bot was added to a guild
             FullEvent::GuildCreate { guild, is_new, .. } => {
-                // we may need to reinstall guild commands, time to do some checks
-
-                //TODO: when the bot starts we might receive a flurry of GuildCreate events leading to ratelimit issues when we attempt to reinstall the commands with no delay.
-                // I might be able to figure out some sort of work queue for if that ever becomes a problem. All we need is a serenity::Http and a GuildId so we should be good to handle this from a background task.
-
-                // check DB for the record of what we last installed to this guild
-                let installed_version = match self.db.get_command_version(guild.id).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("Error checking guild {} command version: {:?}", guild.id.get(), e);
-                        return;
-                    }
-                };
-
-                // this guild was not in the DB, so log it
-                if installed_version.is_none() {
-                    // is_new == None if the cache feature is disabled
-                    // is_new == Some(false) when the guild is present in cache
-                    // is_new == Some(true) when the guild is not present in cache
-                    debug!("GuildCreate guild={} is_new={:?}", guild.id.get(), is_new);
-                }
-
-                // if installed version is older than expected, or if installed version is unset:
-                if installed_version
-                    .map(|installed| installed != GUILD_COMMAND_VERSION)
-                    .unwrap_or(true)
-                {
-                    // then we need to reinstall the guild commands
-                    if let Err(e) = util::set_guild_commands(&context.http, &self.db, guild.id, None, None).await {
-                        error!("Error setting guild commands for guild {}: {:?}", guild.id.get(), e);
-                        return;
-                    }
-                    // and finally record that we just did that
-                    if let Err(e) = self.db.set_command_version(guild.id, GUILD_COMMAND_VERSION).await {
-                        error!("Error setting guild {} command version: {:?}", guild.id.get(), e);
-                        return;
-                    }
+                // we handle these events in a background task so we can impose a rate limit
+                let result = self
+                    .guild_create_event_tx
+                    .send(GuildCreateEvent {
+                        guild: guild.id,
+                        is_new: *is_new,
+                    })
+                    .await;
+                if let Err(e) = result {
+                    error!("Error sending GuildCreateEvent to background task: {e:?}");
                 }
             }
             // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete

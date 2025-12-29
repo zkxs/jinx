@@ -34,6 +34,8 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 /// Map of jinxxy_user_ids to their caches
 type MapType = Arc<papaya::HashMap<String, StoreCache, ahash::RandomState>>;
 
+/// Size of the bounded mpsc queues
+const QUEUE_SIZE: usize = 1024;
 /// How long before the high priority worker considers a cache entry expired. Currently 1 minute.
 const HIGH_PRIORITY_CACHE_EXPIRY_TIME: Duration = Duration::from_secs(60);
 /// How long before the low priority worker considers a cache entry expired. Currently 24 hours.
@@ -69,8 +71,6 @@ pub struct ApiCache {
 impl ApiCache {
     pub fn new(db: JinxDb) -> Self {
         let map: MapType = Default::default();
-
-        const QUEUE_SIZE: usize = 1024;
         let (high_priority_tx, mut high_priority_rx) = mpsc::channel::<(GuildId, String)>(QUEUE_SIZE);
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel::<Option<String>>(QUEUE_SIZE);
         let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel::<String>(QUEUE_SIZE);
