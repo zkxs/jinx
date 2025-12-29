@@ -444,30 +444,42 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let mut connection = self.write_connection().await?;
         let mut transaction = connection.begin().await?;
+        let deleted_users = helper::delete_guild(&mut transaction, guild_id).await?;
+        transaction.commit().await?;
+        Ok(deleted_users)
+    }
 
-        // delete guild:store links. This cascades to role setups.
-        sqlx::query!(r#"DELETE FROM jinxxy_user_guild WHERE guild_id = ?"#, guild_id)
-            .execute(&mut *transaction)
-            .await?;
+    /// Provided a list, `guilds`, of all guilds the bot is currently in, scan the DB for any guilds we're not in and
+    /// delete their data.
+    ///
+    /// See [`delete_guild`](JinxDb::delete_guild) for details on what, specifically, is deleted.
+    #[allow(dead_code)]
+    pub async fn delete_stale_guilds(&self, guilds: &[GuildId]) -> JinxResult<Vec<String>> {
+        let mut deleted_users = Vec::new();
+        let mut connection = self.write_connection().await?;
+        let mut transaction = connection.begin().await?;
 
-        // note that if the guild's row is somehow not present, this is a no-op, which is totally fine.
-        sqlx::query!(
-            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL, command_version = NULL
-               WHERE guild_id = ?"#,
-            guild_id
-        )
-        .execute(&mut *transaction)
-        .await?;
-
-        let deleted_users = sqlx::query_scalar!(
-            r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
-        )
-        .fetch_all(&mut *transaction)
-        .await?;
+        let stale_guilds = helper::get_stale_guilds(&mut transaction, guilds).await?;
+        for guild_id in stale_guilds {
+            deleted_users.extend(helper::delete_guild(&mut transaction, guild_id).await?);
+        }
 
         transaction.commit().await?;
-
         Ok(deleted_users)
+    }
+
+    /// Provided a list, `guilds`, of all guilds the bot is currently in, scan the DB for any guilds we're not in.
+    #[allow(dead_code)]
+    pub async fn get_stale_guilds(&self, guilds: &[GuildId]) -> JinxResult<Vec<GuildId>> {
+        let mut connection = self.write_connection().await?;
+        let mut transaction = connection.begin().await?;
+        let stale_guilds = helper::get_stale_guilds(&mut transaction, guilds).await?;
+        transaction.commit().await?;
+        let stale_guilds = stale_guilds
+            .into_iter()
+            .map(|guild_id| GuildId::new(guild_id as u64))
+            .collect();
+        Ok(stale_guilds)
     }
 
     /// Get a specific Jinxxy API key for this guild
@@ -1437,6 +1449,7 @@ impl JinxDb {
 /// Helper functions that don't access a whole pool
 mod helper {
     use super::*;
+    use lexical_core::FormattedSize;
     use regex::Regex;
     use sqlx::SqliteTransaction;
     use std::borrow::Cow;
@@ -1652,6 +1665,71 @@ mod helper {
         Ok(())
     }
 
+    /// Helper function for [`JinxDb::delete_guild`] transaction usage. See that function for the full docs.
+    pub(super) async fn delete_guild(
+        transaction: &mut SqliteTransaction<'_>,
+        guild_id: i64,
+    ) -> SqliteResult<Vec<String>> {
+        // delete guild:store links. This cascades to role setups.
+        sqlx::query!(r#"DELETE FROM jinxxy_user_guild WHERE guild_id = ?"#, guild_id)
+            .execute(&mut **transaction)
+            .await?;
+
+        // note that if the guild's row is somehow not present, this is a no-op, which is totally fine.
+        sqlx::query!(
+            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL, command_version = NULL
+               WHERE guild_id = ?"#,
+            guild_id
+        )
+        .execute(&mut **transaction)
+        .await?;
+
+        let deleted_users = sqlx::query_scalar!(
+            r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
+        )
+        .fetch_all(&mut **transaction)
+        .await?;
+
+        Ok(deleted_users)
+    }
+
+    /// Get all the stale guilds given a list of all the non-stale guilds
+    pub(super) async fn get_stale_guilds(
+        transaction: &mut SqliteTransaction<'_>,
+        guilds: &[GuildId],
+    ) -> SqliteResult<Vec<i64>> {
+        let guilds = guilds_to_json(guilds);
+        let stale_guilds = sqlx::query_scalar!(
+            r#"SELECT guild_id FROM guild WHERE guild_id NOT IN (SELECT value FROM json_each(?))"#,
+            guilds
+        )
+        .fetch_all(&mut **transaction)
+        .await?;
+        Ok(stale_guilds)
+    }
+
+    /// format a guild list as JSON
+    pub(super) fn guilds_to_json(guilds: &[GuildId]) -> Vec<u8> {
+        let needed_size = i64::FORMATTED_SIZE * guilds.len() + 2;
+        let mut buffer = vec![0u8; needed_size];
+        buffer[0] = b'[';
+        let mut slice_start_index = 1;
+        let mut first = true;
+        for guild in guilds {
+            if !first {
+                buffer[slice_start_index] = b',';
+                slice_start_index += 1;
+            }
+            first = false;
+            let guild_id = guild.get() as i64;
+            let written = lexical_core::write(guild_id, &mut buffer[slice_start_index..]).len();
+            slice_start_index += written;
+        }
+        buffer[slice_start_index] = b']';
+        buffer.truncate(slice_start_index + 1);
+        buffer
+    }
+
     static GLOBAL_LIKE_ESCAPE_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"([_%?])").expect("Failed to compile GLOBAL_LIKE_ESCAPE_REGEX"));
 
@@ -1702,6 +1780,36 @@ mod helper {
         #[test]
         fn test_escape_like_multiple_same() {
             assert_eq!(escape_like("???"), "??????");
+        }
+
+        #[test]
+        fn test_guilds_to_json_4() {
+            let expected = b"[0,1,2,3,-100]";
+            let input = &[
+                GuildId::new(0),
+                GuildId::new(1),
+                GuildId::new(2),
+                GuildId::new(3),
+                GuildId::new(-100i64 as u64),
+            ];
+            let actual = guilds_to_json(input);
+            assert_eq!(actual, expected);
+        }
+
+        #[test]
+        fn test_guilds_to_json_0() {
+            let expected = b"[]";
+            let input = &[];
+            let actual = guilds_to_json(input);
+            assert_eq!(actual, expected);
+        }
+
+        #[test]
+        fn test_guilds_to_json_1() {
+            let expected = b"[-100]";
+            let input = &[GuildId::new(-100i64 as u64)];
+            let actual = guilds_to_json(input);
+            assert_eq!(actual, expected);
         }
     }
 }

@@ -367,6 +367,31 @@ impl EventHandler for Data {
             */
             FullEvent::CacheReady { guilds, .. } => {
                 debug!("cache ready! {} guilds.", guilds.len());
+                match self.db.get_stale_guilds(guilds).await {
+                    Ok(stale_guilds) => {
+                        info!(
+                            "{} stale guilds detected. Normally we'd delete them now.",
+                            stale_guilds.len()
+                        );
+                    }
+                    Err(e) => error!("Error enumerating stale guilds: {e:?}"),
+                }
+
+                /* TODO: enable this
+                match self.db.delete_stale_guilds(guilds).await {
+                    Ok(deleted_stores) => {
+                        info!("Deleted {} stale stores", deleted_stores.len());
+                        for jinxxy_user_id in deleted_stores {
+                            let result = self.api_cache.unregister_store_in_cache(jinxxy_user_id).await;
+                            if let Err(e) = result {
+                                warn!("Error unregistering store in cache during stale guild delete: {e:?}");
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => error!("Error deleting stale guilds: {e:?}"),
+                }
+                */
             }
             _ => {}
         }
