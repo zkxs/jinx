@@ -33,6 +33,8 @@ pub(in crate::bot) async fn owner_stats(
     let db_total_bytes = db_size.total_bytes().div_ceil(1024);
     let db_free_bytes = db_size.free_bytes().div_ceil(1024);
     let configured_guild_count = context.data().db.guild_count().await?;
+    let guilds = context.serenity_context().cache.guilds();
+    let stale_guild_count = context.data().db.get_stale_guilds(&guilds).await?.len();
     let license_activation_count = context.data().db.license_activation_count().await?;
     let distinct_user_count = context.data().db.distinct_user_count().await?;
     let blanket_role_count = context.data().db.blanket_role_count().await?;
@@ -63,6 +65,7 @@ pub(in crate::bot) async fn owner_stats(
         db_free={db_free_bytes} KiB\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
+        stale_guilds={stale_guild_count}\n\
         log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
         distinct activators={distinct_user_count}\n\
