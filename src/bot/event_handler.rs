@@ -929,18 +929,22 @@ fn send_bot_log_message(
                                 );
                             }
                         };
-                    }
 
-                    // next, we need to determine the highest mentionable role and start trying to ping it in every channel
-                    if db.can_nag_public_channels().await.unwrap_or(false) {
-                        // wait a bit between trying next method
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        /*
+                        Next, we start trying to ping the owner in every channel
+                        This has a pretty high chance of being off-topic in some #announcements or #rules channel if we go in sorted order, but
+                        any other order is objectively worse. HOPEFULLY the bot can't actually send messages to those channels, but some guilds
+                        give the bot Administrator. So this is disabled behind a db feature flag until I decide if it's worth it.
+                        */
+                        if db.can_nag_public_channels().await.unwrap_or(false) {
+                            // wait a bit between trying next method
+                            tokio::time::sleep(Duration::from_secs(1)).await;
 
-                        match util::highest_mentionable_role(&cache, guild_id) {
-                            Ok(Some(nag_role)) => match util::sorted_channels(&cache, guild_id) {
+                            match util::sorted_channels(&cache, guild_id) {
                                 Ok(channels) => {
                                     let message = CreateMessage::default()
-                                        .content(format!("<@&{}>, my log channel <#{}> is no longer working. Please use `/set_log_channel` to fix it.", nag_role.get(), log_channel.get()));
+                                        .content(format!("<@{}>, my log channel <#{}> is no longer working. Please use `/set_log_channel` to fix it.", owner.get(), log_channel.get()));
+
                                     for (_position, channel_id) in channels {
                                         match message.clone().execute(&http, channel_id.widen()).await {
                                             Ok(_) => {
@@ -965,12 +969,6 @@ fn send_bot_log_message(
                                 Err(e) => {
                                     warn!("Error listing channels in {}: {:?}", guild_id.get(), e);
                                 }
-                            },
-                            Ok(None) => {
-                                warn!("No mentionable role in {}", guild_id.get());
-                            }
-                            Err(e) => {
-                                warn!("Error getting highest mentionable role in {}: {:?}", guild_id.get(), e);
                             }
                         }
                     }
