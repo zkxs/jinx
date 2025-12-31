@@ -14,7 +14,7 @@ const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
 const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 3;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 4;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -44,6 +44,8 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    blanket_role_id        INTEGER,
                    default_jinxxy_user    TEXT,
                    command_version        INTEGER,
+                   banned                 INTEGER NOT NULL DEFAULT 0,
+                   note                   TEXT,
                    FOREIGN KEY            (default_jinxxy_user) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT"#,
         )
@@ -162,6 +164,18 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         )
         .await?;
 
+    // extra metadata stored about specific discord users
+    // we intentionally use rowid as we have an integer pk
+    connection
+        .execute(
+            r#"CREATE TABLE IF NOT EXISTS "discord_user" (
+                   user_id               INTEGER NOT NULL PRIMARY KEY,
+                   banned                INTEGER NOT NULL DEFAULT 0,
+                   note                  TEXT
+               ) STRICT"#,
+        )
+        .await?;
+
     let schema_minor_version: i32 = helper::get_setting(connection, SCHEMA_MINOR_VERSION_KEY)
         .await?
         .unwrap_or(SCHEMA_MINOR_VERSION_VALUE);
@@ -224,6 +238,14 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         connection
             .execute(r#"ALTER TABLE guild ADD COLUMN command_version INTEGER"#)
             .await?;
+    }
+
+    // handle 2.0.3 -> 2.0.4 migration
+    if schema_version < (0, 4) {
+        connection
+            .execute(r#"ALTER TABLE guild ADD COLUMN banned INTEGER NOT NULL DEFAULT 0"#)
+            .await?;
+        connection.execute(r#"ALTER TABLE guild ADD COLUMN note TEXT"#).await?;
     }
 
     // Index needed to look up all links by guild
@@ -341,7 +363,7 @@ pub(super) async fn copy_from_v1(
                    VALUES (?, ?, ?)
                    ON CONFLICT (jinxxy_user_id) DO UPDATE
                    SET cache_time_unix_ms = max(excluded.cache_time_unix_ms, cache_time_unix_ms),
-                   jinxxy_username = ifnull(excluded.jinxxy_username, jinxxy_username)"#,
+                   jinxxy_username = coalesce(excluded.jinxxy_username, jinxxy_username)"#,
                 jinxxy_user_id,
                 jinxxy_username,
                 cache_time_unix_ms
@@ -519,8 +541,8 @@ pub(super) async fn copy_from_v1(
                 r#"INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)
                    VALUES (?, ?, ?, ?, ?, ?)
                    ON CONFLICT (jinxxy_user_id, license_id, activator_user_id, license_activation_id) DO UPDATE
-                   SET product_id = ifnull(excluded.product_id, product_id),
-                   version_id = ifnull(excluded.version_id, version_id)"#,
+                   SET product_id = coalesce(excluded.product_id, product_id),
+                   version_id = coalesce(excluded.version_id, version_id)"#,
                 jinxxy_user_id,
                 license_id,
                 activator_user_id,

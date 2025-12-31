@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT banned AS \"banned: bool\" FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "banned: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "banned"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c784e0eba043cd21c12c0a66eabe98e7d89e588d0e0fa6b2acd08cd4b2911442"
+}

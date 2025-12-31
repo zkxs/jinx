@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT guild_id FROM guild JOIN jinxxy_user_guild USING (guild_id)\n            WHERE jinxxy_user_id IS NOT NULL\n            AND guild_id NOT IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "guild_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "guild_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b04840a6cfbdf8eace136356e18e7f5f883fbda313f16e1f9539049c6ef9602e"
+}

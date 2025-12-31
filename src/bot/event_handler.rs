@@ -13,9 +13,10 @@ use jiff::Timestamp;
 use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
-    Colour, Component, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateLabel, CreateMessage,
-    CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Error, Event, EventHandler,
-    FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
+    Colour, Component, Context, CreateEmbed, CreateInputText, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateTextDisplay,
+    EditInteractionResponse, Error, Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle,
+    Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -84,6 +85,34 @@ impl EventHandler for Data {
                 interaction: Interaction::Component(component_interaction),
                 ..
             } => {
+                // If a banned user creates a component interaction, tell them to fuck off
+                match self.db.get_user_ban(component_interaction.user.id).await {
+                    Ok(banned) => {
+                        if banned {
+                            info!(
+                                "Failed component interaction event for banned user {}",
+                                component_interaction.user.id.get()
+                            );
+                            if let Err(e) = component_interaction
+                                .create_response(
+                                    &context.http,
+                                    CreateInteractionResponse::Message(
+                                        CreateInteractionResponseMessage::default()
+                                            .content("You are permanently banned from interacting with this bot."),
+                                    ),
+                                )
+                                .await
+                            {
+                                warn!("Error acknowledging component interaction {e:?}");
+                            }
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not check user ban: {e:?}");
+                    }
+                }
+
                 // our custom ids are a static prefix followed by a ':', and then some dynamic value
                 let custom_id = component_interaction.data.custom_id.as_str();
                 let custom_id = match custom_id.split_once(':') {
@@ -135,6 +164,28 @@ impl EventHandler for Data {
                 interaction: Interaction::Modal(modal_interaction),
                 ..
             } => {
+                // if a banned user somehow submits a modal, then drop the interaction.
+                match self.db.get_user_ban(modal_interaction.user.id).await {
+                    Ok(banned) => {
+                        if banned {
+                            info!(
+                                "Ignored modal interaction event for banned user {}",
+                                modal_interaction.user.id.get()
+                            );
+                            if let Err(e) = modal_interaction
+                                .create_response(&context.http, CreateInteractionResponse::Acknowledge)
+                                .await
+                            {
+                                warn!("Error acknowledging modal interaction {e:?}");
+                            }
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not check user ban: {e:?}");
+                    }
+                }
+
                 // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
                 if let Err(e) = modal_interaction.defer_ephemeral(&context.http).await {
                     warn!("Error deferring modal interaction {e:?}");
@@ -217,16 +268,27 @@ impl EventHandler for Data {
             }
             // bot was added to a guild
             FullEvent::GuildCreate { guild, is_new, .. } => {
-                // we handle these events in a background task so we can impose a rate limit
-                let result = self
-                    .guild_create_event_tx
-                    .send(GuildCreateEvent {
-                        guild: guild.id,
-                        is_new: *is_new,
-                    })
-                    .await;
-                if let Err(e) = result {
-                    error!("Error sending GuildCreateEvent to background task: {e:?}");
+                let banned = self.db.get_guild_ban(guild.id).await.unwrap_or_else(|e| {
+                    warn!("Error checking guild ban state: {e:?}");
+                    false
+                });
+                if banned {
+                    info!("Added to banned guild {}! Immediately leaving.", guild.id.get());
+                    if let Err(e) = context.http.leave_guild(guild.id).await {
+                        warn!("Error leaving guild {}: {:?}", guild.id.get(), e);
+                    }
+                } else {
+                    // we handle these events in a background task so we can impose a rate limit
+                    let result = self
+                        .guild_create_event_tx
+                        .send(GuildCreateEvent {
+                            guild: guild.id,
+                            is_new: *is_new,
+                        })
+                        .await;
+                    if let Err(e) = result {
+                        error!("Error sending GuildCreateEvent to background task: {e:?}");
+                    }
                 }
             }
             // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete
@@ -264,6 +326,19 @@ impl EventHandler for Data {
 
                 So, basically any case where Discord thinks a user may actually intend for the bot to see the message.
                 */
+
+                // if a banned user messages the bot, ignore it
+                match self.db.get_user_ban(new_message.author.id).await {
+                    Ok(banned) => {
+                        if banned {
+                            info!("Ignored message event for banned user {}", new_message.author.id.get());
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not check user ban: {e:?}");
+                    }
+                }
 
                 if new_message.fixed_is_private(context).await.unwrap_or(true) {
                     debug!(
@@ -356,6 +431,23 @@ impl EventHandler for Data {
             } => {
                 // this MIGHT work on channel messages that mention the bot, but I haven't tested it.
                 // this DOES work on DMs
+
+                // if a banned user messages the bot, ignore it
+                match self.db.get_user_ban(event.message.author.id).await {
+                    Ok(banned) => {
+                        if banned {
+                            info!(
+                                "Ignored message event for banned user {}",
+                                event.message.author.id.get()
+                            );
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not check user ban: {e:?}");
+                    }
+                }
+
                 if event.fixed_is_private(context).await.unwrap_or(true) {
                     if let Some(old) = old_if_available {
                         debug!(

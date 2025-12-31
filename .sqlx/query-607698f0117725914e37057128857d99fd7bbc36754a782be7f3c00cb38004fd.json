@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT note FROM discord_user WHERE user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "note",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discord_user",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "607698f0117725914e37057128857d99fd7bbc36754a782be7f3c00cb38004fd"
+}

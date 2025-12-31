@@ -338,6 +338,7 @@ pub(in crate::bot) async fn verify_guild(
                     }
                 }
 
+                let mut reply = CreateReply::default();
                 if let Some(guild) = guild_id
                     .to_guild_cached(context.as_ref())
                     .map(|guild| to_guild_data(guild))
@@ -367,42 +368,10 @@ pub(in crate::bot) async fn verify_guild(
                             .description(format!("Guild owned by <@{}>", guild.owner_id.get()))
                     };
 
-                    let store_links = context.data().db.get_store_links(guild_id).await?;
-                    let mut api_embeds = Vec::with_capacity(store_links.len());
-                    for linked_store in store_links {
-                        let unique_name = linked_store.jinxxy_username.unwrap_or(linked_store.jinxxy_user_id);
-                        let api_embed = match jinxxy::get_own_user(&linked_store.jinxxy_api_key).await {
-                            Ok(auth_user) => {
-                                let embed = CreateEmbed::default()
-                                    .title(format!("API Verification Success: {unique_name}"))
-                                    .color(Colour::DARK_GREEN);
-                                let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
-                                    embed.thumbnail(profile_image_url.to_owned())
-                                } else {
-                                    embed
-                                };
-
-                                let scopes = format!("{:?}", auth_user.scopes);
-                                let profile_url = auth_user.username().profile_url();
-                                let display_name = auth_user.as_display_name();
-                                let message = if let Some(profile_url) = profile_url {
-                                    format!("[{display_name}]({profile_url}) has scopes {scopes}")
-                                } else {
-                                    format!("{display_name} has scopes {scopes}")
-                                };
-
-                                embed.description(message)
-                            }
-                            Err(e) => CreateEmbed::default()
-                                .title(format!("API Verification Error: {unique_name}"))
-                                .color(Colour::RED)
-                                .description(format!("API key invalid: {e}")),
-                        };
-                        api_embeds.push(api_embed);
-                    }
-
                     let guild_embed = {
                         let guild_name = guild.name;
+                        let banned = context.data().db.get_guild_ban(guild_id).await?;
+                        let note = context.data().db.get_guild_note(guild_id).await?.unwrap_or_default();
                         let guild_description = guild.description.unwrap_or_default();
                         let log_channel = context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
@@ -443,16 +412,18 @@ pub(in crate::bot) async fn verify_guild(
                         };
                         let guild_embed = CreateEmbed::default().title("Guild Information").description(format!(
                             "Name={guild_name}\n\
-                                Description={guild_description}\n\
-                                Log channel={log_channel}\n\
-                                Test={is_test}\n\
-                                Admin={administrator}\n\
-                                Manage Roles={manage_roles}\n\
-                                license activations={license_activation_count}\n\
-                                failed gumroad licenses={gumroad_failure_count}\n\
-                                gumroad nags={gumroad_nag_count}\n\
-                                nag role={nag_role}\n\
-                                top channel={top_channel_name}"
+                            Banned={banned}\n\
+                            Note={note}\n\
+                            Description={guild_description}\n\
+                            Log channel={log_channel}\n\
+                            Test={is_test}\n\
+                            Admin={administrator}\n\
+                            Manage Roles={manage_roles}\n\
+                            license activations={license_activation_count}\n\
+                            failed gumroad licenses={gumroad_failure_count}\n\
+                            gumroad nags={gumroad_nag_count}\n\
+                            nag role={nag_role}\n\
+                            top channel={top_channel_name}"
                         ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)
@@ -460,20 +431,53 @@ pub(in crate::bot) async fn verify_guild(
                             guild_embed
                         }
                     };
-
-                    let mut reply = CreateReply::default().embed(verify_embed).embed(guild_embed);
-                    for api_embed in api_embeds {
-                        reply = reply.embed(api_embed);
-                    }
-                    reply
+                    reply = reply.embed(verify_embed).embed(guild_embed);
                 } else {
                     // guild was not cached
                     let embed = CreateEmbed::default()
                         .title("Guild Verification Error")
                         .color(Colour::RED)
                         .description("Guild not in cache");
-                    CreateReply::default().embed(embed)
+                    reply = reply.embed(embed);
                 }
+
+                let store_links = context.data().db.get_store_links(guild_id).await?;
+                let mut api_embeds = Vec::with_capacity(store_links.len());
+                for linked_store in store_links {
+                    let unique_name = linked_store.jinxxy_username.unwrap_or(linked_store.jinxxy_user_id);
+                    let api_embed = match jinxxy::get_own_user(&linked_store.jinxxy_api_key).await {
+                        Ok(auth_user) => {
+                            let embed = CreateEmbed::default()
+                                .title(format!("API Verification Success: {unique_name}"))
+                                .color(Colour::DARK_GREEN);
+                            let embed = if let Some(profile_image_url) = auth_user.profile_image_url() {
+                                embed.thumbnail(profile_image_url.to_owned())
+                            } else {
+                                embed
+                            };
+
+                            let scopes = format!("{:?}", auth_user.scopes);
+                            let profile_url = auth_user.username().profile_url();
+                            let display_name = auth_user.as_display_name();
+                            let message = if let Some(profile_url) = profile_url {
+                                format!("[{display_name}]({profile_url}) has scopes {scopes}")
+                            } else {
+                                format!("{display_name} has scopes {scopes}")
+                            };
+
+                            embed.description(message)
+                        }
+                        Err(e) => CreateEmbed::default()
+                            .title(format!("API Verification Error: {unique_name}"))
+                            .color(Colour::RED)
+                            .description(format!("API key invalid: {e}")),
+                    };
+                    api_embeds.push(api_embed);
+                }
+                for api_embed in api_embeds {
+                    reply = reply.embed(api_embed);
+                }
+                reply
             }
         }
         Err(e) => {
@@ -704,6 +708,8 @@ pub(in crate::bot) async fn whois(
     } else {
         ""
     };
+    let banned = context.data().db.get_user_ban(user_id).await?;
+    let note = context.data().db.get_user_note(user_id).await?.unwrap_or_default();
     let cache = context.serenity_context().cache.as_ref();
     let db_guilds = context.data().db.get_user_guilds(user_id.get()).await?;
     let mut line_iter = cache
@@ -734,10 +740,12 @@ pub(in crate::bot) async fn whois(
         success_reply(
             "User Found",
             format!(
-                "User <@{}> / {} / {} was found in cache:{}",
+                "User <@{}> name={}; display={}; banned={}; note={}; was found in cache:{}",
                 user_id.get(),
                 user_name,
                 display_name,
+                banned,
+                note,
                 results
             ),
         )
@@ -745,14 +753,187 @@ pub(in crate::bot) async fn whois(
         success_reply(
             "User Not Found",
             format!(
-                "User <@{}> / {} / {} was not found in cache",
+                "User <@{}> name={}; display={}; banned={}; note={}; was not found in cache",
                 user_id.get(),
                 user_name,
                 display_name,
+                banned,
+                note,
             ),
         )
     };
 
     context.send(reply).await?;
+    Ok(())
+}
+
+/// Globally ban a user from interacting with Jinx
+#[poise::command(
+    context_menu_command = "ban",
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn ban_user_context(
+    context: Context<'_>,
+    #[description = "user to ban"] user: serenity::User,
+) -> Result<(), Error> {
+    ban_user_impl(context, user, None).await
+}
+
+/// Globally ban a user from interacting with Jinx
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn ban_user(
+    context: Context<'_>,
+    #[description = "user to ban"] user: serenity::User,
+    #[description = "Reason for ban"] reason: Option<String>,
+) -> Result<(), Error> {
+    ban_user_impl(context, user, reason).await
+}
+
+async fn ban_user_impl(context: Context<'_>, user: serenity::User, reason: Option<String>) -> Result<(), Error> {
+    let user_id = user.id;
+    context.data().db.set_user_ban(user_id, true, reason).await?;
+    let reply = success_reply("User Banned", format!("<@{}> has been banned", user_id.get()));
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Globally unban a user from interacting with Jinx
+#[poise::command(
+    context_menu_command = "unban",
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unban_user_context(
+    context: Context<'_>,
+    #[description = "user to ban"] user: serenity::User,
+) -> Result<(), Error> {
+    unban_user_impl(context, user).await
+}
+
+/// Globally unban a user from interacting with Jinx
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unban_user(
+    context: Context<'_>,
+    #[description = "user to ban"] user: serenity::User,
+) -> Result<(), Error> {
+    unban_user_impl(context, user).await
+}
+
+async fn unban_user_impl(context: Context<'_>, user: serenity::User) -> Result<(), Error> {
+    let user_id = user.id;
+    context.data().db.set_user_ban(user_id, false, None).await?;
+    let reply = success_reply("User Unbanned", format!("<@{}> has been unbanned", user_id.get()));
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Globally ban a guild from adding Jinx
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn ban_guild(
+    context: Context<'_>,
+    #[description = "ID of guild to ban"] guild_id: String,
+    #[description = "Reason for ban"] reason: Option<String>,
+) -> Result<(), Error> {
+    match guild_id.parse::<u64>() {
+        Ok(guild_id) => {
+            if guild_id == 0 {
+                // guild was invalid (0)
+                let embed = CreateEmbed::default()
+                    .title("ban_guild Error")
+                    .color(Colour::RED)
+                    .description("Guild was invalid (id of 0)");
+                let reply = CreateReply::default().embed(embed);
+                context.send(reply.ephemeral(true)).await?;
+            } else {
+                let guild_id = GuildId::new(guild_id);
+                context.data().db.set_guild_ban(guild_id, true, reason).await?;
+                let message = match context.http().leave_guild(guild_id).await {
+                    Ok(_) => format!("Guild `{}` has been banned and left", guild_id.get()),
+                    Err(_) => format!("Guild `{}` has been banned", guild_id.get()),
+                };
+                let reply = success_reply("Guild Banned", message);
+                context.send(reply.ephemeral(true)).await?;
+            }
+        }
+        Err(e) => {
+            // guild was invalid (not a number)
+            let embed = CreateEmbed::default()
+                .title("ban_guild Error")
+                .color(Colour::RED)
+                .description(format!("Guild was invalid (parse error: {e})"));
+            let reply = CreateReply::default().embed(embed);
+            context.send(reply.ephemeral(true)).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Globally ban a guild from adding Jinx
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn unban_guild(
+    context: Context<'_>,
+    #[description = "ID of guild to ban"] guild_id: String,
+) -> Result<(), Error> {
+    match guild_id.parse::<u64>() {
+        Ok(guild_id) => {
+            if guild_id == 0 {
+                // guild was invalid (0)
+                let embed = CreateEmbed::default()
+                    .title("unban_guild Error")
+                    .color(Colour::RED)
+                    .description("Guild was invalid (id of 0)");
+                let reply = CreateReply::default().embed(embed);
+                context.send(reply.ephemeral(true)).await?;
+            } else {
+                let guild_id = GuildId::new(guild_id);
+                context.data().db.set_guild_ban(guild_id, false, None).await?;
+                let reply = success_reply(
+                    "Guild Unbanned",
+                    format!("Guild `{}` has been unbanned", guild_id.get()),
+                );
+                context.send(reply.ephemeral(true)).await?;
+            }
+        }
+        Err(e) => {
+            // guild was invalid (not a number)
+            let embed = CreateEmbed::default()
+                .title("unban_guild Error")
+                .color(Colour::RED)
+                .description(format!("Guild was invalid (parse error: {e})"));
+            let reply = CreateReply::default().embed(embed);
+            context.send(reply.ephemeral(true)).await?;
+        }
+    }
+
     Ok(())
 }

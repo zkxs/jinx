@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT note FROM guild WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "note",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6bc2c37520892fc45f57a26f801194e8346d06cfb3548cc8f1b5f6d19f5b575e"
+}

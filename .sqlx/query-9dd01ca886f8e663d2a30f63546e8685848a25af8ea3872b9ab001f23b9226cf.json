@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO license_activation (jinxxy_user_id, license_id, activator_user_id, license_activation_id, product_id, version_id)\n                   VALUES (?, ?, ?, ?, ?, ?)\n                   ON CONFLICT (jinxxy_user_id, license_id, activator_user_id, license_activation_id) DO UPDATE\n                   SET product_id = coalesce(excluded.product_id, product_id),\n                   version_id = coalesce(excluded.version_id, version_id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "9dd01ca886f8e663d2a30f63546e8685848a25af8ea3872b9ab001f23b9226cf"
+}

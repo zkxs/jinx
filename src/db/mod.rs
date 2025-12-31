@@ -686,6 +686,88 @@ impl JinxDb {
         Ok(())
     }
 
+    /// Check if a guild is banned
+    pub async fn get_guild_ban(&self, guild: GuildId) -> JinxResult<bool> {
+        let guild_id = guild.get() as i64;
+        let result = sqlx::query_scalar!(
+            r#"SELECT banned AS "banned: bool" FROM guild WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_optional(&self.read_pool)
+        .await?
+        .unwrap_or(false);
+        Ok(result)
+    }
+
+    /// Get guild's note
+    pub async fn get_guild_note(&self, guild: GuildId) -> JinxResult<Option<String>> {
+        let guild_id = guild.get() as i64;
+        let result = sqlx::query_scalar!(r#"SELECT note FROM guild WHERE guild_id = ?"#, guild_id)
+            .fetch_optional(&self.read_pool)
+            .await?
+            .flatten();
+        Ok(result)
+    }
+
+    /// Set or unset guild ban
+    pub async fn set_guild_ban(&self, guild: GuildId, ban: bool, note: Option<String>) -> JinxResult<()> {
+        let guild_id = guild.get() as i64;
+        let mut connection = self.write_connection().await?;
+        sqlx::query!(
+            r#"INSERT INTO guild (guild_id, banned, note) VALUES (?, ?, ?)
+               ON CONFLICT (guild_id) DO UPDATE
+               SET banned = excluded.banned,
+               note = coalesce(excluded.note, note)"#,
+            guild_id,
+            ban,
+            note
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Check if a user is banned
+    pub async fn get_user_ban(&self, user: UserId) -> JinxResult<bool> {
+        let user_id = user.get() as i64;
+        let result = sqlx::query_scalar!(
+            r#"SELECT banned AS "banned: bool" FROM discord_user WHERE user_id = ?"#,
+            user_id
+        )
+        .fetch_optional(&self.read_pool)
+        .await?
+        .unwrap_or(false);
+        Ok(result)
+    }
+
+    /// Get user's note
+    pub async fn get_user_note(&self, user: UserId) -> JinxResult<Option<String>> {
+        let user_id = user.get() as i64;
+        let result = sqlx::query_scalar!(r#"SELECT note FROM discord_user WHERE user_id = ?"#, user_id)
+            .fetch_optional(&self.read_pool)
+            .await?
+            .flatten();
+        Ok(result)
+    }
+
+    /// Set or unset user ban
+    pub async fn set_user_ban(&self, user: UserId, ban: bool, note: Option<String>) -> JinxResult<()> {
+        let user_id = user.get() as i64;
+        let mut connection = self.write_connection().await?;
+        sqlx::query!(
+            r#"INSERT INTO discord_user (user_id, banned, note) VALUES (?, ?, ?)
+               ON CONFLICT (user_id) DO UPDATE
+               SET banned = excluded.banned,
+               note = coalesce(excluded.note, note)"#,
+            user_id,
+            ban,
+            note
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
     /// blanket link a Jinxxy product and a role
     pub async fn link_product(
         &self,
@@ -1700,7 +1782,9 @@ mod helper {
     ) -> SqliteResult<Vec<i64>> {
         let guilds = guilds_to_json(guilds);
         let stale_guilds = sqlx::query_scalar!(
-            r#"SELECT guild_id FROM guild WHERE guild_id NOT IN (SELECT value FROM json_each(?))"#,
+            r#"SELECT guild_id FROM guild JOIN jinxxy_user_guild USING (guild_id)
+            WHERE jinxxy_user_id IS NOT NULL
+            AND guild_id NOT IN (SELECT value FROM json_each(?))"#,
             guilds
         )
         .fetch_all(&mut **transaction)

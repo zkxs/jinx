@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO discord_user (user_id, banned, note) VALUES (?, ?, ?)\n               ON CONFLICT (user_id) DO UPDATE\n               SET banned = excluded.banned,\n               note = coalesce(excluded.note, note)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "fb13f111b610c2be3a6b0344937aeb0641ed8b28390947d53471a600ae1836da"
+}

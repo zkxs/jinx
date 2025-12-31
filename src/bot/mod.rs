@@ -52,7 +52,7 @@ const REGISTER_MODAL_ID: &str = "jinx_register_modal";
 
 /// Version number for the guild commands that is incremented whenever a command's definition (not code!) changes,
 /// or a new command is added
-const GUILD_COMMAND_VERSION: i64 = 0;
+const GUILD_COMMAND_VERSION: i64 = 1;
 
 /// commands to be installed globally
 const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
@@ -81,6 +81,9 @@ const CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
 const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     announce,
     announce_test,
+    ban_guild,
+    ban_user,
+    ban_user_context,
     clear_cache,
     debug_product_cache,
     exit,
@@ -90,6 +93,9 @@ const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     set_cache_expiry_time,
     set_test,
     sudo_list_links,
+    unban_guild,
+    unban_user,
+    unban_user_context,
     unfuck_cache,
     verify_guild,
     whois,
@@ -146,7 +152,26 @@ impl BotBuilder {
         let options = poise::FrameworkOptions {
             commands, // all commands must appear in this list otherwise poise won't recognize interactions for them
             on_error: |e| Box::pin(error_handler(e)),
-            initialize_owners: false, // `initialize_owners: true` is broken. serenity::http::client::get_current_application_info has a deserialization bug
+            command_check: Some(|context| {
+                Box::pin(async move {
+                    // check if guild is banned
+                    if let Some(guild_id) = context.guild_id()
+                        && context.data().db.get_guild_ban(guild_id).await?
+                    {
+                        info!("Forbade command in banned guild {}", guild_id.get());
+                        return Ok(false);
+                    }
+
+                    // check if user is banned
+                    if context.data().db.get_user_ban(context.author().id).await? {
+                        info!("Forbade command for banned user {}", context.author().id.get());
+                        return Ok(false);
+                    }
+
+                    Ok(true)
+                })
+            }),
+            initialize_owners: false, // `initialize_owners: true` used to be broken (and may still be!) so I implemented owners myself in sqlite.
             prefix_options: PrefixFrameworkOptions {
                 // obnoxiously the defaults on this make it do things even if I have no prefix commands configured
                 prefix: None,
@@ -403,8 +428,8 @@ impl BotBuilder {
                     }
 
                     // when the bot starts we receive a flurry of GuildCreate events leading to ratelimit issues
-                    // when we attempt to reinstall the commands with no delay.
-                    tokio::time::sleep(Duration::from_millis(750)).await;
+                    // when we attempt to reinstall the commands with no delay. 600ms == 100 guilds/minute
+                    tokio::time::sleep(Duration::from_millis(600)).await;
                 }
                 debug!("GuildCreateEvent handler task is shutting down");
             });

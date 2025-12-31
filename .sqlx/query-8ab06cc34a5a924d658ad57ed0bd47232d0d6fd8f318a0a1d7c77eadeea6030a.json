@@ -1,16 +1,16 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT guild_id FROM guild WHERE guild_id NOT IN (SELECT value FROM json_each(?))",
+  "query": "SELECT banned AS \"banned: bool\" FROM discord_user WHERE user_id = ?",
   "describe": {
     "columns": [
       {
-        "name": "guild_id",
+        "name": "banned: bool",
         "ordinal": 0,
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "guild",
-            "name": "guild_id"
+            "table": "discord_user",
+            "name": "banned"
           }
         }
       }
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "f3f286333e0d778e8042034c20f0ad8b57ecc5c19584c05b3a01be05db29517c"
+  "hash": "8ab06cc34a5a924d658ad57ed0bd47232d0d6fd8f318a0a1d7c77eadeea6030a"
 }
