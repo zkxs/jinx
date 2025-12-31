@@ -694,6 +694,16 @@ pub(in crate::bot) async fn whois(
     #[description = "user to look up"] user: serenity::User,
 ) -> Result<(), Error> {
     let user_id = user.id;
+    let user_name = if let Some(discriminator) = user.discriminator {
+        Cow::Owned(format!("{}#{:04}", user.name, discriminator))
+    } else {
+        Cow::Borrowed(user.name.as_str())
+    };
+    let display_name = if let Some(global_name) = &user.global_name {
+        global_name.as_str()
+    } else {
+        ""
+    };
     let cache = context.serenity_context().cache.as_ref();
     let db_guilds = context.data().db.get_user_guilds(user_id.get()).await?;
     let mut line_iter = cache
@@ -723,12 +733,23 @@ pub(in crate::bot) async fn whois(
         let results: String = line_iter.collect();
         success_reply(
             "User Found",
-            format!("User <@{}> was found in cache:{}", user_id.get(), results),
+            format!(
+                "User <@{}> / {} / {} was found in cache:{}",
+                user_id.get(),
+                user_name,
+                display_name,
+                results
+            ),
         )
     } else {
         success_reply(
             "User Not Found",
-            format!("User <@{}> was not found in cache", user_id.get()),
+            format!(
+                "User <@{}> / {} / {} was not found in cache",
+                user_id.get(),
+                user_name,
+                display_name,
+            ),
         )
     };
 
