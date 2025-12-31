@@ -61,11 +61,11 @@ pub(in crate::bot) async fn owner_stats(
     let elapsed_micros = start.elapsed().as_micros();
 
     let message = format!(
-        "db_size={db_total_bytes} KiB\n\
-        db_free={db_free_bytes} KiB\n\
+        "db size={db_total_bytes} KiB\n\
+        db free={db_free_bytes} KiB\n\
         cached guilds={cached_guild_count}\n\
         configured guilds={configured_guild_count}\n\
-        stale_guilds={stale_guild_count}\n\
+        stale guilds={stale_guild_count}\n\
         log channels={log_channel_count}\n\
         license activations={license_activation_count}\n\
         distinct activators={distinct_user_count}\n\
@@ -76,9 +76,9 @@ pub(in crate::bot) async fn owner_stats(
         API cache total product versions={api_cache_product_versions}\n\
         API cache guilds={api_cache_len}\n\
         shards={shard_count}{shard_list}\n\
-        tokio_num_workers={tokio_num_workers}\n\
-        tokio_num_alive_tasks={tokio_num_alive_tasks}\n\
-        tokio_global_queue_depth={tokio_global_queue_depth}\n\
+        tokio num_workers={tokio_num_workers}\n\
+        tokio num_alive_tasks={tokio_num_alive_tasks}\n\
+        tokio global_queue_depth={tokio_global_queue_depth}\n\
         query time={elapsed_micros}μs" // this is a shitty metric of db load
     );
     let embed = CreateEmbed::default().title("Jinx Owner Stats").description(message);
