@@ -48,14 +48,32 @@ impl EventHandler for Data {
     fn filter_event(&self, _context: &Context, event: &Event) -> bool {
         matches!(
             event,
-            Event::GuildCreate(_)
-                | Event::GuildDelete(_)
-                | Event::GuildRoleDelete(_)
-                | Event::MessageCreate(_)
-                | Event::MessageUpdate(_)
-                | Event::Ready(_)
-                | Event::Resumed(_)
-                | Event::InteractionCreate(_)
+            Event::CommandPermissionsUpdate(_) // maybe needed for cache maintenance?
+            | Event::ChannelCreate(_) // needed for cache maintenance
+            | Event::ChannelDelete(_) // needed for cache maintenance
+            | Event::ChannelUpdate(_) // needed for cache maintenance
+            | Event::GuildCreate(_) // needed for cache maintenance & our own logic
+            | Event::GuildDelete(_) // needed for cache maintenance & our own logic
+            | Event::GuildMemberAdd(_) // maybe needed for cache maintenance?
+            | Event::GuildMemberRemove(_) // maybe needed for cache maintenance?
+            | Event::GuildMemberUpdate(_) // maybe needed for cache maintenance?
+            | Event::GuildMembersChunk(_) // maybe needed for cache maintenance?
+            | Event::GuildRoleCreate(_) // maybe needed for cache maintenance?
+            | Event::GuildRoleDelete(_) // needed for our own logic
+            | Event::GuildRoleUpdate(_) // maybe needed for cache maintenance?
+            | Event::GuildUpdate(_) // maybe needed for cache maintenance?
+            | Event::MessageCreate(_) // needed for our own logic
+            | Event::MessageUpdate(_) // needed for our own logic
+            | Event::Ready(_) // needed for our own logic
+            | Event::Resumed(_) // needed for our own logic
+            | Event::UserUpdate(_) // maybe needed for cache maintenance?
+            | Event::InteractionCreate(_) // needed for our own logic
+            | Event::ThreadCreate(_) // maybe needed for cache maintenance?
+            | Event::ThreadUpdate(_) // maybe needed for cache maintenance?
+            | Event::ThreadDelete(_) // maybe needed for cache maintenance?
+            | Event::ThreadListSync(_) // maybe needed for cache maintenance?
+            | Event::ThreadMemberUpdate(_) // maybe needed for cache maintenance?
+            | Event::ThreadMembersUpdate(_) // maybe needed for cache maintenance?
         )
     }
 
