@@ -113,6 +113,7 @@ pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> R
     let mut channels = guild
         .channels
         .iter()
+        .filter(|channel| channel.is_text_based())
         .map(|channel| (channel.position, channel.id))
         .collect::<Vec<_>>();
     // smaller position is first, then smaller channel_id is first
