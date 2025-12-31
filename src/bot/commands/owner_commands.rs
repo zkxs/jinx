@@ -507,7 +507,9 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
 
     let mut lines = "```\n".to_string();
     let mut any_misconfigurations = false;
-    for guild_id in context.cache().guilds() {
+    let mut guilds = context.cache().guilds();
+    guilds.sort_unstable();
+    for guild_id in guilds {
         const OK: char = ' ';
         let api_code = if !context.data().db.has_jinxxy_linked(guild_id).await? {
             'J'
