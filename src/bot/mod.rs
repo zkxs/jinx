@@ -13,9 +13,9 @@ use crate::db::{JinxDb, SqliteWalCheckpoint};
 use crate::error::JinxError;
 use commands::*;
 use poise::{Command, PrefixFrameworkOptions, serenity_prelude as serenity};
-use serenity::all::GuildId;
 use serenity::{
-    ActivityData, Client, ClientBuilder, Colour, CreateEmbed, CreateMessage, GatewayIntents, ShardRunnerMessage, Token,
+    ActivityData, Client, ClientBuilder, Colour, CreateEmbed, CreateMessage, GatewayIntents, GuildId,
+    ShardRunnerMessage, Token,
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;

@@ -423,6 +423,23 @@ pub(in crate::bot) async fn verify_guild(
                         let nag_role = util::highest_mentionable_role(&context, guild_id)?
                             .and_then(|role_id| util::role_name(&context, guild_id, role_id).ok().flatten())
                             .unwrap_or_default();
+                        let top_channel_id = util::sorted_channels(&context, guild_id)?
+                            .into_iter()
+                            .next()
+                            .map(|(_position, id)| id);
+                        let top_channel_name = match top_channel_id {
+                            Some(channel_id) => {
+                                let guild = context
+                                    .cache()
+                                    .guild(guild_id)
+                                    .ok_or_else(|| JinxError::new("expected guild to be in cache"))?;
+                                let channel = guild.channel(channel_id.widen()).ok_or_else(|| {
+                                    JinxError::new("could not find channel in cache that we learned of from cache")
+                                })?;
+                                Cow::Owned(channel.base().name.to_string())
+                            }
+                            None => Cow::Borrowed("`null`"),
+                        };
                         let guild_embed = CreateEmbed::default().title("Guild Information").description(format!(
                             "Name={guild_name}\n\
                                 Description={guild_description}\n\
@@ -432,7 +449,8 @@ pub(in crate::bot) async fn verify_guild(
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
                                 gumroad nags={gumroad_nag_count}\n\
-                                nag role={nag_role}"
+                                nag role={nag_role}\n\
+                                top channel={top_channel_name}"
                         ));
                         if let Some(thumbnail_url) = guild.thumbnail_url {
                             guild_embed.thumbnail(thumbnail_url)

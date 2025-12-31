@@ -97,9 +97,9 @@ pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: Guil
     let max_role = roles
         .iter()
         .filter_map(|role| role.mentionable().then_some((role.position, role.id)))
-        .max_by(|(position_a, role_id_a), (position_b, role_id_b)| {
-            // bigger position is better, then smaller role_id is better
-            position_a.cmp(position_b).then(role_id_b.cmp(role_id_a))
+        .min_by(|(position_a, role_id_a), (position_b, role_id_b)| {
+            // bigger position is higher, then smaller role_id is higher
+            position_b.cmp(position_a).then(role_id_a.cmp(role_id_b))
         })
         .map(|(_position, role_id)| role_id);
     Ok(max_role)
@@ -115,7 +115,8 @@ pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> R
         .iter()
         .map(|channel| (channel.position, channel.id))
         .collect::<Vec<_>>();
-    channels.sort_unstable_by(|(pos_a, id_a), (pos_b, id_b)| pos_a.cmp(pos_b).then(id_b.cmp(id_a)));
+    // smaller position is first, then smaller channel_id is first
+    channels.sort_unstable_by(|(pos_a, id_a), (pos_b, id_b)| pos_a.cmp(pos_b).then(id_a.cmp(id_b)));
     Ok(channels)
 }
 
@@ -154,8 +155,6 @@ pub(super) async fn assignable_roles(
     let bot_member = guild_id.member(context, bot_id).await?;
     let permissions = permissions(context, &bot_member)?;
     let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
-        // Despite the above deprecation text I pass a channel in regardless, here.
-        // for some reason if the scope of `guild` is too large the compiler loses its mind. Probably something with calling await when it's in scope?
         let guild = context
             .cache()
             .guild(guild_id)
@@ -170,7 +169,8 @@ pub(super) async fn assignable_roles(
                 .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
                 .filter(|role| !role.managed()) // managed roles can't be managed
                 .collect();
-            roles.sort_unstable_by(|a, b| b.position.cmp(&a.position));
+            // bigger position is higher, then smaller role_id is higher
+            roles.sort_unstable_by(|a, b| b.position.cmp(&a.position).then(a.id.cmp(&b.id)));
             roles.into_iter().map(|role| role.id).collect()
         } else {
             // bot has no roles (this should not be possible)
