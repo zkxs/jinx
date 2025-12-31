@@ -14,8 +14,8 @@ use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
     Colour, Component, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateLabel, CreateMessage,
-    CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Event, EventHandler, FullEvent,
-    GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
+    CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Error, Event, EventHandler,
+    FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -755,10 +755,21 @@ async fn handle_license_registration(
                                         client_message.push_str(bullet_point.as_str());
                                         owner_message.push_str(bullet_point.as_str());
                                     }
-                                    Err(e) => {
-                                        errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
-                                        warn!("in {} error granting role: {:?}", guild_id.get(), e);
-                                    }
+                                    Err(e) => match e {
+                                        Error::Http(serenity::http::HttpError::UnsuccessfulRequest(http_error))
+                                            if http_error.status_code == serenity::http::StatusCode::NOT_FOUND
+                                                && http_error.error.message == "Unknown Role" =>
+                                        {
+                                            // this role no longer exists, so just delete it now and don't tell the user
+                                            if let Err(e) = data.db.delete_role(guild_id, role).await {
+                                                warn!("Error deleting role from DB during license registration: {e:?}");
+                                            }
+                                        }
+                                        _ => {
+                                            errors.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                                            warn!("in {} error granting role: {:?}", guild_id.get(), e);
+                                        }
+                                    },
                                 }
                             }
                             let embed = if errors.is_empty() {

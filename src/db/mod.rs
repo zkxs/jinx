@@ -784,7 +784,7 @@ impl JinxDb {
         Ok(delete_count != 0)
     }
 
-    /// Delete all references to a role id for the given guild
+    /// Delete all references to a role id for the given guild, and returns the number of rows deleted
     pub async fn delete_role(&self, guild: GuildId, role: RoleId) -> JinxResult<u64> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
