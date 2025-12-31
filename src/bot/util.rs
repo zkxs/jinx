@@ -20,10 +20,18 @@ use serenity::{
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::time::Duration;
 use tracing::{debug, error, warn};
+
+/// A type with an alternate Display implementation that is safe to display to untrusted users
+pub trait SafeDisplay<'a, T>
+where
+    T: Display,
+{
+    fn safe_display(&'a self) -> T;
+}
 
 /// Check if the calling user is a bot owner
 pub(super) async fn check_owner(context: Context<'_>) -> Result<bool, Error> {

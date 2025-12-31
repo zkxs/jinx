@@ -1,19 +1,12 @@
 // This file is part of jinx. Copyright © 2025 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::util::SafeDisplay;
 use crate::http::jinxxy::JinxxyError;
 use poise::serenity_prelude as serenity;
 use serenity::Error as SerenityError;
 use sqlx::error::Error as SqlxError;
 use std::fmt::{Display, Formatter};
-
-/// A type with an alternate Display implementation that is safe to display to untrusted users
-pub trait SafeDisplay<'a, T>
-where
-    T: Display,
-{
-    fn safe_display(&'a self) -> T;
-}
 
 #[derive(Debug)]
 #[allow(dead_code)] // these are debug printed frequently

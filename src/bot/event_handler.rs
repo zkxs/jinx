@@ -2,11 +2,11 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
-use crate::bot::util::MessageExtensions;
+use crate::bot::util::{MessageExtensions, SafeDisplay};
 use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GuildCreateEvent, util};
 use crate::bot::{Data, REGISTER_MODAL_ID};
 use crate::db::JinxDb;
-use crate::error::{JinxError, SafeDisplay};
+use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::license::{ActivationValidation, LicenseType};
 use jiff::Timestamp;
@@ -484,9 +484,10 @@ async fn handle_license_registration(
             let description = if license_type.is_jinxxy_license() {
                 "The provided Jinxxy license key was not valid or is already in use".to_string()
             } else {
+                let display_license_type = license_type.safe_display();
                 format!(
                     "The provided Jinxxy license key was not valid or is already in use.\n\n\
-                    This bot only supports **Jinxxy keys**, but you appear to have provided {license_type}. \
+                    This bot only supports **Jinxxy keys**, but you appear to have provided {display_license_type}. \
                     Please confirm you are providing the correct value to the correct bot. \
                     Jinxxy keys should look like `XXXX-cd071c534191` or `3642d957-c5d8-4d18-a1ae-cd071c534191`."
                 )
