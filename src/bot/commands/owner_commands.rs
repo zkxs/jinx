@@ -406,11 +406,12 @@ pub(in crate::bot) async fn verify_guild(
                         let guild_description = guild.description.unwrap_or_default();
                         let log_channel = context.data().db.get_log_channel(guild_id).await?.is_some();
                         let is_test = context.data().db.is_test_guild(guild_id).await?;
-                        let is_administrator = match util::is_administrator(&context, guild_id).await {
-                            Ok(true) => "true",
-                            Ok(false) => "false",
-                            Err(_) => "error",
+                        let permissions = {
+                            let bot_member = util::bot_member(&context, guild_id).await?;
+                            util::permissions(&context, &bot_member)?
                         };
+                        let administrator = permissions.administrator();
+                        let manage_roles = permissions.manage_roles();
                         let license_activation_count =
                             context.data().db.guild_license_activation_count(guild_id).await?;
                         let gumroad_failure_count = context
@@ -445,7 +446,8 @@ pub(in crate::bot) async fn verify_guild(
                                 Description={guild_description}\n\
                                 Log channel={log_channel}\n\
                                 Test={is_test}\n\
-                                Admin={is_administrator}\n\
+                                Admin={administrator}\n\
+                                Manage Roles={manage_roles}\n\
                                 license activations={license_activation_count}\n\
                                 failed gumroad licenses={gumroad_failure_count}\n\
                                 gumroad nags={gumroad_nag_count}\n\
@@ -502,17 +504,26 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
     let mut lines = "```\n".to_string();
     let mut any_misconfigurations = false;
     for guild_id in context.cache().guilds() {
-        let is_administrator = util::is_administrator(&context, guild_id).await;
-        if *is_administrator.as_ref().unwrap_or(&true) {
+        if let Ok(bot_member) = util::bot_member(&context, guild_id).await
+            && let Ok(permissions) = util::permissions(&context, &bot_member)
+        {
+            if permissions.administrator() || !permissions.manage_roles() {
+                any_misconfigurations = true;
+                let code = if permissions.administrator() {
+                    "A"
+                } else {
+                    // we must lack manage roles
+                    "M"
+                };
+                let name = guild_id.name(context.as_ref());
+                let name_str = name.as_deref().unwrap_or("");
+                lines.push_str(format!("{:20} {code} {name_str}\n", guild_id.get()).as_str())
+            }
+        } else {
             any_misconfigurations = true;
-            let admin_code = match is_administrator {
-                Ok(true) => "A",
-                Err(_) => "E",
-                _ => "?",
-            };
             let name = guild_id.name(context.as_ref());
             let name_str = name.as_deref().unwrap_or("");
-            lines.push_str(format!("{:20} {admin_code} {name_str}\n", guild_id.get()).as_str())
+            lines.push_str(format!("{:20} ? {name_str}\n", guild_id.get()).as_str())
         }
     }
 

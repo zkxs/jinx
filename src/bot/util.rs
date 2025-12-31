@@ -135,13 +135,19 @@ pub(super) fn role_name(
     Ok(role_name)
 }
 
+#[inline]
+pub(super) async fn bot_member(context: &Context<'_>, guild_id: GuildId) -> Result<Member, SerenityError> {
+    let bot_id = context.framework().bot_id();
+    guild_id.member(context, bot_id).await
+}
+
 /// Reimplementation of a removed Serenity function to get member permissions without a channel as context.
 ///
 /// Serenity has deprecated getting guild-global permissions and is making providing a channel mandatory.
 /// This is nonsensical because I want to see if a member has Manage Roles, which cannot be overridden at the channel level.
 /// It also causes problems, as `context.guild_channel()` fails in threads and stage text channels: https://github.com/zkxs/jinx/issues/8
 #[inline]
-fn permissions(context: &Context<'_>, member: &Member) -> Result<Permissions, Error> {
+pub(super) fn permissions(context: &Context<'_>, member: &Member) -> Result<Permissions, Error> {
     let guild = context
         .cache()
         .guild(member.guild_id)
@@ -153,8 +159,7 @@ pub(super) async fn assignable_roles(
     context: &Context<'_>,
     guild_id: GuildId,
 ) -> Result<HashSet<RoleId, ahash::RandomState>, Error> {
-    let bot_id = context.framework().bot_id();
-    let bot_member = guild_id.member(context, bot_id).await?;
+    let bot_member = bot_member(context, guild_id).await?;
     let permissions = permissions(context, &bot_member)?;
     let assignable_roles: HashSet<RoleId, _> = if permissions.manage_roles() {
         let guild = context
@@ -198,13 +203,6 @@ pub(super) fn deleted_roles(
         .ok_or(JinxError::new("expected guild to be in the Discord client cache"))?;
     let roles = &guild.roles;
     Ok(known_roles.filter(|role| !roles.contains_key(role)).collect())
-}
-
-pub(super) async fn is_administrator(context: &Context<'_>, guild_id: GuildId) -> Result<bool, Error> {
-    let bot_id = context.framework().bot_id();
-    let bot_member = guild_id.member(context, bot_id).await?;
-    let permissions = permissions(context, &bot_member)?;
-    Ok(permissions.administrator())
 }
 
 /// warn if the roles cannot be assigned (too high, or we lack the perm)
