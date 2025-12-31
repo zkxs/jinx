@@ -508,26 +508,38 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
     let mut lines = "```\n".to_string();
     let mut any_misconfigurations = false;
     for guild_id in context.cache().guilds() {
-        if let Ok(bot_member) = util::bot_member(&context, guild_id).await
+        const OK: char = ' ';
+        let api_code = if !context.data().db.has_jinxxy_linked(guild_id).await? {
+            'J'
+        } else {
+            OK
+        };
+        let ban_code = if context.data().db.get_guild_ban(guild_id).await? {
+            'B'
+        } else {
+            OK
+        };
+        let permission_code = if let Ok(bot_member) = util::bot_member(&context, guild_id).await
             && let Ok(permissions) = util::permissions(&context, &bot_member)
         {
-            if permissions.administrator() || !permissions.manage_roles() {
-                any_misconfigurations = true;
-                let code = if permissions.administrator() {
-                    "A"
-                } else {
-                    // we must lack manage roles
-                    "M"
-                };
-                let name = guild_id.name(context.as_ref());
-                let name_str = name.as_deref().unwrap_or("");
-                lines.push_str(format!("{:20} {code} {name_str}\n", guild_id.get()).as_str())
+            if permissions.administrator() {
+                'A'
+            } else if !permissions.manage_roles() {
+                'M'
+            } else {
+                OK
             }
         } else {
+            // We weren't able to get the bot member or perms. This can happen if the cache contains a guild we're not in.
+            '?'
+        };
+
+        if api_code != OK || ban_code != OK || permission_code != OK {
             any_misconfigurations = true;
             let name = guild_id.name(context.as_ref());
             let name_str = name.as_deref().unwrap_or("");
-            lines.push_str(format!("{:20} ? {name_str}\n", guild_id.get()).as_str())
+            let guild_id = guild_id.get();
+            lines.push_str(format!("{guild_id:20} {permission_code}{api_code}{ban_code} {name_str}\n").as_str());
         }
     }
 
