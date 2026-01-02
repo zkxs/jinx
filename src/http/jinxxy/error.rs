@@ -247,7 +247,7 @@ pub struct JinxxyErrorResponse {
     message: JinxxyErrorMessage,
     /// This field appears completely useless for my own use, but might be helpful for the Jinxxy devs if I need to
     /// forward an error report along.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // debug printed
     code: String,
 }
 

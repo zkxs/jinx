@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE license_activation\n               SET created_at = ?\n               WHERE jinxxy_user_id = ?\n               AND license_id = ?\n               AND activator_user_id = ?\n               AND license_activation_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "0046e959adab103ccbd85eed2db4b9b679ac810bd6fb9f7b47760a6c03cb5f58"
+}

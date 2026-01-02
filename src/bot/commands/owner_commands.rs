@@ -953,3 +953,85 @@ pub(in crate::bot) async fn unban_guild(
 
     Ok(())
 }
+
+/// Delete stale guilds from the DB
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn delete_stale_guilds(
+    context: Context<'_>,
+    #[description = "max allowed stale guilds"] max: u64,
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+    let guilds = context.cache().guilds();
+    let reply = match context.data().db.delete_stale_guilds(&guilds, max).await? {
+        Some(deleted_stores) => {
+            let store_len = deleted_stores.len();
+            for jinxxy_user_id in deleted_stores {
+                context
+                    .data()
+                    .api_cache
+                    .unregister_store_in_cache(jinxxy_user_id)
+                    .await?;
+            }
+            success_reply("Success", format!("Deleted {store_len} stores"))
+        }
+        None => error_reply("Failure", format!("More than max {max} stale guilds detected")),
+    };
+    context.send(reply).await?;
+    Ok(())
+}
+
+/// Backfill missing license activation information
+#[poise::command(
+    slash_command,
+    default_member_permissions = "MANAGE_GUILD",
+    check = "check_owner",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn backfill_license_activation(context: Context<'_>) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+    let mut backfill_count: u64 = 0;
+    let mut skip_count: u64 = 0;
+    while let Some(db_activation) = context.data().db.get_activation_needing_backfill().await? {
+        let api_activation = util::retry_thrice(|| {
+            jinxxy::get_license_activation(
+                &db_activation.jinxxy_api_key,
+                &db_activation.license_id,
+                &db_activation.license_activation_id,
+            )
+        })
+        .await?;
+        if let Some(api_activation) = api_activation {
+            let row_updated = context
+                .data()
+                .db
+                .backfill_activation(
+                    &db_activation.jinxxy_user_id,
+                    &db_activation.license_id,
+                    db_activation.activator_user_id,
+                    &db_activation.license_activation_id,
+                    &api_activation.created_at,
+                )
+                .await?;
+            if row_updated {
+                backfill_count += 1;
+            }
+        } else {
+            skip_count += 1;
+            warn!(
+                "DB activation {}:{}:{} did not exist in Jinxxy API",
+                &db_activation.jinxxy_user_id, &db_activation.license_id, &db_activation.license_activation_id
+            );
+        }
+    }
+
+    let reply = success_reply("Success", format!("Backfilled {backfill_count}, skipped {skip_count}."));
+    context.send(reply).await?;
+    Ok(())
+}

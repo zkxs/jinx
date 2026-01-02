@@ -88,7 +88,6 @@ pub async fn trusted_license_to_id(api_key: &str, license: &str) -> Result<Optio
     Ok(license_id)
 }
 
-#[allow(dead_code)]
 pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Option<RoleId>, Error> {
     let guild = cache
         .as_ref()

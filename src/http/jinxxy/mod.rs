@@ -298,7 +298,6 @@ pub async fn get_license_activations(
 /// Get a single license activation by its activation_id
 ///
 /// Note that the Delete jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
-#[allow(dead_code)]
 pub async fn get_license_activation(
     api_key: &str,
     license_id: &str,

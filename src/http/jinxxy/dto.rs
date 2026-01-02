@@ -198,7 +198,7 @@ pub struct PartialProduct {
     pub id: String,
 
     /// Product Name
-    #[allow(dead_code)]
+    #[allow(dead_code)] // used for debug printing
     pub name: String,
 }
 

@@ -81,11 +81,13 @@ const CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
 const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     announce,
     announce_test,
+    backfill_license_activation,
     ban_guild,
     ban_user,
     ban_user_context,
     clear_cache,
     debug_product_cache,
+    delete_stale_guilds,
     exit,
     misconfigured_guilds,
     owner_stats,

@@ -30,6 +30,7 @@ const DB_V2_FILENAME: &str = "jinx2.sqlite";
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 const CAN_NAG_PUBLIC_CHANNELS: &str = "can_nag_public_channels";
+const STALE_GUILD_DELETE_LIMIT: &str = "stale_guild_delete_limit";
 
 type JinxResult<T> = Result<T, JinxError>;
 type SqliteResult<T> = Result<T, SqlxError>;
@@ -223,6 +224,14 @@ impl JinxDb {
         Ok(can_nag.unwrap_or(false))
     }
 
+    pub async fn stale_guild_delete_limit(&self) -> JinxResult<Option<u64>> {
+        let limit = self
+            .get_setting::<i64>(STALE_GUILD_DELETE_LIMIT)
+            .await?
+            .map(|limit| limit as u64);
+        Ok(limit)
+    }
+
     pub async fn get_owners(&self) -> JinxResult<Vec<u64>> {
         let result = sqlx::query!(r#"SELECT owner_id FROM owner"#)
             .map(|row| row.owner_id as u64)
@@ -262,6 +271,66 @@ impl JinxDb {
             .await?
             .map(|secs| Duration::from_secs(secs as u64));
         Ok(low_priority_cache_expiry_time)
+    }
+
+    /// Get an arbitrary license activation needing backfill
+    pub async fn get_activation_needing_backfill(&self) -> JinxResult<Option<BackfillLicenseActivation>> {
+        let result = sqlx::query!(
+            r#"SELECT jinxxy_api_key, jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+               JOIN jinxxy_user_guild USING (jinxxy_user_id)
+               WHERE jinxxy_api_key_valid
+               LIMIT 1"#
+        )
+        .map(|row| BackfillLicenseActivation {
+            jinxxy_api_key: row.jinxxy_api_key,
+            jinxxy_user_id: row.jinxxy_user_id,
+            license_id: row.license_id,
+            activator_user_id: UserId::new(row.activator_user_id as u64),
+            license_activation_id: row.license_activation_id,
+        })
+        .fetch_optional(&self.read_pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    /// Backfill `created_at` into an existing license activation. Returns `true` if a single row was updated,
+    /// or false if no rows were updated.
+    pub async fn backfill_activation(
+        &self,
+        jinxxy_user_id: &str,
+        license_id: &str,
+        activator: UserId,
+        activation_id: &str,
+        created_at: &Timestamp,
+    ) -> JinxResult<bool> {
+        let activator_user_id = activator.get() as i64;
+        let created_at = created_at.as_second();
+        let mut connection = self.write_connection().await?;
+        let result = sqlx::query!(
+            r#"UPDATE license_activation
+               SET created_at = ?
+               WHERE jinxxy_user_id = ?
+               AND license_id = ?
+               AND activator_user_id = ?
+               AND license_activation_id = ?"#,
+            created_at,
+            jinxxy_user_id,
+            license_id,
+            activator_user_id,
+            activation_id
+        )
+        .execute(&mut *connection)
+        .await?;
+        if result.rows_affected() == 0 {
+            Ok(false)
+        } else if result.rows_affected() == 1 {
+            Ok(true)
+        } else {
+            Err(JinxError::new(
+                "Expected at most one row to be updated during backfill_activation",
+            ))
+        }
     }
 
     /// Locally record that we've activated a license for a user. Returns `true` if a row was created, or `false` if a row was not created
@@ -450,26 +519,31 @@ impl JinxDb {
     }
 
     /// Provided a list, `guilds`, of all guilds the bot is currently in, scan the DB for any guilds we're not in and
-    /// delete their data.
+    /// delete their data. `max` is the maximum number of guilds to delete. If more than `max` stale guilds are
+    /// calculated, this function will not perform any deletes and will return `None`. Otherwise, a list of deleted
+    /// Jinxxy user IDs will be returned.
     ///
     /// See [`delete_guild`](JinxDb::delete_guild) for details on what, specifically, is deleted.
-    #[allow(dead_code)]
-    pub async fn delete_stale_guilds(&self, guilds: &[GuildId]) -> JinxResult<Vec<String>> {
-        let mut deleted_users = Vec::new();
+    pub async fn delete_stale_guilds(&self, guilds: &[GuildId], max: u64) -> JinxResult<Option<Vec<String>>> {
+        let max = usize::try_from(max)
+            .map_err(|_| JinxError::new("could not convert delete_stale_guilds max into a usize"))?;
         let mut connection = self.write_connection().await?;
         let mut transaction = connection.begin().await?;
-
         let stale_guilds = helper::get_stale_guilds(&mut transaction, guilds).await?;
-        for guild_id in stale_guilds {
-            deleted_users.extend(helper::delete_guild(&mut transaction, guild_id).await?);
-        }
-
+        let result = if stale_guilds.len() > max {
+            None
+        } else {
+            let mut deleted_users = Vec::new();
+            for guild_id in stale_guilds {
+                deleted_users.extend(helper::delete_guild(&mut transaction, guild_id).await?);
+            }
+            Some(deleted_users)
+        };
         transaction.commit().await?;
-        Ok(deleted_users)
+        Ok(result)
     }
 
     /// Provided a list, `guilds`, of all guilds the bot is currently in, scan the DB for any guilds we're not in.
-    #[allow(dead_code)]
     pub async fn get_stale_guilds(&self, guilds: &[GuildId]) -> JinxResult<Vec<GuildId>> {
         let mut connection = self.write_connection().await?;
         let mut transaction = connection.begin().await?;
@@ -1987,7 +2061,7 @@ pub struct LinkedStore {
 
 /// Different modes of WAL checkpoint: https://sqlite.org/pragma.html#pragma_wal_checkpoint
 #[derive(Copy, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // we hardcode a specific mode
 pub enum SqliteWalCheckpoint {
     /// Checkpoint as many frames as possible without waiting for any database readers or writers to finish. Sync the
     /// db file if all frames in the log are checkpointed. This mode is the same as calling the
@@ -2063,7 +2137,7 @@ pub struct SqliteDatabaseSize {
     page_size: u64,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // has a bunch of functionality I currently don't use
 impl SqliteDatabaseSize {
     /// Number of total pages in the DB, including both used pages and unused "freelist" pages.
     pub fn page_count(&self) -> u64 {
@@ -2094,4 +2168,13 @@ impl SqliteDatabaseSize {
     pub fn used_bytes(&self) -> u64 {
         (self.page_count - self.freelist_count) * self.page_size
     }
+}
+
+/// Helper struct returned by [`JinxDb::get_activation_needing_backfill`]
+pub struct BackfillLicenseActivation {
+    pub jinxxy_api_key: String,
+    pub jinxxy_user_id: String,
+    pub license_id: String,
+    pub activator_user_id: UserId,
+    pub license_activation_id: String,
 }
