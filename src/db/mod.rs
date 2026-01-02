@@ -1793,8 +1793,7 @@ mod helper {
     ) -> SqliteResult<Vec<i64>> {
         let guilds = guilds_to_json(guilds);
         let stale_guilds = sqlx::query_scalar!(
-            r#"SELECT DISTINCT guild_id FROM guild
-            JOIN jinxxy_user_guild USING (guild_id)
+            r#"SELECT DISTINCT guild_id FROM jinxxy_user_guild
             WHERE guild_id NOT IN (SELECT value FROM json_each(?))"#,
             guilds
         )
