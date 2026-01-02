@@ -32,8 +32,8 @@ pub(in crate::bot) async fn owner_stats(
     let db_size = context.data().db.size().await?;
     let db_total_bytes = db_size.total_bytes().div_ceil(1024);
     let db_free_bytes = db_size.free_bytes().div_ceil(1024);
-    let configured_guild_count = context.data().db.guild_count().await?;
-    let guilds = context.serenity_context().cache.guilds();
+    let configured_guild_count = context.data().db.configured_guild_count().await?;
+    let guilds = context.serenity_context().cache.guilds(); // available AND unavailable guilds
     let stale_guild_count = context.data().db.get_stale_guilds(&guilds).await?.len();
     let license_activation_count = context.data().db.license_activation_count().await?;
     let distinct_user_count = context.data().db.distinct_user_count().await?;
@@ -44,7 +44,8 @@ pub(in crate::bot) async fn owner_stats(
     let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
     let log_channel_count = context.data().db.log_channel_count().await?;
-    let cached_guild_count = context.serenity_context().cache.guild_count();
+    let available_guild_count = context.serenity_context().cache.guild_count(); // available guilds only
+    let unavailable_guild_count = context.serenity_context().cache.unavailable_guilds().len(); // unavailable guilds only
     let shard_count = context.serenity_context().cache.shard_count();
     let mut shard_list = String::new();
     {
@@ -63,7 +64,8 @@ pub(in crate::bot) async fn owner_stats(
     let message = format!(
         "db size={db_total_bytes} KiB\n\
         db free={db_free_bytes} KiB\n\
-        cached guilds={cached_guild_count}\n\
+        cached available guilds={available_guild_count}\n\
+        cached unavailable guilds={unavailable_guild_count}\n\
         configured guilds={configured_guild_count}\n\
         stale guilds={stale_guild_count}\n\
         log channels={log_channel_count}\n\

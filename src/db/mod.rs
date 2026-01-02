@@ -1185,12 +1185,13 @@ impl JinxDb {
 
     /// Get count of license activations
     pub async fn license_activation_count(&self) -> JinxResult<u64> {
-        let result = sqlx::query!(r#"SELECT count(*) AS "count!" FROM (
-                            SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
-                            INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
-                            INNER JOIN guild USING (guild_id)
-                            WHERE NOT guild.test
-                        )"#)
+        let result = sqlx::query!(
+            r#"SELECT count(*) AS "count!" FROM (
+                   SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                   INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                   INNER JOIN guild USING (guild_id)
+                   WHERE NOT guild.test
+               )"#)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_pool)
             .await?;
@@ -1199,19 +1200,28 @@ impl JinxDb {
 
     /// Get count of distinct users who have activated licenses
     pub async fn distinct_user_count(&self) -> JinxResult<u64> {
-        let result = sqlx::query!(r#"SELECT count(DISTINCT activator_user_id) AS "count!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE NOT guild.test"#)
-            .map(|row| row.count as u64)
-            .fetch_one(&self.read_pool)
-            .await?;
+        let result = sqlx::query!(
+            r#"SELECT count(DISTINCT activator_user_id) AS "count!" FROM license_activation
+                   INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                   INNER JOIN guild USING (guild_id)
+                   WHERE NOT guild.test"#
+        )
+        .map(|row| row.count as u64)
+        .fetch_one(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
     /// Get count of configured guilds
-    pub async fn guild_count(&self) -> JinxResult<u64> {
-        let result = sqlx::query!(r#"SELECT count(*) AS "count!" FROM guild WHERE NOT guild.test"#)
-            .map(|row| row.count as u64)
-            .fetch_one(&self.read_pool)
-            .await?;
+    pub async fn configured_guild_count(&self) -> JinxResult<u64> {
+        let result = sqlx::query!(
+            r#"SELECT count(DISTINCT guild_id) AS "count!" FROM guild
+               JOIN jinxxy_user_guild USING (guild_id)
+               WHERE NOT guild.test"#
+        )
+        .map(|row| row.count as u64)
+        .fetch_one(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
@@ -1259,12 +1269,13 @@ impl JinxDb {
     /// Get count of license activations in a guild
     pub async fn guild_license_activation_count(&self, guild: GuildId) -> JinxResult<u64> {
         let guild_id = guild.get() as i64;
-        let result = sqlx::query!(r#"SELECT count(*) AS "count!" FROM (
-                            SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
-                            INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
-                            INNER JOIN guild USING (guild_id)
-                            WHERE guild.guild_id = ?
-                        )"#, guild_id)
+        let result = sqlx::query!(
+                 r#"SELECT count(*) AS "count!" FROM (
+                    SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                    INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                    INNER JOIN guild USING (guild_id)
+                    WHERE guild.guild_id = ?
+                )"#, guild_id)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_pool)
             .await?;
@@ -1782,9 +1793,9 @@ mod helper {
     ) -> SqliteResult<Vec<i64>> {
         let guilds = guilds_to_json(guilds);
         let stale_guilds = sqlx::query_scalar!(
-            r#"SELECT guild_id FROM guild JOIN jinxxy_user_guild USING (guild_id)
-            WHERE jinxxy_user_id IS NOT NULL
-            AND guild_id NOT IN (SELECT value FROM json_each(?))"#,
+            r#"SELECT DISTINCT guild_id FROM guild
+            JOIN jinxxy_user_guild USING (guild_id)
+            WHERE guild_id NOT IN (SELECT value FROM json_each(?))"#,
             guilds
         )
         .fetch_all(&mut **transaction)
