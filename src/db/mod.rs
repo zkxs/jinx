@@ -279,6 +279,7 @@ impl JinxDb {
             r#"SELECT jinxxy_api_key, jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
                JOIN jinxxy_user_guild USING (jinxxy_user_id)
                WHERE jinxxy_api_key_valid
+               AND created_at IS NULL
                LIMIT 1"#
         )
         .map(|row| BackfillLicenseActivation {

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT jinxxy_api_key, jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation\n               JOIN jinxxy_user_guild USING (jinxxy_user_id)\n               WHERE jinxxy_api_key_valid\n               LIMIT 1",
+  "query": "SELECT jinxxy_api_key, jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation\n               JOIN jinxxy_user_guild USING (jinxxy_user_id)\n               WHERE jinxxy_api_key_valid\n               AND created_at IS NULL\n               LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -70,5 +70,5 @@
       false
     ]
   },
-  "hash": "68f816d21c741fd02260fd349b5ed8ae91926d66e4396dbd62e7791b8144a860"
+  "hash": "fd90c89b35f0a392884dd8d996d5ac22280715fd6fada0fbf3cee12302e51205"
 }
