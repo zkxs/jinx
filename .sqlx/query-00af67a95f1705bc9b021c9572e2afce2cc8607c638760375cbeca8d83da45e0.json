@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT guild_id FROM guild JOIN jinxxy_user_guild USING (guild_id)\n            WHERE jinxxy_user_id IS NOT NULL\n            AND guild_id NOT IN (SELECT value FROM json_each(?))",
+  "query": "SELECT DISTINCT guild_id FROM guild\n            JOIN jinxxy_user_guild USING (guild_id)\n            WHERE guild_id NOT IN (SELECT value FROM json_each(?))",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "b04840a6cfbdf8eace136356e18e7f5f883fbda313f16e1f9539049c6ef9602e"
+  "hash": "00af67a95f1705bc9b021c9572e2afce2cc8607c638760375cbeca8d83da45e0"
 }

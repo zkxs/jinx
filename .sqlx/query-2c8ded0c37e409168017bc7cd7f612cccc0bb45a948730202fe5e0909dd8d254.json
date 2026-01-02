@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(DISTINCT activator_user_id) AS \"count!\" FROM license_activation\n                   INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)\n                   INNER JOIN guild USING (guild_id)\n                   WHERE NOT guild.test",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2c8ded0c37e409168017bc7cd7f612cccc0bb45a948730202fe5e0909dd8d254"
+}
