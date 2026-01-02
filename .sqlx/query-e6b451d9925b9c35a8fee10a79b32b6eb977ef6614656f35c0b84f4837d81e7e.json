@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT jinxxy_user_id FROM jinxxy_user_guild\n               LEFT JOIN jinxxy_user USING (jinxxy_user_id)\n               WHERE guild_id = ?",
+  "query": "SELECT jinxxy_user_id FROM jinxxy_user_guild\n               WHERE guild_id = ?",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "877c7e5830eb9044055a6829a4fe0db72f480033038f5b2197a3fe11fc2c6ebd"
+  "hash": "e6b451d9925b9c35a8fee10a79b32b6eb977ef6614656f35c0b84f4837d81e7e"
 }

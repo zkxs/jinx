@@ -525,12 +525,11 @@ impl JinxDb {
         Ok(result)
     }
 
-    /// Get an all linked store's user ids for this guild
+    /// Get all linked store's user ids for this guild
     pub async fn get_store_link_user_ids(&self, guild: GuildId) -> JinxResult<Vec<String>> {
         let guild_id = guild.get() as i64;
         let result = sqlx::query_scalar!(
             r#"SELECT jinxxy_user_id FROM jinxxy_user_guild
-               LEFT JOIN jinxxy_user USING (jinxxy_user_id)
                WHERE guild_id = ?"#,
             guild_id
         )
@@ -1273,8 +1272,7 @@ impl JinxDb {
                  r#"SELECT count(*) AS "count!" FROM (
                     SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
                     INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
-                    INNER JOIN guild USING (guild_id)
-                    WHERE guild.guild_id = ?
+                    WHERE guild_id = ?
                 )"#, guild_id)
             .map(|row| row.count as u64)
             .fetch_one(&self.read_pool)
