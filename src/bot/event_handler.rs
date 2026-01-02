@@ -98,7 +98,8 @@ impl EventHandler for Data {
                                     &context.http,
                                     CreateInteractionResponse::Message(
                                         CreateInteractionResponseMessage::default()
-                                            .content("You are permanently banned from interacting with this bot."),
+                                            .content("You are permanently banned from interacting with this bot.")
+                                            .ephemeral(true),
                                     ),
                                 )
                                 .await
