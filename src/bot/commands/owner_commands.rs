@@ -4,7 +4,9 @@
 use crate::SHOULD_RESTART;
 use crate::bot::commands::guild_commands;
 use crate::bot::util::{check_owner, error_reply, success_reply};
-use crate::bot::{Context, HOURS_PER_DAY, SECONDS_PER_HOUR, util};
+use crate::bot::{Context, util};
+use crate::constants::{HOURS_PER_DAY, SECONDS_PER_HOUR};
+use crate::db::ActivationCounts;
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername as _};
@@ -384,8 +386,13 @@ pub(in crate::bot) async fn verify_guild(
                         };
                         let administrator = permissions.administrator();
                         let manage_roles = permissions.manage_roles();
-                        let license_activation_count =
-                            context.data().db.guild_license_activation_count(guild_id).await?;
+                        let ActivationCounts {
+                            day_7,
+                            day_30,
+                            day_90,
+                            day_365,
+                            lifetime,
+                        } = context.data().db.guild_license_activation_count(guild_id).await?;
                         let gumroad_failure_count = context
                             .data()
                             .db
@@ -422,7 +429,11 @@ pub(in crate::bot) async fn verify_guild(
                             Test={is_test}\n\
                             Admin={administrator}\n\
                             Manage Roles={manage_roles}\n\
-                            license activations={license_activation_count}\n\
+                            license activations (7d)={day_7}\n\
+                            license activations (30d)={day_30}\n\
+                            license activations (90d)={day_90}\n\
+                            license activations (1yr)={day_365}\n\
+                            license activations (lifetime)={lifetime}\n\
                             failed gumroad licenses={gumroad_failure_count}\n\
                             gumroad nags={gumroad_nag_count}\n\
                             nag role={nag_role}\n\

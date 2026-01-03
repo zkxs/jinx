@@ -1339,18 +1339,25 @@ impl JinxDb {
     }
 
     /// Get count of license activations in a guild
-    pub async fn guild_license_activation_count(&self, guild: GuildId) -> JinxResult<u64> {
-        let guild_id = guild.get() as i64;
-        let result = sqlx::query!(
-                 r#"SELECT count(*) AS "count!" FROM (
-                    SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
-                    INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
-                    WHERE guild_id = ?
-                )"#, guild_id)
-            .map(|row| row.count as u64)
-            .fetch_one(&self.read_pool)
-            .await?;
-        Ok(result)
+    pub async fn guild_license_activation_count(&self, guild: GuildId) -> JinxResult<ActivationCounts> {
+        const SECONDS_PER_DAY: i64 = crate::constants::SECONDS_PER_DAY as i64;
+        let mut connection = self.read_pool.acquire().await?;
+        let mut transaction = connection.begin().await?;
+        let day_7 = helper::guild_license_activation_count(&mut transaction, guild, Some(SECONDS_PER_DAY * 7)).await?;
+        let day_30 =
+            helper::guild_license_activation_count(&mut transaction, guild, Some(SECONDS_PER_DAY * 30)).await?;
+        let day_90 =
+            helper::guild_license_activation_count(&mut transaction, guild, Some(SECONDS_PER_DAY * 90)).await?;
+        let day_365 =
+            helper::guild_license_activation_count(&mut transaction, guild, Some(SECONDS_PER_DAY * 365)).await?;
+        let lifetime = helper::guild_license_activation_count(&mut transaction, guild, None).await?;
+        Ok(ActivationCounts {
+            day_7,
+            day_30,
+            day_90,
+            day_365,
+            lifetime,
+        })
     }
 
     /// Get bot log channel
@@ -1678,6 +1685,43 @@ mod helper {
         .execute(connection)
         .await?;
         Ok(())
+    }
+
+    /// Get count of license activations in a guild
+    pub async fn guild_license_activation_count(
+        transaction: &mut SqliteTransaction<'_>,
+        guild: GuildId,
+        seconds: Option<i64>,
+    ) -> JinxResult<u64> {
+        let guild_id = guild.get() as i64;
+        let result = if let Some(seconds) = seconds {
+            sqlx::query!(
+                 r#"SELECT count(*) AS "count!" FROM (
+                    SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                    INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                    WHERE guild_id = ?
+                    AND created_at > unixepoch() - ?
+                 )"#,
+                guild_id,
+                seconds,
+            )
+            .map(|row| row.count as u64)
+            .fetch_one(&mut **transaction)
+            .await?
+        } else {
+            sqlx::query!(
+                 r#"SELECT count(*) AS "count!" FROM (
+                    SELECT DISTINCT jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
+                    INNER JOIN jinxxy_user_guild USING (jinxxy_user_id)
+                    WHERE guild_id = ?
+                 )"#,
+                guild_id,
+            )
+            .map(|row| row.count as u64)
+            .fetch_one(&mut **transaction)
+            .await?
+        };
+        Ok(result)
     }
 
     /// Get cached name info for products in a guild
@@ -2177,4 +2221,13 @@ pub struct BackfillLicenseActivation {
     pub license_id: String,
     pub activator_user_id: UserId,
     pub license_activation_id: String,
+}
+
+/// Helper struct returned by [`JinxDb::guild_license_activation_count`]
+pub struct ActivationCounts {
+    pub day_7: u64,
+    pub day_30: u64,
+    pub day_90: u64,
+    pub day_365: u64,
+    pub lifetime: u64,
 }

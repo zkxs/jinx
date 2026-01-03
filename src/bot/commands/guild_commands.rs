@@ -3,7 +3,7 @@
 
 use crate::bot::util::{error_reply, success_reply};
 use crate::bot::{Context, MISSING_STORE_LINK_MESSAGE, util};
-use crate::db::LinkSource;
+use crate::db::{ActivationCounts, LinkSource};
 use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername as _, Username};
@@ -38,7 +38,13 @@ pub(in crate::bot) async fn stats(context: Context<'_>) -> Result<(), Error> {
     let guild_id = context
         .guild_id()
         .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
-    let license_activation_count = context.data().db.guild_license_activation_count(guild_id).await?;
+    let ActivationCounts {
+        day_7,
+        day_30,
+        day_90,
+        day_365,
+        lifetime,
+    } = context.data().db.guild_license_activation_count(guild_id).await?;
     let gumroad_failure_count = context
         .data()
         .db
@@ -47,8 +53,12 @@ pub(in crate::bot) async fn stats(context: Context<'_>) -> Result<(), Error> {
         .unwrap_or(0);
 
     let message = format!(
-        "license activations={license_activation_count}\n\
-        failed gumroad licenses={gumroad_failure_count}"
+        "license activations (7d)={day_7}\n\
+        license activations (30d)={day_30}\n\
+        license activations (90d)={day_90}\n\
+        license activations (1yr)={day_365}\n\
+        license activations (lifetime)={lifetime}\n\
+        gumroad licenses rejected={gumroad_failure_count}"
     );
     let embed = CreateEmbed::default().title("Jinx Stats").description(message);
     context

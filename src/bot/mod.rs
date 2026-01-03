@@ -9,6 +9,7 @@ pub mod util;
 
 use crate::bot::cache::ApiCache;
 use crate::bot::error_handler::error_handler;
+use crate::constants::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 use crate::db::{JinxDb, SqliteWalCheckpoint};
 use crate::error::JinxError;
 use commands::*;
@@ -36,12 +37,6 @@ pub const AUTOCOMPLETE_RESULT_LIMIT: usize = 25;
 pub const AUTOCOMPLETE_CHARACTER_LIMIT: usize = 100;
 /// Maximum character length in a `custom_id` field. Discord docs are ambiguous if this is characters or bytes.
 pub const CUSTOM_ID_CHARACTER_LIMIT: usize = 100;
-
-const SECONDS_PER_MINUTE: u64 = 60;
-const MINUTES_PER_HOUR: u64 = 60;
-const HOURS_PER_DAY: u64 = 24;
-const SECONDS_PER_DAY: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
-const SECONDS_PER_HOUR: u64 = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 
 /// Message shown to admins when the Jinxxy API key is missing
 pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please use the `/add_store` command to set it.";

@@ -9,8 +9,8 @@
 //!
 //! The idea here is we have a cache with a short expiry time (maybe 60s) and we reuse the results.
 
-use crate::bot::{AUTOCOMPLETE_RESULT_LIMIT, MISSING_API_KEY_MESSAGE};
-use crate::bot::{SECONDS_PER_DAY, util};
+use crate::bot::{AUTOCOMPLETE_RESULT_LIMIT, MISSING_API_KEY_MESSAGE, util};
+use crate::constants::SECONDS_PER_DAY;
 use crate::db;
 use crate::db::{JinxDb, LinkedStore};
 use crate::error::JinxError;
