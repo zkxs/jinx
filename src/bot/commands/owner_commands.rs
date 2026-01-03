@@ -7,7 +7,7 @@ use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::bot::{Context, HOURS_PER_DAY, SECONDS_PER_HOUR, util};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername as _};
 use poise::{CreateReply, serenity_prelude as serenity};
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
@@ -1016,33 +1016,51 @@ pub(in crate::bot) async fn backfill_license_activation(context: Context<'_>) ->
             let mut backfill_count: u64 = 0;
             let mut skip_count: u64 = 0;
             for db_activation in chunk {
-                let api_activation = util::retry_thrice(|| {
+                match util::retry_thrice(|| {
                     jinxxy::get_license_activation(
                         &db_activation.jinxxy_api_key,
                         &db_activation.license_id,
                         &db_activation.license_activation_id,
                     )
                 })
-                .await?;
-                if let Some(api_activation) = api_activation {
-                    let row_updated = db
-                        .backfill_activation(
+                .await
+                {
+                    Ok(Some(api_activation)) => {
+                        let row_updated = db
+                            .backfill_activation(
+                                &db_activation.jinxxy_user_id,
+                                &db_activation.license_id,
+                                db_activation.activator_user_id,
+                                &db_activation.license_activation_id,
+                                &api_activation.created_at,
+                            )
+                            .await?;
+                        if row_updated {
+                            backfill_count += 1;
+                        } else {
+                            skip_count += 1;
+                            warn!("someone beat me to a backfill! weird!");
+                        }
+                    }
+                    Ok(None) => {
+                        skip_count += 1;
+                        warn!(
+                            "DB activation {}:{}:{} did not exist in Jinxxy API",
                             &db_activation.jinxxy_user_id,
                             &db_activation.license_id,
-                            db_activation.activator_user_id,
-                            &db_activation.license_activation_id,
-                            &api_activation.created_at,
-                        )
-                        .await?;
-                    if row_updated {
-                        backfill_count += 1;
+                            &db_activation.license_activation_id
+                        );
                     }
-                } else {
-                    skip_count += 1;
-                    warn!(
-                        "DB activation {}:{}:{} did not exist in Jinxxy API",
-                        &db_activation.jinxxy_user_id, &db_activation.license_id, &db_activation.license_activation_id
-                    );
+                    Err(e) => {
+                        skip_count += 1;
+                        warn!(
+                            "DB activation {}:{}:{} threw Jinxxy error: {:?}",
+                            &db_activation.jinxxy_user_id,
+                            &db_activation.license_id,
+                            &db_activation.license_activation_id,
+                            e
+                        );
+                    }
                 }
             }
             Ok((backfill_count, skip_count))

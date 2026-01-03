@@ -2,7 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
-use crate::bot::util::{MessageExtensions, SafeDisplay};
+use crate::bot::util::{MessageExtensions as _, SafeDisplay as _};
 use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GuildCreateEvent, util};
 use crate::bot::{Data, REGISTER_MODAL_ID};
 use crate::db::JinxDb;

@@ -6,7 +6,7 @@ use crate::bot::{Context, MISSING_STORE_LINK_MESSAGE, util};
 use crate::db::LinkSource;
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername, Username};
+use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername as _, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use jiff::Timestamp;

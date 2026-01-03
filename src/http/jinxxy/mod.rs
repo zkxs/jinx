@@ -317,8 +317,7 @@ pub async fn get_license_activation(
         let response: LicenseActivation = read_any_json(ENDPOINT, response).await?;
         Ok(Some(response))
     } else {
-        debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
-        // jinxxy API has a bug where it doesn't delete license activations from the List or Retrieve APIs.
+        debug!("could not get license id \"{license_id}\" activation id \"{activation_id}\"");
         let error = JinxxyError::from_response(ENDPOINT, response).await;
         if error.is_404() {
             //TODO: this is speculation as to how this will behave in the future

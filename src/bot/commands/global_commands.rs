@@ -6,7 +6,7 @@ use crate::bot::util;
 use crate::bot::util::{check_owner, error_reply, success_reply};
 use crate::constants;
 use crate::error::JinxError;
-use crate::http::jinxxy::GetUsername;
+use crate::http::jinxxy::GetUsername as _;
 use crate::http::{jinxxy, update_checker};
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
