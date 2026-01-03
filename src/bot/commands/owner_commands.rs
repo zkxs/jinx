@@ -11,6 +11,7 @@ use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername};
 use poise::{CreateReply, serenity_prelude as serenity};
 use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
+use tokio::task::JoinSet;
 use tokio::time::{Duration, Instant};
 use tracing::{info, warn};
 
@@ -995,40 +996,65 @@ pub(in crate::bot) async fn delete_stale_guilds(
     interaction_context = "Guild"
 )]
 pub(in crate::bot) async fn backfill_license_activation(context: Context<'_>) -> Result<(), Error> {
+    const PARALLELISM: usize = 4;
+    const PARALLELISM_THRESHOLD: usize = PARALLELISM * 8;
     context.defer_ephemeral().await?;
+    let db_activations = context.data().db.get_activations_needing_backfill().await?;
+    let parallelism = if db_activations.len() > PARALLELISM_THRESHOLD {
+        PARALLELISM
+    } else {
+        1
+    };
+    let chunk_size = db_activations.len().div_ceil(parallelism);
+    let mut join_set = JoinSet::<Result<(u64, u64), JinxError>>::new();
+    for chunk in db_activations.chunks(chunk_size) {
+        // tragically we must clone here because you can't just split an allocation
+        // the only alternative would be some reference counting solution such as vecshard to drop once all shards are dropped
+        let chunk = chunk.to_vec();
+        let db = context.data().db.clone();
+        join_set.spawn(async move {
+            let mut backfill_count: u64 = 0;
+            let mut skip_count: u64 = 0;
+            for db_activation in chunk {
+                let api_activation = util::retry_thrice(|| {
+                    jinxxy::get_license_activation(
+                        &db_activation.jinxxy_api_key,
+                        &db_activation.license_id,
+                        &db_activation.license_activation_id,
+                    )
+                })
+                .await?;
+                if let Some(api_activation) = api_activation {
+                    let row_updated = db
+                        .backfill_activation(
+                            &db_activation.jinxxy_user_id,
+                            &db_activation.license_id,
+                            db_activation.activator_user_id,
+                            &db_activation.license_activation_id,
+                            &api_activation.created_at,
+                        )
+                        .await?;
+                    if row_updated {
+                        backfill_count += 1;
+                    }
+                } else {
+                    skip_count += 1;
+                    warn!(
+                        "DB activation {}:{}:{} did not exist in Jinxxy API",
+                        &db_activation.jinxxy_user_id, &db_activation.license_id, &db_activation.license_activation_id
+                    );
+                }
+            }
+            Ok((backfill_count, skip_count))
+        });
+    }
+
     let mut backfill_count: u64 = 0;
     let mut skip_count: u64 = 0;
-    while let Some(db_activation) = context.data().db.get_activation_needing_backfill().await? {
-        let api_activation = util::retry_thrice(|| {
-            jinxxy::get_license_activation(
-                &db_activation.jinxxy_api_key,
-                &db_activation.license_id,
-                &db_activation.license_activation_id,
-            )
-        })
-        .await?;
-        if let Some(api_activation) = api_activation {
-            let row_updated = context
-                .data()
-                .db
-                .backfill_activation(
-                    &db_activation.jinxxy_user_id,
-                    &db_activation.license_id,
-                    db_activation.activator_user_id,
-                    &db_activation.license_activation_id,
-                    &api_activation.created_at,
-                )
-                .await?;
-            if row_updated {
-                backfill_count += 1;
-            }
-        } else {
-            skip_count += 1;
-            warn!(
-                "DB activation {}:{}:{} did not exist in Jinxxy API",
-                &db_activation.jinxxy_user_id, &db_activation.license_id, &db_activation.license_activation_id
-            );
-        }
+    while let Some(result) = join_set.join_next().await {
+        let (chunk_backfill_count, chunk_skip_count) = result??;
+        backfill_count += chunk_backfill_count;
+        skip_count += chunk_skip_count;
     }
 
     let reply = success_reply("Success", format!("Backfilled {backfill_count}, skipped {skip_count}."));

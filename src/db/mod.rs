@@ -274,13 +274,12 @@ impl JinxDb {
     }
 
     /// Get an arbitrary license activation needing backfill
-    pub async fn get_activation_needing_backfill(&self) -> JinxResult<Option<BackfillLicenseActivation>> {
+    pub async fn get_activations_needing_backfill(&self) -> JinxResult<Vec<BackfillLicenseActivation>> {
         let result = sqlx::query!(
             r#"SELECT jinxxy_api_key, jinxxy_user_id, license_id, activator_user_id, license_activation_id FROM license_activation
                JOIN jinxxy_user_guild USING (jinxxy_user_id)
                WHERE jinxxy_api_key_valid
-               AND created_at IS NULL
-               LIMIT 1"#
+               AND created_at IS NULL"#
         )
         .map(|row| BackfillLicenseActivation {
             jinxxy_api_key: row.jinxxy_api_key,
@@ -289,9 +288,8 @@ impl JinxDb {
             activator_user_id: UserId::new(row.activator_user_id as u64),
             license_activation_id: row.license_activation_id,
         })
-        .fetch_optional(&self.read_pool)
+        .fetch_all(&self.read_pool)
         .await?;
-
         Ok(result)
     }
 
@@ -2172,6 +2170,7 @@ impl SqliteDatabaseSize {
 }
 
 /// Helper struct returned by [`JinxDb::get_activation_needing_backfill`]
+#[derive(Clone)]
 pub struct BackfillLicenseActivation {
     pub jinxxy_api_key: String,
     pub jinxxy_user_id: String,
