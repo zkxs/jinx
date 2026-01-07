@@ -23,6 +23,8 @@ use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering as AtomicOrdering;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::{Duration, timeout};
@@ -66,6 +68,7 @@ pub struct ApiCache {
     /// sending a None is considered a "bump", indicating we should re-check the next queued item
     refresh_register_tx: mpsc::Sender<Option<String>>,
     refresh_unregister_tx: mpsc::Sender<String>,
+    registered_store_count: Arc<AtomicU64>,
 }
 
 impl ApiCache {
@@ -74,6 +77,7 @@ impl ApiCache {
         let (high_priority_tx, mut high_priority_rx) = mpsc::channel::<(GuildId, String)>(QUEUE_SIZE);
         let (refresh_register_tx, mut refresh_register_rx) = mpsc::channel::<Option<String>>(QUEUE_SIZE);
         let (refresh_unregister_tx, mut refresh_unregister_rx) = mpsc::channel::<String>(QUEUE_SIZE);
+        let registered_store_count = Arc::new(AtomicU64::new(0));
 
         /* High priority refresh task.
 
@@ -178,6 +182,7 @@ impl ApiCache {
         {
             let db = db;
             let map = map.clone();
+            let registered_store_count = registered_store_count.clone();
             tokio::task::spawn(async move {
                 // set of all registered store ids
                 let mut store_set = HashSet::with_hasher(ahash::RandomState::default());
@@ -300,7 +305,7 @@ impl ApiCache {
                             }
                             // end of inner loop
                             // the event processing is now done, so process stores until none are expired in a "work loop"
-
+                            registered_store_count.store(store_set.len() as u64, AtomicOrdering::Relaxed);
                             let mut now = SimpleTime::now(); // initialize it to some arbitrary default: we set it later.
                             let mut work_remaining = true;
                             let mut work_counter = 0;
@@ -482,6 +487,7 @@ impl ApiCache {
                                     } else {
                                         // something about the store was screwed up so we're just going to unregister it
                                         store_set.remove(&queue_entry.jinxxy_user_id);
+                                        registered_store_count.store(store_set.len() as u64, AtomicOrdering::Relaxed);
                                     }
 
                                     // if we haven't touched the next store ID yet, then go again (true)
@@ -540,6 +546,7 @@ impl ApiCache {
             high_priority_tx,
             refresh_register_tx,
             refresh_unregister_tx,
+            registered_store_count,
         }
     }
 
@@ -656,8 +663,14 @@ impl ApiCache {
         Ok(result)
     }
 
+    /// Get total number of stores in the store cache
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+
+    /// Get total number of registered stores in the store cache
+    pub fn registered_stores(&self) -> u64 {
+        self.registered_store_count.load(AtomicOrdering::Relaxed)
     }
 
     pub fn product_count(&self) -> usize {

@@ -46,6 +46,7 @@ pub(in crate::bot) async fn owner_stats(
     let api_cache_products = context.data().api_cache.product_count();
     let api_cache_product_versions = context.data().api_cache.product_version_count();
     let api_cache_len = context.data().api_cache.len();
+    let api_cache_registered = context.data().api_cache.registered_stores();
     let log_channel_count = context.data().db.log_channel_count().await?;
     let available_guild_count = context.serenity_context().cache.guild_count(); // available guilds only
     let unavailable_guild_count = context.serenity_context().cache.unavailable_guilds().len(); // unavailable guilds only
@@ -79,7 +80,8 @@ pub(in crate::bot) async fn owner_stats(
         product+version→role links={product_version_role_count}\n\
         API cache total products={api_cache_products}\n\
         API cache total product versions={api_cache_product_versions}\n\
-        API cache guilds={api_cache_len}\n\
+        API cache stores={api_cache_len}\n\
+        API cache registered={api_cache_registered}\n\
         shards={shard_count}{shard_list}\n\
         tokio num_workers={tokio_num_workers}\n\
         tokio num_alive_tasks={tokio_num_alive_tasks}\n\

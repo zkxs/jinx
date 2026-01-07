@@ -505,6 +505,7 @@ impl JinxDb {
     /// - all `product_role` and `product_version_role` entries referencing the removed `jinxxy_user_guild` entries
     ///   (handled automatically by ON DELETE CASCADE)
     /// - all `jinxxy_user` entries that are no longer linked to any guild via `jinxxy_user_guild`
+    /// - all `license_activation` entries referencing a deleted jinxxy user (handled automatically by ON DELETE CASCADE)
     ///
     /// Finally, this returns `jinxxy_user_id: String` for all stores that have been deleted. These store IDs must be
     /// subsequently unregistered from the cache background job.
