@@ -695,6 +695,18 @@ impl JinxDb {
         Ok(())
     }
 
+    /// Check if this guild's API key is marked as valid
+    pub async fn get_jinxxy_api_key_validity(&self, guild: GuildId) -> JinxResult<Option<bool>> {
+        let guild_id = guild.get() as i64;
+        let result = sqlx::query_scalar!(
+            r#"SELECT jinxxy_api_key_valid AS "valid: bool" FROM jinxxy_user_guild WHERE guild_id = ?"#,
+            guild_id
+        )
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(result)
+    }
+
     /// Check if this guild has any Jinxxy stores linked
     pub async fn has_jinxxy_linked(&self, guild: GuildId) -> JinxResult<bool> {
         let guild_id = guild.get() as i64;

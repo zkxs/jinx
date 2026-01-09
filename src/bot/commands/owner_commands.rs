@@ -528,12 +528,17 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
     for guild_id in guilds {
         const OK: char = ' ';
         let api_code = if !context.data().db.has_jinxxy_linked(guild_id).await? {
-            'J'
+            'J' // no jinxxy link exists
+        } else if matches!(
+            context.data().db.get_jinxxy_api_key_validity(guild_id).await?,
+            Some(false)
+        ) {
+            'I' // link exists but we've marked the API key as invalid
         } else {
             OK
         };
         let ban_code = if context.data().db.get_guild_ban(guild_id).await? {
-            'B'
+            'B' // guild is banned
         } else {
             OK
         };
@@ -541,9 +546,9 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
             && let Ok(permissions) = util::permissions(&context, &bot_member)
         {
             if permissions.administrator() {
-                'A'
+                'A' // bot has Administrator
             } else if !permissions.manage_roles() {
-                'M'
+                'M' // bot lacks Manage Roles
             } else {
                 OK
             }
