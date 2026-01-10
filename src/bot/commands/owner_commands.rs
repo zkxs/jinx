@@ -529,11 +529,8 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
         const OK: char = ' ';
         let api_code = if !context.data().db.has_jinxxy_linked(guild_id).await? {
             'J' // no jinxxy link exists
-        } else if matches!(
-            context.data().db.get_jinxxy_api_key_validity(guild_id).await?,
-            Some(false)
-        ) {
-            'I' // link exists but we've marked the API key as invalid
+        } else if context.data().db.has_invalid_jinxxy_api_key(guild_id).await? {
+            'I' // link exists, but we've marked an API key as invalid
         } else {
             OK
         };

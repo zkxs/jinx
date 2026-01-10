@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM jinxxy_user_guild WHERE guild_id = ? AND NOT jinxxy_api_key_valid) AS \"invalid: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "invalid: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "66d3f288e63e896cdb85b97102f76cb4a34176c38395cf4eb4ff304f46f5c5bf"
+}

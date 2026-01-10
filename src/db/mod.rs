@@ -695,14 +695,14 @@ impl JinxDb {
         Ok(())
     }
 
-    /// Check if this guild's API key is marked as valid
-    pub async fn get_jinxxy_api_key_validity(&self, guild: GuildId) -> JinxResult<Option<bool>> {
+    /// Check if any keys for this guild are marked as invalid
+    pub async fn has_invalid_jinxxy_api_key(&self, guild: GuildId) -> JinxResult<bool> {
         let guild_id = guild.get() as i64;
         let result = sqlx::query_scalar!(
-            r#"SELECT jinxxy_api_key_valid AS "valid: bool" FROM jinxxy_user_guild WHERE guild_id = ?"#,
+            r#"SELECT EXISTS(SELECT * FROM jinxxy_user_guild WHERE guild_id = ? AND NOT jinxxy_api_key_valid) AS "invalid: bool""#,
             guild_id
         )
-        .fetch_optional(&self.read_pool)
+        .fetch_one(&self.read_pool)
         .await?;
         Ok(result)
     }
