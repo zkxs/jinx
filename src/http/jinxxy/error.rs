@@ -24,8 +24,6 @@ pub enum JinxxyError {
     JsonDeserialize(serde_json::Error),
     /// Some parallel task join failed.
     Join(tokio::task::JoinError),
-    /// Impossible 304 response: we got a 304 without Etag set
-    Impossible304,
     /// We encountered a case where pagination support is required, but unimplemented in Jinx
     UnsupportedPagination(u64),
 }
@@ -42,10 +40,6 @@ impl Display for JinxxyError {
             JinxxyError::HttpRead(e) => write!(f, "HTTP body read failed: {e:?}"),
             JinxxyError::JsonDeserialize(e) => write!(f, "JSON deserialization failed: {e}"),
             JinxxyError::Join(e) => write!(f, "parallel task join failed: {e}"),
-            JinxxyError::Impossible304 => write!(
-                f,
-                "got 304 response from Jinxxy API without having set If-None-Match header"
-            ),
             JinxxyError::UnsupportedPagination(nonce) => write!(
                 f,
                 "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
@@ -62,10 +56,6 @@ impl<'a> Display for RedactedJinxxyError<'a> {
             JinxxyError::HttpRead(_) => write!(f, "HTTP body read failed"),
             JinxxyError::JsonDeserialize(_) => write!(f, "JSON deserialization failed"),
             JinxxyError::Join(e) => write!(f, "parallel task join failed: {e}"),
-            JinxxyError::Impossible304 => write!(
-                f,
-                "got 304 response from Jinxxy API without having set If-None-Match header"
-            ),
             JinxxyError::UnsupportedPagination(nonce) => write!(
                 f,
                 "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
@@ -182,7 +172,6 @@ impl IsDeterministic for JinxxyError {
             JinxxyError::HttpRead(_) => false,
             JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives an arbitrary status code with an HTML error page, which web APIs are wont to do
             JinxxyError::Join(_) => false,
-            JinxxyError::Impossible304 => true,
             JinxxyError::UnsupportedPagination(_) => true,
         }
     }

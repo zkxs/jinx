@@ -15,9 +15,7 @@ use crate::db;
 use crate::db::{JinxDb, LinkedStore};
 use crate::error::JinxError;
 use crate::http::jinxxy;
-use crate::http::jinxxy::{
-    LoadedProduct, PartialProduct, ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo,
-};
+use crate::http::jinxxy::{PartialProduct, ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use poise::serenity_prelude::GuildId;
 use std::cmp::Ordering;
@@ -858,67 +856,40 @@ impl StoreCache {
         // list products
         let partial_products: Vec<PartialProduct> = jinxxy::get_products(api_key).await?;
 
-        // get details for each product
-        let mut products: Vec<LoadedProduct> =
-            jinxxy::get_full_products::<PARALLEL>(db, api_key, jinxxy_user_id, partial_products)
-                .await?
-                .into_iter()
-                .filter(|product| {
-                    // products with empty names are kinda weird, so I'm just gonna filter them to avoid any potential pitfalls
-                    match product {
-                        LoadedProduct::Api(product) => !product.name.is_empty(),
-                        LoadedProduct::Cached { .. } => true,
-                    }
-                })
-                .collect();
-
         // convert into map tuples for products without versions
-        let product_name_info: Vec<ProductNameInfo> = products
-            .iter_mut()
-            .map(|product| match product {
-                LoadedProduct::Api(product) => {
-                    let id = product.id.clone();
-                    let product_name = util::truncate_string_for_discord_autocomplete(&product.name);
-                    let etag = product.etag.clone();
-                    ProductNameInfo {
-                        id,
-                        value: ProductNameInfoValue { product_name, etag },
-                    }
-                }
-                LoadedProduct::Cached { product_info, .. } => product_info.take().expect(
-                    "product_info is specifically in an option so I can take() it later, this should not have failed",
-                ),
+        let product_name_info: Vec<ProductNameInfo> = partial_products
+            .iter()
+            .map(|product| {
+                let id = product.id.clone();
+                let product_name = util::truncate_string_for_discord_autocomplete(&product.name);
+                ProductNameInfo { id, product_name }
             })
             .collect();
 
         // convert into map tuples for product versions
-        let product_version_name_info: Vec<ProductVersionNameInfo> = products
+        let product_version_name_info: Vec<ProductVersionNameInfo> = partial_products
             .into_iter()
-            .flat_map(|product| match product {
-                LoadedProduct::Api(product) => {
-                    let null_name_info = ProductVersionNameInfo {
-                        id: ProductVersionId::from_product_id(&product.id),
-                        product_version_name: util::product_display_name(&product.name, None),
-                    };
-                    let null_iter = std::iter::once(null_name_info);
+            .flat_map(|product| {
+                let null_name_info = ProductVersionNameInfo {
+                    id: ProductVersionId::from_product_id(&product.id),
+                    product_version_name: util::product_display_name(&product.name, None),
+                };
+                let null_iter = std::iter::once(null_name_info);
 
-                    let iter = product.versions.into_iter().map(move |version| {
-                        let id = ProductVersionId {
-                            product_id: product.id.clone(),
-                            product_version_id: Some(version.id.clone()),
-                        };
-                        let product_version_name =
-                            util::product_display_name(&product.name, Some(version.name.as_str()));
-                        ProductVersionNameInfo {
-                            id,
-                            product_version_name,
-                        }
-                    });
-                    let iter = null_iter.chain(iter);
-                    let iter: Box<dyn Iterator<Item = _>> = Box::new(iter);
-                    iter
-                }
-                LoadedProduct::Cached { versions, .. } => Box::new(versions.into_iter()),
+                let iter = product.versions.into_iter().map(move |version| {
+                    let id = ProductVersionId {
+                        product_id: product.id.clone(),
+                        product_version_id: Some(version.id.clone()),
+                    };
+                    let product_version_name = util::product_display_name(&product.name, Some(version.name.as_str()));
+                    ProductVersionNameInfo {
+                        id,
+                        product_version_name,
+                    }
+                });
+                let iter = null_iter.chain(iter);
+                let iter: Box<dyn Iterator<Item = _>> = Box::new(iter);
+                iter
             })
             .collect();
 
@@ -991,7 +962,7 @@ impl StoreCache {
         let product_name_trie = {
             let mut trie_builder = TrieBuilder::new();
             for name_info in product_name_info.iter() {
-                let name = &name_info.value.product_name;
+                let name = &name_info.product_name;
                 trie_builder.push(name.to_lowercase(), name.to_string());
             }
             trie_builder.build()
@@ -1010,7 +981,7 @@ impl StoreCache {
         // build forward map without versions
         let product_id_to_name_map = product_name_info
             .iter()
-            .map(|name_info| (name_info.id.clone(), name_info.value.product_name.clone()))
+            .map(|name_info| (name_info.id.clone(), name_info.product_name.clone()))
             .collect();
 
         // build forward map with versions
@@ -1023,7 +994,7 @@ impl StoreCache {
         let mut product_name_to_id_map: HashMap<String, Vec<GlobalProductId>, ahash::RandomState> = Default::default();
         for name_info in product_name_info {
             product_name_to_id_map
-                .entry(name_info.value.product_name)
+                .entry(name_info.product_name)
                 .or_default()
                 .push(GlobalProductId {
                     jinxxy_user_id: jinxxy_user_id.to_owned(),

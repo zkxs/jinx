@@ -307,7 +307,7 @@ pub async fn user_info(
                     let jinxxy_user_id = license_id.jinxxy_user_id.clone();
                     let product_id = license_info.product_id.clone();
                     product_lookup_join_set.spawn(async move {
-                        jinxxy::get_product_uncached(&api_key, &product_id)
+                        jinxxy::get_product(&api_key, &product_id)
                             .await
                             .map(|product_info| (jinxxy_user_id, product_info))
                     });

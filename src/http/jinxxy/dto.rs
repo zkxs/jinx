@@ -198,8 +198,10 @@ pub struct PartialProduct {
     pub id: String,
 
     /// Product Name
-    #[allow(dead_code)] // used for debug printing
     pub name: String,
+
+    /// All versions of this product
+    pub versions: Vec<ProductVersion>,
 }
 
 /// In addition to all the fields of [`PartialProduct`], this also contains price and version information
@@ -213,9 +215,6 @@ pub struct FullProduct {
     pub name: String,
     /// All versions of this product
     pub versions: Vec<ProductVersion>,
-    /// Etag header value for this `GET /products/<id>` response
-    #[serde(skip)]
-    pub etag: Option<Vec<u8>>,
 }
 
 impl From<FullProduct> for PartialProduct {
@@ -223,6 +222,7 @@ impl From<FullProduct> for PartialProduct {
         Self {
             id: product.id,
             name: product.name,
+            versions: product.versions,
         }
     }
 }

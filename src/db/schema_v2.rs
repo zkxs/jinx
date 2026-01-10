@@ -12,9 +12,9 @@ use tracing::debug;
 const SCHEMA_MINOR_VERSION_KEY: &str = "schema_minor_version";
 const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
-const SCHEMA_MINOR_VERSION_VALUE: i32 = 0;
+const SCHEMA_MINOR_VERSION_VALUE: i32 = 1;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 4;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 0;
 
 /// Set up the v2 database
 pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
@@ -84,7 +84,6 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
                    jinxxy_user_id  TEXT NOT NULL,
                    product_id      TEXT NOT NULL,
                    product_name    TEXT NOT NULL,
-                   etag            BLOB,
                    PRIMARY KEY     (jinxxy_user_id, product_id),
                    FOREIGN KEY     (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
                ) STRICT, WITHOUT ROWID"#,
@@ -248,6 +247,11 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         connection.execute(r#"ALTER TABLE guild ADD COLUMN note TEXT"#).await?;
     }
 
+    // handle 2.0.4 -> 2.1.0 migration
+    if schema_version < (1, 0) {
+        connection.execute(r#"ALTER TABLE product DROP COLUMN etag"#).await?;
+    }
+
     // Index needed to look up all links by guild
     connection
         .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
@@ -404,24 +408,22 @@ pub(super) async fn copy_from_v1(
     {
         debug!("starting product migration");
         let mut rows =
-            sqlx::query(r#"SELECT guild_id, product_id, product_name, etag FROM product"#).fetch(&mut *v1_connection);
+            sqlx::query(r#"SELECT guild_id, product_id, product_name FROM product"#).fetch(&mut *v1_connection);
         while let Some(row) = rows.try_next().await? {
             let guild_id: i64 = row.get("guild_id");
             let product_id: &str = row.get("product_id");
             let product_name: &str = row.get("product_name");
-            let etag: Option<&[u8]> = row.get("etag");
             let jinxxy_user_id: &str = guild_to_store_map
                 .get(&guild_id)
                 .expect("jinxxy_user_id not found for guild");
 
             sqlx::query!(
-                r#"INSERT INTO product (jinxxy_user_id, product_id, product_name, etag)
-                   VALUES (?, ?, ?, ?)
+                r#"INSERT INTO product (jinxxy_user_id, product_id, product_name)
+                   VALUES (?, ?, ?)
                    ON CONFLICT (jinxxy_user_id, product_id) DO NOTHING"#,
                 jinxxy_user_id,
                 product_id,
                 product_name,
-                etag,
             )
             .execute(&mut *v2_connection)
             .await?;

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO product (jinxxy_user_id, product_id, product_name)\n                   VALUES (?, ?, ?)\n                   ON CONFLICT (jinxxy_user_id, product_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "e521f8a1c313d8fc1426d31b3243df8969884b26b03fed892b941dff75089dd3"
+}

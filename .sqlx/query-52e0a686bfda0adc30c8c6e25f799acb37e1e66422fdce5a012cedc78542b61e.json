@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO product (jinxxy_user_id, product_id, product_name) VALUES (?, ?, ?)\n                   ON CONFLICT (jinxxy_user_id, product_id) DO UPDATE SET product_name = excluded.product_name",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "52e0a686bfda0adc30c8c6e25f799acb37e1e66422fdce5a012cedc78542b61e"
+}

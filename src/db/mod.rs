@@ -5,7 +5,7 @@ mod schema_v1;
 mod schema_v2;
 
 use crate::error::JinxError;
-use crate::http::jinxxy::{ProductNameInfo, ProductNameInfoValue, ProductVersionId, ProductVersionNameInfo};
+use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use jiff::Timestamp;
 use poise::futures_util::TryStreamExt;
@@ -1598,36 +1598,6 @@ impl JinxDb {
         transaction.commit().await?;
         Ok(())
     }
-
-    /// Get cached name info for products in a guild
-    pub async fn product_names_in_store(&self, jinxxy_user_id: &str) -> JinxResult<Vec<ProductNameInfo>> {
-        let mut connection = self.read_pool.acquire().await?;
-        let result = helper::product_names_in_store(&mut connection, jinxxy_user_id).await?;
-        Ok(result)
-    }
-
-    /// Get versions for a product
-    pub async fn product_versions(
-        &self,
-        jinxxy_user_id: &str,
-        product_id: &str,
-    ) -> JinxResult<Vec<ProductVersionNameInfo>> {
-        let result = sqlx::query!(
-            r#"SELECT version_id, product_version_name FROM product_version WHERE jinxxy_user_id = ? AND product_id = ?"#,
-            jinxxy_user_id,
-            product_id
-        )
-            .map(|row| ProductVersionNameInfo {
-                id: ProductVersionId {
-                    product_id: product_id.to_string(),
-                    product_version_id: Some(row.version_id),
-                },
-                product_version_name: row.product_version_name,
-            })
-            .fetch_all(&self.read_pool)
-            .await?;
-        Ok(result)
-    }
 }
 
 /// Helper functions that don't access a whole pool
@@ -1743,15 +1713,12 @@ mod helper {
         jinxxy_user_id: &str,
     ) -> SqliteResult<Vec<ProductNameInfo>> {
         sqlx::query!(
-            r#"SELECT product_id, product_name, etag FROM product WHERE jinxxy_user_id = ?"#,
+            r#"SELECT product_id, product_name FROM product WHERE jinxxy_user_id = ?"#,
             jinxxy_user_id
         )
         .map(|row| ProductNameInfo {
             id: row.product_id,
-            value: ProductNameInfoValue {
-                product_name: row.product_name,
-                etag: row.etag,
-            },
+            product_name: row.product_name,
         })
         .fetch_all(connection)
         .await
@@ -1788,18 +1755,16 @@ mod helper {
         // step 1: insert all entries and keep track of their keys in a set for later
         for info in product_name_info {
             let product_id = info.id;
-            let product_name = info.value.product_name;
-            let etag = info.value.etag;
+            let product_name = info.product_name;
             sqlx::query!(
-                r#"INSERT INTO product (jinxxy_user_id, product_id, product_name, etag) VALUES (?, ?, ?, ?)
-                   ON CONFLICT (jinxxy_user_id, product_id) DO UPDATE SET product_name = excluded.product_name, etag = excluded.etag"#,
+                r#"INSERT INTO product (jinxxy_user_id, product_id, product_name) VALUES (?, ?, ?)
+                   ON CONFLICT (jinxxy_user_id, product_id) DO UPDATE SET product_name = excluded.product_name"#,
                 jinxxy_user_id,
                 product_id,
                 product_name,
-                etag
             )
-                .execute(&mut *connection)
-                .await?;
+            .execute(&mut *connection)
+            .await?;
             new_key_set.insert(product_id);
         }
 
