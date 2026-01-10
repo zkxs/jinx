@@ -373,7 +373,7 @@ pub async fn user_info(
                             username,
                             license_info.product_name,
                             product_version_name,
-                            license_info.order_id,
+                            license_info.order_id.unwrap_or_default(), // TODO: better handling for null Order
                         )
                         .as_str(),
                     );
@@ -534,7 +534,7 @@ pub async fn license_info(
                         license_info.key,
                         product_name,
                         version_name,
-                        license_info.order_id
+                        license_info.order_id.unwrap_or_default() // TODO: better handling for null Order
                     )
                 } else {
                     let mut message = format!(
@@ -544,7 +544,7 @@ pub async fn license_info(
                         license_info.key,
                         product_name,
                         version_name,
-                        license_info.order_id
+                        license_info.order_id.unwrap_or_default() // TODO: better handling for null Order
                     );
                     for user_id in &remote_license_users {
                         if *user_id == LOCKING_USER_ID {
