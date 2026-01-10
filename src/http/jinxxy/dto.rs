@@ -43,7 +43,6 @@ pub struct License {
     key: String,
     user: LicenseUser,
     inventory_item: LicenseInventoryItem,
-    order: OrderInfo,
     activations: LicenseActivations,
 }
 
@@ -72,7 +71,7 @@ impl From<License> for super::LicenseInfo {
             product_id: license.inventory_item.target_id,
             product_name: license.inventory_item.item.name,
             product_version_info,
-            order_id: license.order.id,
+            order_id: license.inventory_item.order.id,
             activations: license.activations.total_count,
         }
     }
@@ -95,6 +94,8 @@ pub struct LicenseInventoryItem {
     target_version_id: Option<String>,
     /// More product metadata
     item: LicenseInventoryItemItem,
+    /// Order metadata
+    order: OrderInfo,
 }
 
 #[derive(Debug, Deserialize)]
