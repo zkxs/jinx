@@ -365,14 +365,15 @@ pub async fn user_info(
 
                     message.push_str(
                         format!(
-                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}",
+                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}, [order](<https://dashboard.jinxxy.com/orders/{}>)",
                             license_info.short_key,
                             store_identifier,
                             license_info.activations, // this field came from Jinxxy and is up to date
                             locked,                   // this field came from the local DB and may be out of sync
                             username,
                             license_info.product_name,
-                            product_version_name
+                            product_version_name,
+                            license_info.order_id,
                         )
                         .as_str(),
                     );
@@ -527,13 +528,23 @@ pub async fn license_info(
 
                 let message = if remote_license_users.is_empty() {
                     format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nNo registered users.",
-                        license_info.license_id, license_info.short_key, license_info.key, product_name, version_name
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[order](<https://dashboard.jinxxy.com/orders/{}>)\n\nNo registered users.",
+                        license_info.license_id,
+                        license_info.short_key,
+                        license_info.key,
+                        product_name,
+                        version_name,
+                        license_info.order_id
                     )
                 } else {
                     let mut message = format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n\nRegistered users:",
-                        license_info.license_id, license_info.short_key, license_info.key, product_name, version_name
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[order](<https://dashboard.jinxxy.com/orders/{}>)\n\nRegistered users:",
+                        license_info.license_id,
+                        license_info.short_key,
+                        license_info.key,
+                        product_name,
+                        version_name,
+                        license_info.order_id
                     );
                     for user_id in &remote_license_users {
                         if *user_id == LOCKING_USER_ID {

@@ -43,7 +43,15 @@ pub struct License {
     key: String,
     user: LicenseUser,
     inventory_item: LicenseInventoryItem,
+    order: OrderInfo,
     activations: LicenseActivations,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OrderInfo {
+    id: String,
+    #[allow(dead_code)] // debug printed
+    payment_status: String,
 }
 
 impl From<License> for super::LicenseInfo {
@@ -64,6 +72,7 @@ impl From<License> for super::LicenseInfo {
             product_id: license.inventory_item.target_id,
             product_name: license.inventory_item.item.name,
             product_version_info,
+            order_id: license.order.id,
             activations: license.activations.total_count,
         }
     }
