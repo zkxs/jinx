@@ -59,10 +59,16 @@ impl<'a> Display for RedactedJinxxyError<'a> {
                             "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This appears to be due to a Jinxxy API outage. Please report it to the Jinxxy team!**",
                             e.status_code, response.error, response.message, response.code
                         )
-                    } else {
+                    } else if e.status_code == StatusCode::BAD_REQUEST {
                         write!(
                             f,
                             "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This may be due to a Jinx bot bug. Please report it to the bot developer!**",
+                            e.status_code, response.error, response.message, response.code
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}",
                             e.status_code, response.error, response.message, response.code
                         )
                     }
