@@ -56,20 +56,20 @@ impl<'a> Display for RedactedJinxxyError<'a> {
                     if e.status_code.is_server_error() {
                         write!(
                             f,
-                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This appears to be due to a Jinxxy API outage. Please report it to the Jinxxy team!**",
-                            e.status_code, response.error, response.message, response.code
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}\n**This appears to be due to a Jinxxy API outage. Please report it to the Jinxxy team!**",
+                            e.status_code, response.error, response.message, response.code, response.request_id
                         )
                     } else if e.status_code == StatusCode::BAD_REQUEST {
                         write!(
                             f,
-                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This may be due to a Jinx bot bug. Please report it to the bot developer!**",
-                            e.status_code, response.error, response.message, response.code
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}\n**This may be due to a Jinx bot bug. Please report it to the bot developer!**",
+                            e.status_code, response.error, response.message, response.code, response.request_id
                         )
                     } else {
                         write!(
                             f,
-                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}",
-                            e.status_code, response.error, response.message, response.code
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}",
+                            e.status_code, response.error, response.message, response.code, response.request_id
                         )
                     }
                 }
@@ -261,6 +261,8 @@ pub struct JinxxyErrorResponse {
     /// This field appears completely useless for my own use, but might be helpful for the Jinxxy devs if I need to
     /// forward an error report along.
     code: String,
+    /// Matches the X-Request-Id header
+    request_id: String,
 }
 
 impl JinxxyErrorResponse {
