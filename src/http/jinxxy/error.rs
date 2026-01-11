@@ -52,11 +52,21 @@ impl<'a> Display for RedactedJinxxyError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.0 {
             JinxxyError::HttpResponse(e) => match &e.body {
-                HttpBody::JsonErrorResponse(response) => write!(
-                    f,
-                    "Jinxxy API error:\nstatus code: {}\nerror: {}\nmessage: {}\ncode: {}",
-                    e.status_code, response.error, response.message, response.code
-                ),
+                HttpBody::JsonErrorResponse(response) => {
+                    if e.status_code.is_server_error() {
+                        write!(
+                            f,
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This appears to be due to a Jinxxy API outage. Please report it to the Jinxxy team!**",
+                            e.status_code, response.error, response.message, response.code
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\n**This may be due to a Jinx bot bug. Please report it to the bot developer!**",
+                            e.status_code, response.error, response.message, response.code
+                        )
+                    }
+                }
                 HttpBody::UnknownErrorResponse(_) => write!(f, "Jinxxy API deserialize error: {}", e.status_code),
                 HttpBody::ReadError(_) => write!(f, "Jinxxy API read error: {}", e.status_code),
             },
