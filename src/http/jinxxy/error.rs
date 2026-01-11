@@ -51,7 +51,15 @@ impl Display for JinxxyError {
 impl<'a> Display for RedactedJinxxyError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            JinxxyError::HttpResponse(_) => write!(f, "Jinxxy API error"),
+            JinxxyError::HttpResponse(e) => match &e.body {
+                HttpBody::JsonErrorResponse(response) => write!(
+                    f,
+                    "Jinxxy API error:\nstatus code: {}\nerror: {}\nmessage: {}\ncode: {}",
+                    e.status_code, response.error, response.message, response.code
+                ),
+                HttpBody::UnknownErrorResponse(_) => write!(f, "Jinxxy API deserialize error: {}", e.status_code),
+                HttpBody::ReadError(_) => write!(f, "Jinxxy API read error: {}", e.status_code),
+            },
             JinxxyError::HttpRequest(_) => write!(f, "HTTP general failure"),
             JinxxyError::HttpRead(_) => write!(f, "HTTP body read failed"),
             JinxxyError::JsonDeserialize(_) => write!(f, "JSON deserialization failed"),
@@ -236,7 +244,6 @@ pub struct JinxxyErrorResponse {
     message: JinxxyErrorMessage,
     /// This field appears completely useless for my own use, but might be helpful for the Jinxxy devs if I need to
     /// forward an error report along.
-    #[allow(dead_code)] // debug printed
     code: String,
 }
 
@@ -289,4 +296,13 @@ impl JinxxyErrorMessage {
 pub struct JinxxyErrorMultiMessagePart {
     message: String,
     code: String,
+}
+
+impl Display for JinxxyErrorMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JinxxyErrorMessage::SingleMessage(message) => write!(f, "{message}"),
+            JinxxyErrorMessage::MultiMessage(messages) => write!(f, "{messages:?}"), //TODO: display this better
+        }
+    }
 }

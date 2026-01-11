@@ -3,7 +3,7 @@
 
 use crate::bot::Context;
 use crate::bot::util;
-use crate::bot::util::{check_owner, error_reply, success_reply};
+use crate::bot::util::{SafeDisplay, check_owner, error_reply, success_reply};
 use crate::constants;
 use crate::error::JinxError;
 use crate::http::jinxxy::GetUsername as _;
@@ -13,7 +13,7 @@ use poise::serenity_prelude as serenity;
 use regex::Regex;
 use serenity::{Colour, CreateEmbed};
 use std::sync::LazyLock;
-use tracing::debug;
+use tracing::{debug, warn};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -147,7 +147,13 @@ pub(in crate::bot) async fn add_store(
                     reply.embed(embed)
                 }
             }
-            Err(e) => error_reply("Error Initializing Jinx", format!("Error verifying API key: {e}")),
+            Err(e) => {
+                warn!("Error verifying API key: {e:?}");
+                error_reply(
+                    "Error Initializing Jinx",
+                    format!("Error verifying API key: {}", e.safe_display()),
+                )
+            }
         }
     } else {
         // user has given us some mystery garbage value for their API key
