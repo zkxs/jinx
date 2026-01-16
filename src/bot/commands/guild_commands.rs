@@ -362,10 +362,11 @@ pub async fn user_info(
                         Username::format_discord_display_name(&license_info.user_id, license_info.username.as_deref());
                     let store_identifier =
                         Username::format_discord_display_name(jinxxy_user_id, license_id.jinxxy_username.as_deref());
+                    let order = license_info.order_id.map(|order_id| format!(", [order](<https://dashboard.jinxxy.com/orders/{order_id}>)")).unwrap_or_default();
 
                     message.push_str(
                         format!(
-                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}, [order](<https://dashboard.jinxxy.com/orders/{}>)",
+                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}{}",
                             license_info.short_key,
                             store_identifier,
                             license_info.activations, // this field came from Jinxxy and is up to date
@@ -373,7 +374,7 @@ pub async fn user_info(
                             username,
                             license_info.product_name,
                             product_version_name,
-                            license_info.order_id.unwrap_or_default(), // TODO: better handling for null Order
+                            order,
                         )
                         .as_str(),
                     );
@@ -525,26 +526,27 @@ pub async fn license_info(
                     .as_ref()
                     .map(|info| info.product_version_name.as_str())
                     .unwrap_or("`null`");
+                let order = license_info.order_id.map(|order_id| format!("\n[order](<https://dashboard.jinxxy.com/orders/{order_id}>)")).unwrap_or_default();
 
                 let message = if remote_license_users.is_empty() {
                     format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[order](<https://dashboard.jinxxy.com/orders/{}>)\n\nNo registered users.",
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}{}\n\nNo registered users.",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
                         product_name,
                         version_name,
-                        license_info.order_id.unwrap_or_default() // TODO: better handling for null Order
+                        order,
                     )
                 } else {
                     let mut message = format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[order](<https://dashboard.jinxxy.com/orders/{}>)\n\nRegistered users:",
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}{}\n\nRegistered users:",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
                         product_name,
                         version_name,
-                        license_info.order_id.unwrap_or_default() // TODO: better handling for null Order
+                        order,
                     );
                     for user_id in &remote_license_users {
                         if *user_id == LOCKING_USER_ID {
