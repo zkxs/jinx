@@ -362,7 +362,10 @@ pub async fn user_info(
                         Username::format_discord_display_name(&license_info.user_id, license_info.username.as_deref());
                     let store_identifier =
                         Username::format_discord_display_name(jinxxy_user_id, license_id.jinxxy_username.as_deref());
-                    let order = license_info.order_id.map(|order_id| format!(", [order](<https://dashboard.jinxxy.com/orders/{order_id}>)")).unwrap_or_default();
+                    let order = license_info
+                        .order_id
+                        .map(|order_id| format!(", [order](<https://dashboard.jinxxy.com/orders/{order_id}>)"))
+                        .unwrap_or_default();
 
                     message.push_str(
                         format!(
@@ -526,7 +529,10 @@ pub async fn license_info(
                     .as_ref()
                     .map(|info| info.product_version_name.as_str())
                     .unwrap_or("`null`");
-                let order = license_info.order_id.map(|order_id| format!("\n[order](<https://dashboard.jinxxy.com/orders/{order_id}>)")).unwrap_or_default();
+                let order = license_info
+                    .order_id
+                    .map(|order_id| format!("\n[order](<https://dashboard.jinxxy.com/orders/{order_id}>)"))
+                    .unwrap_or_default();
 
                 let message = if remote_license_users.is_empty() {
                     format!(
