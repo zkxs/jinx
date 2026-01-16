@@ -486,7 +486,7 @@ pub(in crate::bot) async fn verify_guild(
                         Err(e) => CreateEmbed::default()
                             .title(format!("API Verification Error: {unique_name}"))
                             .color(Colour::RED)
-                            .description(format!("API key invalid: {e}")),
+                            .description(format!("API key invalid:```\n{e}```")),
                     };
                     api_embeds.push(api_embed);
                 }
