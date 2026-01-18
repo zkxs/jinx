@@ -19,7 +19,7 @@ opt-level = 3 # unoptimized sqlx macros can really slow down builds
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "time", "signal"] } # Async runtime
-poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next-2", default-features = false, features = ["cache", "handle_panics"] } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1 + unreleased `serenity-next` branch + my two PRs applied
+poise = { git = "https://github.com/zkxs/poise.git", branch = "zkxs-next-3", default-features = false, features = ["cache", "handle_panics"] } # Discord bot library. Forked from https://github.com/serenity-rs/poise 0.6.1 + unreleased `serenity-next` branch + my two PRs applied
 serenity = { git = "https://github.com/serenity-rs/serenity.git", branch = "next", default-features = false, features = ["rustls_backend"] } # Required because `default-features = false` is broken on poise
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "brotli", "deflate", "zstd", "json", "http2", "rustls-tls"] } # HTTP client
 serde = "1" # Serialization

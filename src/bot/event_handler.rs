@@ -13,10 +13,10 @@ use jiff::Timestamp;
 use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::{
-    Colour, Component, Context, CreateEmbed, CreateInputText, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateTextDisplay,
-    EditInteractionResponse, Error, Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle,
-    Interaction, LabelComponent, ModalInteraction, RatelimitInfo,
+    Colour, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Error,
+    Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent,
+    ModalComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -529,7 +529,7 @@ async fn handle_license_registration(
 ) -> Result<(), JinxError> {
     let start_time = Instant::now();
     let license_key = modal_interaction.data.components.iter().find_map(|component| {
-        if let Component::Label(label) = component
+        if let ModalComponent::Label(label) = component
             && let LabelComponent::InputText(input_text) = &label.component
             && input_text.custom_id == LICENSE_KEY_ID
         {
