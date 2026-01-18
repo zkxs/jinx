@@ -474,7 +474,8 @@ impl EventHandler for Data {
             /*
             the docs claim this happens "when the cache has received and inserted all data from
             guilds" and that "this process happens upon starting your bot". HOWEVER, it apparently
-            ALSO happens every single time any new guild is added.
+            ALSO happens every single time the bot joins a new guild. To mitigate this, we'd need an
+            AtomicBool and probably some janky handling for Resumed events
             */
             FullEvent::CacheReady { guilds, .. } => {
                 debug!("cache ready! {} guilds.", guilds.len());
