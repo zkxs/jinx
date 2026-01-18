@@ -223,7 +223,6 @@ skip = [
     # However, I'm pinning the specific old version so that I can track if new duplicates are introduced.
     { crate = "hashbrown@0.14", reason = "serenity uses old version" },
     { crate = "hashbrown@0.15", reason = "serenity uses old version" },
-    { crate = "foldhash@0.1", reason = "serenity uses old version" },
     { crate = "getrandom@0.2", reason = "used by rustls"},
     { crate = "webpki-roots@0.26", reason = "used by serenity / tokio-tungstenite@0.26.0"},
 ]
