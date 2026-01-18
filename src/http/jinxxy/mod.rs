@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2025 jinx contributors.
+// This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 //! Jinxxy API calls and response objects
@@ -482,8 +482,9 @@ pub struct LicenseInfo {
     pub short_key: String,
     /// long key
     pub key: String,
+    /// Activating user ID
     pub user_id: String,
-    /// Account's username; used in profile URL
+    /// Activating user's username; used in profile URL
     pub username: Option<String>,
     pub product_id: String,
     pub product_name: String,

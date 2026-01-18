@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2025 jinx contributors.
+// This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::util::{error_reply, success_reply};
@@ -358,25 +358,24 @@ pub async fn user_info(
                         .await?
                         .is_some();
 
-                    let username =
-                        Username::format_discord_display_name(&license_info.user_id, license_info.username.as_deref());
                     let store_identifier =
                         Username::format_discord_display_name(jinxxy_user_id, license_id.jinxxy_username.as_deref());
+                    let customer_id = license_info.user_id;
                     let order = license_info
                         .order_id
-                        .map(|order_id| format!(", [order](<https://dashboard.jinxxy.com/orders/{order_id}>)"))
+                        .map(|order_id| format!(" [order](<https://dashboard.jinxxy.com/orders/{order_id}>)"))
                         .unwrap_or_default();
 
                     message.push_str(
                         format!(
-                            "\n- `{}` store={} activations={} locked={} user={} product=\"{}\" version={}{}",
+                            "\n- `{}` store={} activations={} locked={} product=\"{}\" version={} [customer](<https://dashboard.jinxxy.com/customers/{}>){}",
                             license_info.short_key,
                             store_identifier,
                             license_info.activations, // this field came from Jinxxy and is up to date
                             locked,                   // this field came from the local DB and may be out of sync
-                            username,
                             license_info.product_name,
                             product_version_name,
+                            customer_id,
                             order,
                         )
                         .as_str(),
@@ -529,6 +528,7 @@ pub async fn license_info(
                     .as_ref()
                     .map(|info| info.product_version_name.as_str())
                     .unwrap_or("`null`");
+                let customer_id = license_info.user_id;
                 let order = license_info
                     .order_id
                     .map(|order_id| format!("\n[order](<https://dashboard.jinxxy.com/orders/{order_id}>)"))
@@ -536,22 +536,24 @@ pub async fn license_info(
 
                 let message = if remote_license_users.is_empty() {
                     format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}{}\n\nNo registered users.",
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[customer](<https://dashboard.jinxxy.com/customers/{}>){}\n\nNo registered users.",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
                         product_name,
                         version_name,
+                        customer_id,
                         order,
                     )
                 } else {
                     let mut message = format!(
-                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}{}\n\nRegistered users:",
+                        "ID: `{}`\nShort: `{}`\nLong: `{}`\nValid for {} {}\n[customer](<https://dashboard.jinxxy.com/customers/{}>){}\n\nRegistered users:",
                         license_info.license_id,
                         license_info.short_key,
                         license_info.key,
                         product_name,
                         version_name,
+                        customer_id,
                         order,
                     );
                     for user_id in &remote_license_users {
