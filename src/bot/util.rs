@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::time::Duration;
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
 /// A type with an alternate Display implementation that is safe to display to untrusted users
 pub trait SafeDisplay<'a, T>

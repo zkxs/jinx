@@ -62,7 +62,13 @@ impl<'a> Display for RedactedJinxxyError<'a> {
                     } else if e.status_code == StatusCode::BAD_REQUEST {
                         write!(
                             f,
-                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}\n**This may be due to a Jinx bot bug. Please report it to the bot developer!**",
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}\n**This appears to be due to a Jinx bot bug. Please report it to the bot developer!**",
+                            e.status_code, response.error, response.message, response.code, response.request_id
+                        )
+                    } else if e.status_code == StatusCode::UNAUTHORIZED || e.status_code == StatusCode::FORBIDDEN {
+                        write!(
+                            f,
+                            "Jinxxy API error:\nHTTP status code: {}\nerror: {}\nmessage: {}\ncode: {}\nrequest id: {}\n**This appears to be due to a misconfigured API key. Please report it to this server's owner!**",
                             e.status_code, response.error, response.message, response.code, response.request_id
                         )
                     } else {
