@@ -1869,7 +1869,7 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.4"
-source = "git+https://github.com/serenity-rs/serenity.git?branch=next#50835b52976619cca46eff1543b61344548fe39c"
+source = "git+https://github.com/serenity-rs/serenity.git?branch=next#89971ba5c5e6c960fe7562db2e193ca593903491"
 dependencies = [
  "aformat",
  "arrayvec",
@@ -3023,9 +3023,9 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.15"
+version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94f63c051f4fe3c1509da62131a678643c5b6fbdc9273b2b79d4378ebda003d2"
+checksum = "dfcd145825aace48cff44a8844de64bf75feec3080e0aa5cdbde72961ae51a65"
 
 [[package]]
 name = "zstd"
