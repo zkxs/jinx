@@ -1359,13 +1359,22 @@ pub(in crate::bot) async fn grant_missing_roles(
         let mut missing_users: usize = 0;
         let mut message_postfix = String::new();
         for user in users {
-            let member = guild_id.member(context, user).await?;
-            if !member.roles.contains(&role) {
-                message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
-                missing_users += 1;
-                member
-                    .add_role(context.as_ref(), role, Some("/grant_missing_roles"))
-                    .await?;
+            match guild_id.member(context, user).await {
+                Ok(member) => {
+                    if !member.roles.contains(&role) {
+                        message_postfix.push_str(format!("\n- <@{}>", user.get()).as_str());
+                        missing_users += 1;
+                        let result = member
+                            .add_role(context.as_ref(), role, Some("/grant_missing_roles"))
+                            .await;
+                        if let Err(e) = result {
+                            warn!("Error adding role to member. Skipping: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Error querying member. Skipping: {:?}", e);
+                }
             }
         }
         write!(
