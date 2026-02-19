@@ -221,6 +221,7 @@ skip = [
     { crate = "syn", reason = "macro-only" },
     # I've come to terms with lingering old versions for the following crates.
     # However, I'm pinning the specific old version so that I can track if new duplicates are introduced.
+    { crate = "cpufeatures@0.2", reason = "sqlx and serenity use old version" },
     { crate = "hashbrown@0.14", reason = "serenity uses old version" },
     { crate = "hashbrown@0.15", reason = "serenity uses old version" },
     { crate = "getrandom@0.2", reason = "used by rustls"},
@@ -233,7 +234,8 @@ skip = [
 skip-tree = [
     #"ansi_term@0.11.0", # will be skipped along with _all_ of its direct and transitive dependencies
     #{ crate = "ansi_term@0.11.0", depth = 20 },
-    "windows-sys", # API bindings
+    { crate = "rand@0.9", reason = "big 0.9 -> 0.10 update in progress"},
+    { crate = "windows-sys", reason = "API bindings" },
 ]
 
 # This section is considered when running `cargo deny check sources`.

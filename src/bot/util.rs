@@ -10,8 +10,8 @@ use crate::http::jinxxy;
 use crate::license::LicenseType;
 use poise::{CreateReply, serenity_prelude as serenity};
 use rand::distr::{Distribution, StandardUniform};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::rngs::{StdRng, SysRng};
+use rand::{RngExt, SeedableRng};
 use serenity::{
     AutocompleteChoice, Cache, ChannelId, Colour, CreateAutocompleteResponse, CreateEmbed, Error as SerenityError,
     GenericChannelId, GuildId, Http, Member, Message, MessageFlags, MessageType, MessageUpdateEvent, Permissions, Role,
@@ -450,7 +450,7 @@ impl GetMessageFlags for MessageUpdateEvent {
 
 /// Seed a new StdRng from OS entropy
 fn new_seeded_rng() -> StdRng {
-    StdRng::from_os_rng()
+    StdRng::try_from_rng(&mut SysRng).expect("Failed to create new seeded rng")
 }
 
 thread_local! {
