@@ -65,7 +65,7 @@ impl JinxDb {
             .create_if_missing(true)
             .statement_cache_capacity(100)
             .busy_timeout(Duration::from_secs(5))
-            .synchronous(SqliteSynchronous::Normal) // small possibility a transaction may be rolled back on OS crash or power-off
+            .synchronous(SqliteSynchronous::Full) // atomic, consistent, isolated, and durable (ACID)
             .auto_vacuum(SqliteAutoVacuum::None)
             .page_size(4096)
             .pragma("trusted_schema", "OFF"); // all applications are encouraged to switch this setting off on every database connection as soon as that connection is opened
