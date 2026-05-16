@@ -224,6 +224,7 @@ skip = [
     { crate = "cpufeatures@0.2", reason = "sqlx and serenity use old version" },
     { crate = "hashbrown@0.14", reason = "serenity uses old version" },
     { crate = "hashbrown@0.15", reason = "serenity uses old version" },
+    { crate = "hashbrown@0.16", reason = "sqlx uses old version" },
     { crate = "getrandom@0.2", reason = "used by rustls"},
     { crate = "webpki-roots@0.26", reason = "used by serenity / tokio-tungstenite@0.26.0"},
 ]

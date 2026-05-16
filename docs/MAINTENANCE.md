@@ -5,6 +5,15 @@
 - Make sure you didn't forget any license notices: `rg -g '*.rs' --files-without-match -F 'GNU AGPL v3.0'`
 - Make sure you didn't introduce any lint warnings: `cargo clippy`
 
+## Updating Dependencies
+
+The serenity/poise dependencies are difficult, as `cargo update` does not provide a way to ignore them and incorrectly
+treats them as non-breaking. The following evil command will skip serenity and poise while updating everything else:
+
+```shell
+cargo update --dry-run |& rg '\->' | awk '{print $2"@"substr($3,2)}' | rg -wv 'serenity|poise|poise_macros' | xargs cargo update
+```
+
 # How Jinx Works
 
 ## License Activation
