@@ -293,28 +293,26 @@ impl EventHandler for Data {
                 }
             }
             // bot was removed from a guild (kick, ban, or guild deleted) https://discord.com/developers/docs/events/gateway-events#guild-delete
-            FullEvent::GuildDelete { incomplete, full, .. } => {
-                // If unavailable is false, the bot was removed from the guild, either by being kicked or banned.
-                // If unavailable is true, the guild went offline due to an outage.
-                // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
-                if !incomplete.unavailable {
-                    // need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
-                    let deleted_stores = match self.db.delete_guild(incomplete.id).await {
-                        Ok(deleted_stores) => deleted_stores,
-                        Err(e) => {
-                            warn!("Error propogating guild delete to DB: {e:?}");
-                            return;
-                        }
-                    };
-                    for jinxxy_user_id in deleted_stores {
-                        let result = self.api_cache.unregister_store_in_cache(jinxxy_user_id).await;
-                        if let Err(e) = result {
-                            warn!("Error unregistering store in cache during guild delete: {e:?}");
-                            return;
-                        }
+            // If unavailable is false, the bot was removed from the guild, either by being kicked or banned.
+            // If unavailable is true, the guild went offline due to an outage.
+            // On startup, we get an event with `unavailable == false && full == None` for all guilds the bot used to be in but is kicked from
+            FullEvent::GuildDelete { incomplete, full, .. } if !incomplete.unavailable => {
+                // need to delete all guild:store links for this guild, then unregister all stores no longer linked in the DB
+                let deleted_stores = match self.db.delete_guild(incomplete.id).await {
+                    Ok(deleted_stores) => deleted_stores,
+                    Err(e) => {
+                        warn!("Error propogating guild delete to DB: {e:?}");
+                        return;
                     }
-                    info!("GuildDelete guild={:?} full={:?}", incomplete, full)
+                };
+                for jinxxy_user_id in deleted_stores {
+                    let result = self.api_cache.unregister_store_in_cache(jinxxy_user_id).await;
+                    if let Err(e) = result {
+                        warn!("Error unregistering store in cache during guild delete: {e:?}");
+                        return;
+                    }
                 }
+                info!("GuildDelete guild={:?} full={:?}", incomplete, full)
             }
             // handle incoming messages (channel/DM/etc)
             FullEvent::Message { new_message, .. } => {
