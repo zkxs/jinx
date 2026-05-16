@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2025 jinx contributors.
+// This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use std::io::{BufWriter, Write};
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs, io};
 
-static COPYRIGHT_YEAR: &str = "2024-2025";
+static COPYRIGHT_YEAR: &str = "2024-2026";
 
 fn main() -> io::Result<()> {
     let out_dir: PathBuf = env::var("OUT_DIR").expect("bad out dir?").into();

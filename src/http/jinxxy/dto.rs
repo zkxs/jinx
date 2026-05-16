@@ -3,7 +3,7 @@
 
 //! Internal DTOs used only by Jinxxy API response parsing logic
 
-use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, ProductVersionInfo, Username};
+use crate::http::jinxxy::{DISCORD_PREFIX, GetProfileImageUrl, GetUsername, JinxxyError, ProductVersionInfo, Username};
 use crate::license::LOCKING_USER_ID;
 use ahash::HashSet;
 use jiff::Timestamp;
@@ -42,7 +42,7 @@ pub struct License {
     /// Long key
     key: String,
     user: LicenseUser,
-    inventory_item: LicenseInventoryItem,
+    inventory_item: Option<LicenseInventoryItem>,
     activations: LicenseActivations,
 }
 
@@ -53,26 +53,29 @@ pub struct OrderInfo {
     payment_status: String,
 }
 
-impl From<License> for super::LicenseInfo {
-    fn from(license: License) -> Self {
-        let product_version_info = license
-            .inventory_item
-            .target_version_id
-            .map(|version_id| ProductVersionInfo {
+impl TryFrom<License> for super::LicenseInfo {
+    type Error = JinxxyError;
+
+    fn try_from(license: License) -> Result<Self, Self::Error> {
+        if let Some(inventory_item) = license.inventory_item {
+            let product_version_info = inventory_item.target_version_id.map(|version_id| ProductVersionInfo {
                 product_version_id: version_id,
                 product_version_name: String::new(), // this gets injected later after some async stuff happens, don't worry about it for now
             });
-        Self {
-            license_id: license.id,
-            short_key: license.short_key,
-            key: license.key,
-            user_id: license.user.id,
-            username: license.user.username,
-            product_id: license.inventory_item.target_id,
-            product_name: license.inventory_item.item.name,
-            product_version_info,
-            order_id: license.inventory_item.order.map(|order| order.id),
-            activations: license.activations.total_count,
+            Ok(Self {
+                license_id: license.id,
+                short_key: license.short_key,
+                key: license.key,
+                user_id: license.user.id,
+                username: license.user.username,
+                product_id: inventory_item.target_id,
+                product_name: inventory_item.item.name,
+                product_version_info,
+                order_id: inventory_item.order.map(|order| order.id),
+                activations: license.activations.total_count,
+            })
+        } else {
+            Err(JinxxyError::MissingLicenseInfo)
         }
     }
 }

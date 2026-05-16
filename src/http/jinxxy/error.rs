@@ -26,6 +26,8 @@ pub enum JinxxyError {
     Join(tokio::task::JoinError),
     /// We encountered a case where pagination support is required, but unimplemented in Jinx
     UnsupportedPagination(u64),
+    /// A License object was missing the LicenseInventoryItem field.
+    MissingLicenseInfo,
 }
 
 impl std::error::Error for JinxxyError {}
@@ -44,6 +46,7 @@ impl Display for JinxxyError {
                 f,
                 "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
             ),
+            JinxxyError::MissingLicenseInfo => write!(f, "Jinxxy license is missing product information"),
         }
     }
 }
@@ -90,6 +93,7 @@ impl<'a> Display for RedactedJinxxyError<'a> {
                 f,
                 "Jinxxy API unexpectedly required pagination support! Please report this to the Jinx developer with error code `{nonce}`"
             ),
+            JinxxyError::MissingLicenseInfo => write!(f, "Jinxxy license is missing product information"),
         }
     }
 }
@@ -203,6 +207,7 @@ impl IsDeterministic for JinxxyError {
             JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives an arbitrary status code with an HTML error page, which web APIs are wont to do
             JinxxyError::Join(_) => false,
             JinxxyError::UnsupportedPagination(_) => true,
+            JinxxyError::MissingLicenseInfo => true,
         }
     }
 }

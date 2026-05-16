@@ -171,7 +171,7 @@ pub async fn check_license(
             debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
             if response.status().is_success() {
                 let response: dto::License = read_any_json(ENDPOINT, response).await?;
-                let mut response: LicenseInfo = response.into();
+                let mut response: LicenseInfo = response.try_into()?;
                 if inject_product_version_name {
                     add_product_version_name_to_license_info(api_key, &mut response).await?;
                 }
@@ -226,7 +226,7 @@ pub async fn check_license_impl(
             .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
         debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
         let response: dto::License = read_2xx_json(ENDPOINT, response).await?;
-        let mut response: LicenseInfo = response.into();
+        let mut response: LicenseInfo = response.try_into()?;
         if inject_product_version_name {
             add_product_version_name_to_license_info(api_key, &mut response).await?;
         }
