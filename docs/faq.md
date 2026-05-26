@@ -43,8 +43,8 @@ all roles.
 ### Are there plans to add support for other marketplaces?
 
 Not at this time. If the
-[Give Creators the Ability to Manually Assign Licenses](https://jinxxy.canny.io/feature-requests/p/give-creators-the-ability-to-manually-assign-licenses)
-canny feature request is ever implemented I may revisit this to create some kind of Gumroad -> Jinxxy migration feature.
+[Give Creators the Ability to Manually Assign Licenses](https://feedback.jinxxy.com/p/give-creators-the-ability-to-manually-assign-licenses)
+ feature request is ever implemented I may revisit this to create some kind of Gumroad -> Jinxxy migration feature.
 
 ### Can I self-host the bot?
 
