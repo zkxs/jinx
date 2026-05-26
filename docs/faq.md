@@ -36,7 +36,7 @@ For even more ways to link roles, including distinguishing between versions of a
 
 Jinx _never_ removes roles, so any roles granted by Jinx that you want removed will be need to be fixed by you manually.
 
-To retroactively grant roles using your currently product→role links to users who already have a license activated,
+To retroactively grant roles using your current product→role links to users who already have a license activated,
 simply run `/grant_missing_roles`. You can do this for a single role, or omit the role parameter to have Jinx re-check
 all roles.
 
@@ -48,8 +48,8 @@ Not at this time. If the
 
 ### Can I self-host the bot?
 
-Yes! Jinx is fully open source, so you can do whatever you want with it! [Self-hosting instructions](self-hosting.md)
-are available, but please note the process is moderately technical and is neither needed nor recommended for typical users.
+Yes! [Self-hosting instructions](self-hosting.md) are available, but please note the process is moderately technical and
+is neither needed nor recommended for typical users.
 
 [discord]: https://discord.gg/aKkA6m26f9
 [issues]: https://github.com/zkxs/jinx/issues
