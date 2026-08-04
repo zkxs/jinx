@@ -15,7 +15,7 @@ use regex::Regex;
 use serenity::{
     Colour, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage,
     CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Error,
-    Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent,
+    Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, Member,
     ModalComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
@@ -239,6 +239,24 @@ impl EventHandler for Data {
                     command_interaction.guild_id.map(|guild| guild.get()),
                     command_interaction.user.id.get()
                 );
+            }
+            FullEvent::GuildMemberAddition { new_member, .. } => {
+                // If a banned user joins a guild, do nothing
+                match self.db.get_user_ban(new_member.user.id).await {
+                    Ok(banned) => {
+                        if banned {
+                            info!("Ignored join event for banned user {}", new_member.user.id.get());
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not check user ban: {e:?}");
+                    }
+                }
+
+                if let Err(e) = grant_member_roles(self, context, new_member).await {
+                    error!("Error granting roles on join: {e:?}");
+                }
             }
             FullEvent::GuildRoleDelete {
                 guild_id,
@@ -517,6 +535,67 @@ impl EventHandler for Data {
         // I'm curious if this ever happens. I'll debug log it for now and worry about it later.
         warn!("Ratelimit event: {:?}", data);
     }
+}
+
+/// Grant any missing roles to a member
+async fn grant_member_roles(data: &Data, context: &Context, new_member: &Member) -> Result<(), JinxError> {
+    let roles = data
+        .db
+        .get_roles_for_user(new_member.guild_id, new_member.user.id)
+        .await?;
+    let mut granted_roles = Vec::new();
+    let mut errored_roles = Vec::new();
+    for role in roles {
+        if !new_member.roles.contains(&role) {
+            let result = new_member.add_role(&context.http, role, Some("new user join")).await;
+            if let Err(e) = result {
+                warn!("Error adding role to new member. Skipping: {:?}", e);
+                errored_roles.push(role);
+            } else {
+                granted_roles.push(role);
+            }
+        }
+    }
+
+    if !granted_roles.is_empty() || !errored_roles.is_empty() {
+        debug!(
+            "Granted missing roles to {} in {}",
+            new_member.user.id.get(),
+            new_member.guild_id.get()
+        );
+
+        // also send a notification to the guild owner bot log if it's set up for this guild
+        if let Some(log_channel) = data.db.get_log_channel(new_member.guild_id).await? {
+            let mut owner_message = format!(
+                "<@{}> has rejoined the server and been granted the following roles:",
+                new_member.user.id
+            );
+            for role in granted_roles {
+                owner_message.push_str(format!("\n- <@&{}>", role.get()).as_str());
+            }
+            if !errored_roles.is_empty() {
+                owner_message.push_str("\nCould not grant the following roles, likely due to missing permissions:");
+                for role in errored_roles {
+                    owner_message.push_str(format!("\n- <@&{}>", role.get()).as_str());
+                }
+            }
+
+            let embed = CreateEmbed::default()
+                .title("User Rejoin")
+                .color(Colour::GOLD)
+                .description(owner_message);
+            let bot_log_message = CreateMessage::default().embed(embed);
+            send_bot_log_message(
+                data.db.clone(),
+                context,
+                new_member.guild_id,
+                log_channel,
+                bot_log_message,
+            );
+        }
+    }
+
+    Ok(())
 }
 
 async fn handle_license_registration(

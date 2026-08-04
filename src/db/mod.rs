@@ -1057,6 +1057,7 @@ impl JinxDb {
         Ok(result)
     }
 
+    /// get all users in a guild that should have the given role
     pub async fn get_users_for_role(&self, guild: GuildId, role: RoleId) -> JinxResult<Vec<UserId>> {
         let guild_id = guild.get() as i64;
         let role_id = role.get() as i64;
@@ -1070,6 +1071,23 @@ impl JinxDb {
         .map(|row| UserId::new(row.user_id as u64))
         .fetch_all(&self.read_pool)
         .await?;
+        Ok(result)
+    }
+
+    /// get all roles in a guild the given user should have
+    pub async fn get_roles_for_user(&self, guild: GuildId, user: UserId) -> JinxResult<Vec<RoleId>> {
+        let guild_id = guild.get() as i64;
+        let user_id = user.get() as i64;
+        let result = sqlx::query!(
+            r#"SELECT DISTINCT blanket_role_id as "role_id!" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE guild_id = ?1 AND activator_user_id = ?2 AND blanket_role_id IS NOT NULL
+               UNION SELECT DISTINCT role_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_role USING (guild_id, jinxxy_user_id, product_id) WHERE guild_id = ?1 AND activator_user_id = ?2
+               UNION SELECT DISTINCT role_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_version_role USING (guild_id, jinxxy_user_id, product_id, version_id) WHERE guild_id = ?1 AND activator_user_id = ?2"#,
+            guild_id,
+            user_id,
+        )
+            .map(|row| RoleId::new(row.role_id as u64))
+            .fetch_all(&self.read_pool)
+            .await?;
         Ok(result)
     }
 

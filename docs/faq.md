@@ -4,8 +4,8 @@
 
 ### I've left and rejoined a server and lost my roles. Can I get them back?
 
-Yes, just re-register your license key again. As long as you're using the same Discord account that originally registered
-the license, Jinx will happily grant the roles again.
+Jinx should automatically restore your roles if you rejoin a server, but if for some reason this fails you can
+manually re-register your license key again using the register button.
 
 ### I've lost my Discord account and had to make a new one. Can I move my Jinxxy license?
 

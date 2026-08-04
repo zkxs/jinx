@@ -139,7 +139,8 @@ impl BotBuilder {
         let discord_token = Token::try_from(discord_token)?;
         let intents = GatewayIntents::GUILDS
             .union(GatewayIntents::GUILD_MESSAGES)
-            .union(GatewayIntents::DIRECT_MESSAGES);
+            .union(GatewayIntents::DIRECT_MESSAGES)
+            .union(GatewayIntents::GUILD_MEMBERS);
         let commands = GLOBAL_COMMANDS
             .iter()
             .chain(CREATOR_COMMANDS.iter())

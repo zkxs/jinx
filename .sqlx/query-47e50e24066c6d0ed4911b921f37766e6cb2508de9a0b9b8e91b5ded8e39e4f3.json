@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT blanket_role_id as \"role_id!\" FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN guild USING (guild_id) WHERE guild_id = ?1 AND activator_user_id = ?2 AND blanket_role_id IS NOT NULL\n               UNION SELECT DISTINCT role_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_role USING (guild_id, jinxxy_user_id, product_id) WHERE guild_id = ?1 AND activator_user_id = ?2\n               UNION SELECT DISTINCT role_id FROM license_activation INNER JOIN jinxxy_user_guild USING (jinxxy_user_id) INNER JOIN product_version_role USING (guild_id, jinxxy_user_id, product_id, version_id) WHERE guild_id = ?1 AND activator_user_id = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "role_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "guild",
+            "name": "blanket_role_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "47e50e24066c6d0ed4911b921f37766e6cb2508de9a0b9b8e91b5ded8e39e4f3"
+}
