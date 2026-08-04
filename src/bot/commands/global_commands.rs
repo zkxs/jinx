@@ -35,7 +35,9 @@ pub(in crate::bot) async fn help(context: Context<'_>) -> Result<(), Error> {
     let embed = CreateEmbed::default().title("Jinx Help").description(
         "Jinx is a Discord bot that grants roles to users when they register Jinxxy license keys.\n\
             For documentation, see https://github.com/zkxs/jinx\n\
-            For support, join https://discord.gg/aKkA6m26f9",
+            For support, join https://discord.gg/aKkA6m26f9\n\
+            Terms of Service: https://github.com/zkxs/jinx/blob/master/TERMS.md\n\
+            Privacy Policy: https://github.com/zkxs/jinx/blob/master/PRIVACY.md",
     );
     let reply = CreateReply::default().ephemeral(true).embed(embed);
     context.send(reply).await?;
