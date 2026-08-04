@@ -11,7 +11,7 @@ The serenity/poise dependencies are difficult, as `cargo update` does not provid
 treats them as non-breaking. The following evil command will skip serenity and poise while updating everything else:
 
 ```shell
-cargo update --dry-run |& rg '\->' | awk '{print $2"@"substr($3,2)}' | rg -wv 'serenity|poise|poise_macros' | xargs cargo update
+cargo update --dry-run |& rg '\->' | awk '{print $2"@"substr($3,2)}' | rg -wv 'serenity|poise|poise_macros' | xargs cargo update --verbose
 ```
 
 # How Jinx Works
