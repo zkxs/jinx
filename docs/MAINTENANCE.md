@@ -14,6 +14,51 @@ treats them as non-breaking. The following evil command will skip serenity and p
 cargo update --dry-run |& rg '\->' | awk '{print $2"@"substr($3,2)}' | rg -wv 'serenity|poise|poise_macros' | xargs cargo update --verbose
 ```
 
+## Updating Sqlite
+
+sqlite dependency comes in via an unfortunately complex chain:
+sqlx -> sqlx-sqlite -> libsqlite3-sys
+
+Check this with `cargo tree --invert libsqlite3-sys`.
+
+[libsqlite3-sys](https://crates.io/crates/libsqlite3-sys/versions) is a semi-internal part of rusqlite: https://github.com/rusqlite/rusqlite/tree/master/libsqlite3-sys
+
+There is no documentation on which versions of libsqlite3-sys correspond to which versions of sqlite.
+The only way to find this is to examine `/sqlite3/bindgen_bundled_version.rs` in some version of
+libsqlite3-sys and look at the `SQLITE_VERSION` const. For example, for libsqlite3-sys 0.35.0:
+https://crates.io/crates/libsqlite3-sys/0.35.0/code/sqlite3/bindgen_bundled_version.rs
+
+I have manually collected the mapping for selected versions:
+
+| libsqlite3-sys | sqlite |
+|----------------|--------|
+| 0.34.0         | 3.49.2 |
+| 0.35.0         | 3.50.2 |
+| 0.36.0         | 3.51.1 |
+| 0.37.0         | 3.51.3 |
+| 0.38.0         | 3.53.1 |
+| 0.38.1         | 3.53.2 |
+| 0.38.2         | 3.53.2 |
+
+Relevant pages with information on sqlite versions:
+- https://sqlite.org/changes.html
+- https://sqlite.org/chronology.html
+- https://sqlite.org/news.html
+
+To patch jinx for sqlite bugs:
+1. Go to your https://github.com/zkxs/sqlx checkout
+2. `git checkout main`
+3. `git pull`
+4. `git push origin`
+4. `git branch libsqlite3-0.38-3.53`
+5. `git checkout libsqlite3-0.38-3.53`
+6. Update Cargo.toml to reference libsqlite3 0.38
+6. `cargo test -p sqlx-sqlite --features bundled,deserialize,load-extension,unlock-notify`
+7. `cargo test -p sqlx --lib --features macros,sqlite,runtime-tokio`
+8. `git push`
+9. Go back to your https://github.com/zkxs/jinx checkout
+10. Update Cargo.toml to reference the new sqlx branch
+
 # How Jinx Works
 
 ## License Activation

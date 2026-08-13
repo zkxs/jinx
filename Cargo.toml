@@ -24,7 +24,7 @@ serenity = { git = "https://github.com/serenity-rs/serenity.git", branch = "next
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "brotli", "deflate", "zstd", "json", "http2", "rustls-tls"] } # HTTP client
 serde = "1" # Serialization
 serde_json = "1" # Serialization
-sqlx = { git = "https://github.com/zkxs/sqlx.git", default-features = false, features = ["macros", "sqlite", "runtime-tokio"] } # Persistence
+sqlx = { git = "https://github.com/zkxs/sqlx.git", branch = "libsqlite3-0.38-3.53", default-features = false, features = ["macros", "sqlite", "runtime-tokio"] } # Persistence
 tracing = "0.1" # Logging API
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # Logger implementation
 regex = "1" # Pattern matching
