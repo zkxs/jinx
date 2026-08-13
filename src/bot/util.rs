@@ -88,6 +88,8 @@ pub async fn trusted_license_to_id(api_key: &str, license: &str) -> Result<Optio
     Ok(license_id)
 }
 
+/// Get the highest mentionable role in a guild. This is a decent heuristic for a moderator role if we need to try and
+/// get the attention of guild staff, but is not going to be 100% reliable so only should be used as a last resort.
 pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Option<RoleId>, Error> {
     let guild = cache
         .as_ref()
@@ -105,6 +107,7 @@ pub(super) fn highest_mentionable_role(cache: &impl AsRef<Cache>, guild_id: Guil
     Ok(max_role)
 }
 
+/// Get the list of channel ids in a guild, sorted by their position
 pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> Result<Vec<(u16, ChannelId)>, Error> {
     let guild = cache
         .as_ref()
@@ -121,6 +124,7 @@ pub(super) fn sorted_channels(cache: &impl AsRef<Cache>, guild_id: GuildId) -> R
     Ok(channels)
 }
 
+/// Get the human-readable name for a role, or None if the `role_id` doesn't exist
 pub(super) fn role_name(
     cache: &impl AsRef<Cache>,
     guild_id: GuildId,
@@ -154,6 +158,8 @@ pub(super) fn permissions(context: &Context<'_>, member: &Member) -> Result<Perm
     Ok(guild.member_permissions(member))
 }
 
+/// Get the list of roles this bot has access to assign. Generally, this is any role below our highest role given that we
+/// actually have the Manage Roles permission.
 pub(super) async fn assignable_roles(
     context: &Context<'_>,
     guild_id: GuildId,
@@ -172,7 +178,7 @@ pub(super) async fn assignable_roles(
                 .roles
                 .iter()
                 .filter(|role| Some(role.id) != everyone_id) // @everyone is weird, don't use it
-                .filter(|role| role.position < highest_role.position) // roles above our highest can't be managed
+                .filter(|role| role.position < highest_role.position) // roles at or above our highest can't be managed
                 .filter(|role| !role.managed()) // managed roles can't be managed
                 .collect();
             // bigger position is higher, then smaller role_id is higher
@@ -191,6 +197,8 @@ pub(super) async fn assignable_roles(
     Ok(assignable_roles)
 }
 
+/// Given a list of locally known roles `known_roles`, check against the current roles in the Discord. Any roles in
+/// `known_roles` that do not currently exist are presumed to have been deleted and are returned.
 pub(super) fn deleted_roles(
     cache: &impl AsRef<Cache>,
     guild_id: GuildId,
