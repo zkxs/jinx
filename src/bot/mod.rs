@@ -118,6 +118,7 @@ struct Data {
 struct BotBuilder {
     client_builder: ClientBuilder,
     db: JinxDb,
+    activity_string: String,
 }
 
 /// This is given after creating all resources the bot needs to start. It provides functions to safely shut down the bot.
@@ -200,21 +201,30 @@ impl BotBuilder {
         };
         let framework = poise::Framework::new(options);
         let distinct_user_count = db
-            .distinct_user_count()
+            .approximate_distinct_user_count()
             .await
             .expect("Failed to read distinct user count from DB");
         debug!("fetched initial distinct_user_count");
 
+        let activity_string = get_activity_string(distinct_user_count);
         let client_builder = ClientBuilder::new(discord_token, intents)
-            .activity(ActivityData::custom(get_activity_string(distinct_user_count)))
+            .activity(ActivityData::custom(activity_string.clone()))
             .framework(Box::new(framework));
 
-        let bot = Self { client_builder, db };
+        let bot = Self {
+            client_builder,
+            db,
+            activity_string,
+        };
         Ok(bot)
     }
 
     pub async fn build(self) -> Result<Bot, Error> {
-        let BotBuilder { client_builder, db } = self;
+        let BotBuilder {
+            client_builder,
+            db,
+            activity_string,
+        } = self;
 
         debug!("Building client…");
         let api_cache = ApiCache::new(db.clone());
@@ -342,26 +352,23 @@ impl BotBuilder {
             let db = db.clone();
             let runners = client.shard_manager.runners.clone();
             tokio::task::spawn(async move {
-                let mut distinct_user_count = db
-                    .distinct_user_count()
-                    .await
-                    .expect("Failed to read distinct user count from DB");
+                let mut activity_string = activity_string;
 
                 loop {
-                    // update once a minute
-                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    // update once every five minutes
+                    tokio::time::sleep(Duration::from_mins(5)).await;
 
                     let start = Instant::now();
-                    match db.distinct_user_count().await {
+                    match db.approximate_distinct_user_count().await {
                         Ok(new_distinct_user_count) => {
-                            let updated = if new_distinct_user_count != distinct_user_count {
-                                // only do the expensive bit if the count has actually changed
-                                distinct_user_count = new_distinct_user_count;
-                                let custom_activity = get_activity_string(new_distinct_user_count);
+                            let new_activity_string = get_activity_string(new_distinct_user_count);
+                            let updated = if activity_string != new_activity_string {
+                                // only do the expensive bit if the string has actually changed
+                                activity_string = new_activity_string;
                                 for runner in runners.iter() {
                                     let (_, sender) = runner.value();
                                     let result = sender.unbounded_send(ShardRunnerMessage::SetPresence {
-                                        activity: Some(Some(ActivityData::custom(custom_activity.as_str()))),
+                                        activity: Some(Some(ActivityData::custom(activity_string.as_str()))),
                                         status: None,
                                     });
                                     if let Err(e) = result {
@@ -482,8 +489,16 @@ impl Bot {
     }
 }
 
+/// Get a pretty activity string for a `distinct_user_count`. If the count is above some threshold we'll round to the
+/// nearest 1000.
 fn get_activity_string(distinct_user_count: u64) -> String {
-    format!("Helping {distinct_user_count} users register Jinxxy products")
+    if distinct_user_count > 10_000 {
+        #[allow(clippy::integer_division)]
+        let rounded = (distinct_user_count + 500) / 1000; // round to the nearest 1000
+        format!("Helping {rounded}k users register Jinxxy products")
+    } else {
+        format!("Helping {distinct_user_count} users register Jinxxy products")
+    }
 }
 
 struct GuildCreateEvent {

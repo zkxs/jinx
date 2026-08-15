@@ -1312,7 +1312,8 @@ impl JinxDb {
         Ok(result)
     }
 
-    /// Get count of distinct users who have activated licenses
+    /// Get count of distinct users who have activated licenses. This count is precise and does not count activations
+    /// that only exist in test guilds.
     pub async fn distinct_user_count(&self) -> JinxResult<u64> {
         let result = sqlx::query!(
             r#"SELECT count(DISTINCT activator_user_id) AS "count!" FROM license_activation
@@ -1323,6 +1324,16 @@ impl JinxDb {
         .map(|row| row.count as u64)
         .fetch_one(&self.read_pool)
         .await?;
+        Ok(result)
+    }
+
+    /// Get count of distinct users who have activated licenses. This count may be slightly imprecise in favor of being
+    /// fast. It will count activations that only exist in test guilds.
+    pub async fn approximate_distinct_user_count(&self) -> JinxResult<u64> {
+        let result = sqlx::query!(r#"SELECT count(DISTINCT activator_user_id) AS "count!" FROM license_activation"#)
+            .map(|row| row.count as u64)
+            .fetch_one(&self.read_pool)
+            .await?;
         Ok(result)
     }
 
