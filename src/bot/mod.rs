@@ -355,8 +355,9 @@ impl BotBuilder {
                 let mut activity_string = activity_string;
 
                 loop {
-                    // update once every five minutes
-                    tokio::time::sleep(Duration::from_mins(5)).await;
+                    // update at a moderately slow interval, as this does not need to be very precise and activation
+                    // count climbs quite slowly
+                    tokio::time::sleep(Duration::from_mins(15)).await;
 
                     let start = Instant::now();
                     match db.approximate_distinct_user_count().await {
@@ -492,7 +493,7 @@ impl Bot {
 /// Get a pretty activity string for a `distinct_user_count`. If the count is above some threshold we'll round to the
 /// nearest 1000.
 fn get_activity_string(distinct_user_count: u64) -> String {
-    if distinct_user_count > 10_000 {
+    if distinct_user_count >= 10_000 {
         #[allow(clippy::integer_division)]
         let rounded = (distinct_user_count + 500) / 1000; // round to the nearest 1000
         format!("Helping {rounded}k users register Jinxxy products")
