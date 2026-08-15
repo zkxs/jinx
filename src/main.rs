@@ -2,7 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::Bot;
-use crate::cli_args::{JinxArgs, OwnerCommand};
+use crate::cli_args::{JinxArgs, OwnerCommand, SetCommand};
 use clap::Parser;
 use std::process::ExitCode;
 use std::sync::atomic;
@@ -108,6 +108,22 @@ async fn main() -> ExitCode {
             db.migrate()
                 .await
                 .unwrap_or_else(|e| panic!("Error migrating database: {e:?}"));
+            db.close().await;
+            ExitCode::SUCCESS
+        }
+        #[allow(clippy::print_stdout)]
+        Some(cli_args::Command::Set(cli_args::SetArgs { command })) => {
+            let db = db::JinxDb::open()
+                .await
+                .unwrap_or_else(|e| panic!("{DB_OPEN_ERROR_MESSAGE}: {e:?}"));
+            match command {
+                SetCommand::GuildMembers { enabled } => {
+                    db.set_guild_members_enabled(enabled)
+                        .await
+                        .unwrap_or_else(|e| panic!("{DB_WRITE_ERROR_MESSAGE}: {e:?}"));
+                    println!("guild-members={enabled}");
+                }
+            }
             db.close().await;
             ExitCode::SUCCESS
         }

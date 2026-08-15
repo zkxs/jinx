@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2024-2025 jinx contributors.
+// This file is part of jinx. Copyright © 2024-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::constants::CLAP_VERSION;
@@ -27,6 +27,8 @@ pub enum Command {
     Owner(OwnerArgs),
     /// Migrate v1 -> v2 database, and then exit
     Migrate,
+    /// Set advanced configuration values
+    Set(SetArgs),
 }
 
 #[derive(Args)]
@@ -49,4 +51,21 @@ pub enum OwnerCommand {
     },
     /// List bot owners
     Ls,
+}
+
+#[derive(Args)]
+pub struct SetArgs {
+    #[command(subcommand)]
+    pub command: SetCommand,
+}
+
+#[derive(Subcommand)]
+pub enum SetCommand {
+    /// Enables the privileged GUILD_MEMBERS intent. Setting this to `true` will break bot startup unless the intent is
+    /// enabled in the developer portal.
+    GuildMembers {
+        /// Should the intent be specified during bot startup?
+        #[arg(action = clap::ArgAction::Set, default_value = "false")]
+        enabled: bool,
+    },
 }

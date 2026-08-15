@@ -137,10 +137,19 @@ impl BotBuilder {
             )
         })?;
         let discord_token = Token::try_from(discord_token)?;
+
+        // set up intents
+        let guild_members_enabled = db.get_guild_members_enabled().await?;
         let intents = GatewayIntents::GUILDS
             .union(GatewayIntents::GUILD_MESSAGES)
-            .union(GatewayIntents::DIRECT_MESSAGES)
-            .union(GatewayIntents::GUILD_MEMBERS);
+            .union(GatewayIntents::DIRECT_MESSAGES);
+        let intents = if guild_members_enabled {
+            // must not be requested unless the bot is allowed to use it
+            intents.union(GatewayIntents::GUILD_MEMBERS)
+        } else {
+            intents
+        };
+
         let commands = GLOBAL_COMMANDS
             .iter()
             .chain(CREATOR_COMMANDS.iter())

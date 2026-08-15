@@ -29,6 +29,7 @@ const DB_V1_FILENAME: &str = "jinx.sqlite";
 const DB_V2_FILENAME: &str = "jinx2.sqlite";
 const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
+const GUILD_MEMBERS_ENABLED: &str = "guild_members_enabled";
 const CAN_NAG_PUBLIC_CHANNELS: &str = "can_nag_public_channels";
 const STALE_GUILD_DELETE_LIMIT: &str = "stale_guild_delete_limit";
 
@@ -270,6 +271,16 @@ impl JinxDb {
             .get_setting::<i64>(LOW_PRIORITY_CACHE_EXPIRY_SECONDS)
             .await?
             .map(|secs| Duration::from_secs(secs as u64));
+        Ok(low_priority_cache_expiry_time)
+    }
+
+    pub async fn set_guild_members_enabled(&self, enabled: bool) -> JinxResult<()> {
+        self.set_setting(GUILD_MEMBERS_ENABLED, enabled).await?;
+        Ok(())
+    }
+
+    pub async fn get_guild_members_enabled(&self) -> JinxResult<bool> {
+        let low_priority_cache_expiry_time = self.get_setting::<bool>(GUILD_MEMBERS_ENABLED).await?.unwrap_or(false); // if the config is missing, default to false
         Ok(low_priority_cache_expiry_time)
     }
 
