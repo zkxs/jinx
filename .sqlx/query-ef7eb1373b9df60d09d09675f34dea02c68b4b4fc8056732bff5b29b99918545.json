@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT jinxxy_user_id, product_id, role_id FROM product_role WHERE guild_id = ?",
+  "query": "SELECT jinxxy_user_id, product_id, role_id AS \"role_id!\" FROM product_role WHERE guild_id = ?",
   "describe": {
     "columns": [
       {
@@ -26,7 +26,7 @@
         }
       },
       {
-        "name": "role_id",
+        "name": "role_id!",
         "ordinal": 2,
         "type_info": "Integer",
         "origin": {
@@ -43,8 +43,8 @@
     "nullable": [
       false,
       false,
-      false
+      null
     ]
   },
-  "hash": "c5ce58bc6f18fd1d6316fb4d82c5c78f8493680dc34cd8f6f38d9c8d195f4b68"
+  "hash": "ef7eb1373b9df60d09d09675f34dea02c68b4b4fc8056732bff5b29b99918545"
 }

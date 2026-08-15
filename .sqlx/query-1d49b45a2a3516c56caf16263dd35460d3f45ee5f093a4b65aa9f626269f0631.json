@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT role_id FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ?",
+  "query": "SELECT role_id AS \"role_id!\" FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ?",
   "describe": {
     "columns": [
       {
-        "name": "role_id",
+        "name": "role_id!",
         "ordinal": 0,
         "type_info": "Integer",
         "origin": {
@@ -19,8 +19,8 @@
       "Right": 4
     },
     "nullable": [
-      false
+      null
     ]
   },
-  "hash": "7785e0bf457c636070ee3963d7db2bc3734533507bd5d9c8f4cf725d63d2d958"
+  "hash": "1d49b45a2a3516c56caf16263dd35460d3f45ee5f093a4b65aa9f626269f0631"
 }

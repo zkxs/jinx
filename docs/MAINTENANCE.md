@@ -5,6 +5,27 @@
 - Make sure you didn't forget any license notices: `rg -g '*.rs' --files-without-match -F 'GNU AGPL v3.0'`
 - Make sure you didn't introduce any lint warnings: `cargo clippy`
 
+## sqlx issues with cargo?
+
+Usually no special action should be needed running cargo commands, as I ship cached SQL query analysis using
+[sqlx's offline mode](https://github.com/transact-rs/sqlx/blob/main/sqlx-cli/README.md#enable-building-in-offline-mode-with-query).
+
+By setting a `DATABASE_URL` in your shell to a valid jinx database, offline mode is not needed:
+
+```shell
+export DATABASE_URL=sqlite://jinx2.sqlite
+```
+
+If you want to build your own sqlx cache, you'll first need sqlx-cli:
+```shell
+cargo install sqlx-cli
+```
+
+Then prepare the cache:
+```shell
+DATABASE_URL=sqlite://jinx2.sqlite cargo sqlx prepare
+```
+
 ## Updating Dependencies
 
 The serenity/poise dependencies are difficult, as `cargo update` does not provide a way to ignore them and incorrectly

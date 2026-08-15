@@ -1045,7 +1045,7 @@ impl JinxDb {
         let guild_id = guild.get() as i64;
         let (product_id, version_id) = product_version_id.as_db_values();
         let result = sqlx::query!(
-            r#"SELECT role_id FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ?"#,
+            r#"SELECT role_id AS "role_id!" FROM product_version_role WHERE jinxxy_user_id = ? AND guild_id = ? AND product_id = ? AND version_id = ?"#,
             jinxxy_user_id,
             guild_id,
             product_id,
@@ -1146,7 +1146,7 @@ impl JinxDb {
         // deal with product blankets
         {
             let mut product_result = sqlx::query!(
-                r#"SELECT jinxxy_user_id, product_id, role_id FROM product_role WHERE guild_id = ?"#,
+                r#"SELECT jinxxy_user_id, product_id, role_id AS "role_id!" FROM product_role WHERE guild_id = ?"#,
                 guild_id
             )
             .map(|row| (RoleId::new(row.role_id as u64), row.jinxxy_user_id, row.product_id))
@@ -1162,7 +1162,7 @@ impl JinxDb {
         // deal with specific links
         {
             let mut product_version_result = sqlx::query!(
-                r#"SELECT jinxxy_user_id, product_id, version_id, role_id FROM product_version_role WHERE guild_id = ?"#,
+                r#"SELECT jinxxy_user_id, product_id, version_id, role_id AS "role_id!" FROM product_version_role WHERE guild_id = ?"#,
                 guild_id
             )
             .map(|row| {
@@ -1531,7 +1531,7 @@ impl JinxDb {
     pub async fn get_guilds_pending_gumroad_nag(&self) -> JinxResult<Vec<GuildGumroadInfo>> {
         // at least 10 gumroad failures AND gumroad failure count exceeds 20% of successful activation count
         let result = sqlx::query!(
-            r#"SELECT guild_id, log_channel_id AS "log_channel_id!", gumroad_failure_count FROM guild AS "outer"
+            r#"SELECT guild_id AS "guild_id!", log_channel_id AS "log_channel_id!", gumroad_failure_count FROM guild AS "outer"
                WHERE log_channel_id IS NOT NULL AND gumroad_nag_count < 1 AND gumroad_failure_count >= 10
                AND (gumroad_failure_count * 5) > (
                    SELECT count(*) FROM (
@@ -1541,13 +1541,13 @@ impl JinxDb {
                    )
                )"#
         )
-            .map(|row| GuildGumroadInfo {
-                guild_id: GuildId::new(row.guild_id as u64),
-                log_channel_id: GenericChannelId::new(row.log_channel_id as u64),
-                gumroad_failure_count: row.gumroad_failure_count as u64,
-            })
-            .fetch_all(&self.read_pool)
-            .await?;
+        .map(|row| GuildGumroadInfo {
+            guild_id: GuildId::new(row.guild_id as u64),
+            log_channel_id: GenericChannelId::new(row.log_channel_id as u64),
+            gumroad_failure_count: row.gumroad_failure_count as u64,
+        })
+        .fetch_all(&self.read_pool)
+        .await?;
         Ok(result)
     }
 
