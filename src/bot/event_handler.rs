@@ -319,7 +319,7 @@ impl EventHandler for Data {
                 let deleted_stores = match self.db.delete_guild(incomplete.id).await {
                     Ok(deleted_stores) => deleted_stores,
                     Err(e) => {
-                        warn!("Error propogating guild delete to DB: {e:?}");
+                        warn!("Error propagating guild delete to DB: {e:?}");
                         return;
                     }
                 };
@@ -497,34 +497,12 @@ impl EventHandler for Data {
                 debug!("cache ready! {} guilds.", guilds.len());
                 match self.db.get_stale_guilds(guilds).await {
                     Ok(stale_guilds) => {
-                        info!(
-                            "{} stale guilds detected. Normally we'd delete them now.",
+                        warn!(
+                            "{} stale guilds detected. Consider running /delete_stale_guilds to forget them after you verify this is not a Discord outage.",
                             stale_guilds.len()
                         );
                     }
                     Err(e) => error!("Error enumerating stale guilds: {e:?}"),
-                }
-
-                // disabled behind a feature flag.
-                // I'll enable this once I'm sure CacheReady doesn't ever trigger until all guilds are loaded AND that it's not per-shard.
-                // in the meantime, the /delete_stale_guilds command does the same thing but isn't fully automatic DB nuking
-                match self.db.stale_guild_delete_limit().await {
-                    Ok(Some(limit)) => match self.db.delete_stale_guilds(guilds, limit).await {
-                        Ok(Some(deleted_stores)) => {
-                            info!("Deleted {} stale stores", deleted_stores.len());
-                            for jinxxy_user_id in deleted_stores {
-                                let result = self.api_cache.unregister_store_in_cache(jinxxy_user_id).await;
-                                if let Err(e) = result {
-                                    warn!("Error unregistering store in cache during stale guild delete: {e:?}");
-                                    return;
-                                }
-                            }
-                        }
-                        Ok(None) => warn!("Skipped deleting stale guilds as the maximum was exceeded"),
-                        Err(e) => error!("Error deleting stale guilds: {e:?}"),
-                    },
-                    Ok(None) => (), // do nothing
-                    Err(e) => error!("Error reading stale guild delete limit: {e:?}"),
                 }
             }
             _ => {}

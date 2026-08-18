@@ -107,10 +107,14 @@ is very ambiguous and "Discord server" is a lot to type.
 
 ## Stale Guilds
 
-A guild is considered to be **stale** if it the bot is no longer in it but Jinx still has references to the guild in its
-DB. Stale guilds are always pending deletion, but due to a couple scary ambiguities in Serenity where it's not clear if
-a guild has been permanently left or is only temporarily unavailable this deletion is not always performed
-automatically.
+A guild is considered to be **stale** if the bot is no longer in it but Jinx still has references to the guild in its
+DB. This cannot happen unless the bot misses a GuildDelete event.
+
+Stale guilds are always pending deletion, but it is ambiguous if the guild is not joined because it is temporarily
+unavailable or because the bot has actually been removed. Due to this ambiguity, stale guild deletion is not performed
+automatically: instead the `/delete_stale_guilds` must be manually ran to perform this cleanup.
+
+Note that a stale guild has never been observed in production since GuildDelete event monitoring was implemented.
 
 ## Invalid API Keys
 

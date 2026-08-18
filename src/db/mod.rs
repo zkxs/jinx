@@ -31,7 +31,6 @@ const DISCORD_TOKEN_KEY: &str = "discord_token";
 const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_seconds";
 const GUILD_MEMBERS_ENABLED: &str = "guild_members_enabled";
 const CAN_NAG_PUBLIC_CHANNELS: &str = "can_nag_public_channels";
-const STALE_GUILD_DELETE_LIMIT: &str = "stale_guild_delete_limit";
 
 type JinxResult<T> = Result<T, JinxError>;
 type SqliteResult<T> = Result<T, SqlxError>;
@@ -223,14 +222,6 @@ impl JinxDb {
     pub async fn can_nag_public_channels(&self) -> JinxResult<bool> {
         let can_nag = self.get_setting::<bool>(CAN_NAG_PUBLIC_CHANNELS).await?;
         Ok(can_nag.unwrap_or(false))
-    }
-
-    pub async fn stale_guild_delete_limit(&self) -> JinxResult<Option<u64>> {
-        let limit = self
-            .get_setting::<i64>(STALE_GUILD_DELETE_LIMIT)
-            .await?
-            .map(|limit| limit as u64);
-        Ok(limit)
     }
 
     pub async fn get_owners(&self) -> JinxResult<Vec<u64>> {

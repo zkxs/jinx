@@ -5,7 +5,7 @@ If you just want to use the bot you do not need to self-host and you should inst
 instance of Jinx. This gives you complete control over your data, but you need a server with 24/7 uptime.
 
 > [!NOTE]
-> Jinx stores all of its data in a sqlite database in the working directory named `jinx.sqlite`. You should try not to
+> Jinx stores all of its data in a sqlite database in the working directory named `jinx2.sqlite`. You should try not to
 > lose this file. Because license activations are stored remotely in Jinxxy local database loss is not completely
 > catastrophic.
 
@@ -27,6 +27,9 @@ instance of Jinx. This gives you complete control over your data, but you need a
    1. run `jinx init <DISCORD_TOKEN>` or `DISCORD_TOKEN=<DISCORD_TOKEN> jinx init` (the second option is more secure
       from process list snooping).
    2. add yourself as a bot owner with `jinx owner add <DISCORD_USER_ID>`. This works even if the bot process is running!
+   3. If your bot has access to the privileged GUILD_MEMBERS intent, run `jinx set guild-members true` to enable features
+      gated behind it. If your bot loses its privileged intent access, you must run `jinx set guild-members false` to
+      prevent the bot from being rejected from connecting to the Discord API.
 4. Finally, run jinx via `./run.sh`. If you run jinx directly the `/restart` command will not function correctly.
 5. You can exit Jinx by sending the process a SIGINT/SIGTERM/Ctrl+C, or by using the `/exit` command.
 
@@ -53,6 +56,8 @@ Commands:
   init          Initialize DB with a Discord bot token and exit
   update-check  Check GitHub for updates
   owner         Modify bot owners
+  migrate       Migrate v1 -> v2 database, and then exit
+  set           Set advanced configuration values
   help          Print this message or the help of the given subcommand(s)
 
 Options:
@@ -85,3 +90,9 @@ As the bot owner, you have access to additional owner-only commands:
 | `/clear_cache`                              | Delete all product cache state.                                                                                                   |
 | `/unfuck_cache`                             | Forcibly re-register all stores in the product cache. Useful if Jinxxy API failures have caused stores to become unregistered.    |
 | `/set_cache_expiry_time <hours>`            | Set the expiry time for the product cache. Default is 24 hours. Do not set this to 0.                                             |
+| `/ban_guild`                                |                                                                                                                                   |
+| `/ban_user`                                 |                                                                                                                                   |
+| `/ban_user_context`                         |                                                                                                                                   |
+| `/unban_guild`                              |                                                                                                                                   |
+| `/unban_user`                               |                                                                                                                                   |
+| `/unban_user_context`                       |                                                                                                                                   |
