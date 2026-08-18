@@ -79,7 +79,7 @@ const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     backfill_license_activation,
     ban_guild,
     ban_user,
-    ban_user_context,
+    ban_user_context, // context-menu-only version of ban_user
     clear_cache,
     debug_product_cache,
     delete_stale_guilds,
@@ -92,7 +92,6 @@ const OWNER_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     sudo_list_links,
     unban_guild,
     unban_user,
-    unban_user_context,
     unfuck_cache,
     verify_guild,
     whois,

@@ -840,22 +840,8 @@ async fn ban_user_impl(context: Context<'_>, user: serenity::User, reason: Optio
 
 /// Globally unban a user from interacting with Jinx
 #[poise::command(
-    context_menu_command = "unban",
-    default_member_permissions = "MANAGE_GUILD",
-    check = "check_owner",
-    install_context = "Guild",
-    interaction_context = "Guild"
-)]
-pub(in crate::bot) async fn unban_user_context(
-    context: Context<'_>,
-    #[description = "user to ban"] user: serenity::User,
-) -> Result<(), Error> {
-    unban_user_impl(context, user).await
-}
-
-/// Globally unban a user from interacting with Jinx
-#[poise::command(
     slash_command,
+    context_menu_command = "unban",
     default_member_permissions = "MANAGE_GUILD",
     check = "check_owner",
     install_context = "Guild",
@@ -863,12 +849,8 @@ pub(in crate::bot) async fn unban_user_context(
 )]
 pub(in crate::bot) async fn unban_user(
     context: Context<'_>,
-    #[description = "user to ban"] user: serenity::User,
+    #[description = "user to unban"] user: serenity::User,
 ) -> Result<(), Error> {
-    unban_user_impl(context, user).await
-}
-
-async fn unban_user_impl(context: Context<'_>, user: serenity::User) -> Result<(), Error> {
     let user_id = user.id;
     context.data().db.set_user_ban(user_id, false, None).await?;
     let reply = success_reply("User Unbanned", format!("<@{}> has been unbanned", user_id.get()));
@@ -924,7 +906,7 @@ pub(in crate::bot) async fn ban_guild(
     Ok(())
 }
 
-/// Globally ban a guild from adding Jinx
+/// Globally unban a guild from adding Jinx
 #[poise::command(
     slash_command,
     default_member_permissions = "MANAGE_GUILD",
@@ -934,7 +916,7 @@ pub(in crate::bot) async fn ban_guild(
 )]
 pub(in crate::bot) async fn unban_guild(
     context: Context<'_>,
-    #[description = "ID of guild to ban"] guild_id: String,
+    #[description = "ID of guild to unban"] guild_id: String,
 ) -> Result<(), Error> {
     match guild_id.parse::<u64>() {
         Ok(guild_id) => {

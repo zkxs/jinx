@@ -90,9 +90,7 @@ As the bot owner, you have access to additional owner-only commands:
 | `/clear_cache`                              | Delete all product cache state.                                                                                                   |
 | `/unfuck_cache`                             | Forcibly re-register all stores in the product cache. Useful if Jinxxy API failures have caused stores to become unregistered.    |
 | `/set_cache_expiry_time <hours>`            | Set the expiry time for the product cache. Default is 24 hours. Do not set this to 0.                                             |
-| `/ban_guild`                                |                                                                                                                                   |
-| `/ban_user`                                 |                                                                                                                                   |
-| `/ban_user_context`                         |                                                                                                                                   |
-| `/unban_guild`                              |                                                                                                                                   |
-| `/unban_user`                               |                                                                                                                                   |
-| `/unban_user_context`                       |                                                                                                                                   |
+| `/ban_guild <guild> [reason]`               | Ban a guild from adding this bot, optionally providing a reason why.                                                              |
+| `/ban_user <user> [reason]`                 | Ban a user from interacting with this bot, optionally providing a reason why. This can also be used via the context menu.         |
+| `/unban_guild <guild>`                      | Unban a guild from adding this bot.                                                                                               |
+| `/unban_user <user>`                        | Unban a user from interacting with this bot. This can also be used via the context menu.                                          |
