@@ -435,23 +435,34 @@ pub async fn deactivate_license(
                 .db
                 .get_user_license_activations(&store.jinxxy_user_id, user.id.get(), &license_id)
                 .await?;
-            for activation_id in activations {
-                let license_id = license_id.clone();
-                jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &activation_id).await?;
-                context
-                    .data()
-                    .db
-                    .deactivate_license(&store.jinxxy_user_id, &license_id, &activation_id, user.id.get())
-                    .await?;
+            if activations.is_empty() {
+                success_reply(
+                    "No Action Needed",
+                    format!(
+                        "<@{}> has no activations for `{}`, so no action is needed.",
+                        user.id.get(),
+                        license
+                    ),
+                )
+            } else {
+                for activation_id in activations {
+                    let license_id = license_id.clone();
+                    jinxxy::delete_license_activation(&store.jinxxy_api_key, &license_id, &activation_id).await?;
+                    context
+                        .data()
+                        .db
+                        .deactivate_license(&store.jinxxy_user_id, &license_id, &activation_id, user.id.get())
+                        .await?;
+                }
+                success_reply(
+                    "Success",
+                    format!(
+                        "All of <@{}>'s activations for `{}` have been deleted.",
+                        user.id.get(),
+                        license
+                    ),
+                )
             }
-            success_reply(
-                "Success",
-                format!(
-                    "All of <@{}>'s activations for `{}` have been deleted.",
-                    user.id.get(),
-                    license
-                ),
-            )
         } else {
             error_reply(
                 "Error Deactivating License",
