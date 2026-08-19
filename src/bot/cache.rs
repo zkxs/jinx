@@ -26,7 +26,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::{Duration, timeout};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use trie_rs::map::{Trie, TrieBuilder};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -199,7 +199,7 @@ impl ApiCache {
 
                         // do a receive or a timeout, whatever happens first
                         let sleep_duration = MIN_SLEEP_DURATION.max(sleep_duration);
-                        debug!("sleeping for {}s", sleep_duration.as_secs());
+                        trace!("sleeping for {}s", sleep_duration.as_secs());
                         timeout(sleep_duration, refresh_register_rx.recv())
                             .await
                             .map_err(|_| ())
@@ -246,7 +246,7 @@ impl ApiCache {
                                     SimpleTime::now(),
                                 );
                                 // the queue is not empty, so we'll time out around the time the next entry is supposed to expire
-                                debug!(
+                                trace!(
                                     "new store {} registered; low-priority worker will sleep for {}s",
                                     jinxxy_user_id,
                                     remaining.as_secs()
@@ -358,7 +358,7 @@ impl ApiCache {
                                             Ok(api_key) => {
                                                 match api_key {
                                                     Some(api_key) => {
-                                                        debug!(
+                                                        trace!(
                                                             "starting low priority refresh of cache for {}",
                                                             queue_entry.jinxxy_user_id
                                                         );

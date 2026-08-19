@@ -497,10 +497,12 @@ impl EventHandler for Data {
                 debug!("cache ready! {} guilds.", guilds.len());
                 match self.db.get_stale_guilds(guilds).await {
                     Ok(stale_guilds) => {
-                        warn!(
-                            "{} stale guilds detected. Consider running /delete_stale_guilds to forget them after you verify this is not a Discord outage.",
-                            stale_guilds.len()
-                        );
+                        if !stale_guilds.is_empty() {
+                            warn!(
+                                "{} stale guilds detected. Consider running /delete_stale_guilds to forget them after you verify this is not a Discord outage.",
+                                stale_guilds.len()
+                            );
+                        }
                     }
                     Err(e) => error!("Error enumerating stale guilds: {e:?}"),
                 }
