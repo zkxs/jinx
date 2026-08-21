@@ -179,13 +179,9 @@ pub async fn check_license(
                 Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license id");
-                // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
+                // jinxxy API gives a 404 if the license ID doesn't exist
                 let error = JinxxyError::from_response(ENDPOINT, response).await;
-                if error.is_403() || error.is_404() {
-                    Ok(None)
-                } else {
-                    Err(error)
-                }
+                if error.is_http_code(404) { Ok(None) } else { Err(error) }
             }
         }
         LicenseKey::Short(license_key) => {
@@ -294,7 +290,7 @@ pub async fn get_license_activations(
 
 /// Get a single license activation by its activation_id
 ///
-/// Note that the Delete jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
+/// Note that the Delete License Activation jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
 pub async fn get_license_activation(
     api_key: &str,
     license_id: &str,
@@ -316,8 +312,7 @@ pub async fn get_license_activation(
     } else {
         debug!("could not get license id \"{license_id}\" activation id \"{activation_id}\"");
         let error = JinxxyError::from_response(ENDPOINT, response).await;
-        if error.is_404() {
-            //TODO: this is speculation as to how this will behave in the future
+        if error.is_http_code(404) {
             // license activation was not found
             Ok(None)
         } else {
@@ -391,7 +386,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
     } else {
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
         let error = JinxxyError::from_response(ENDPOINT, response).await;
-        if error.is_404() {
+        if error.is_http_code(404) {
             // license was not found
             Ok(false)
         } else {

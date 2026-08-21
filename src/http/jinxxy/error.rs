@@ -156,59 +156,16 @@ impl JinxxyError {
         }
     }
 
-    /// Check if an error is a 401, handling cases where Jinxxy improperly sets the HTTP status code as 500.
-    pub fn is_401(&self) -> bool {
-        match self {
-            Self::HttpResponse(response) => match &response.body {
-                HttpBody::JsonErrorResponse(body) => response.status_code == 401 || body.looks_like_401(),
-                _ => false,
-            },
-            _ => false,
-        }
-    }
-
-    /// Check if an error is a 403, handling cases where Jinxxy improperly sets the HTTP status code as 500.
-    pub fn is_403(&self) -> bool {
-        match self {
-            Self::HttpResponse(response) => match &response.body {
-                HttpBody::JsonErrorResponse(body) => response.status_code == 403 || body.looks_like_403(),
-                _ => false,
-            },
-            _ => false,
-        }
-    }
-
-    /// Check if an error is a 404, handling cases where Jinxxy improperly sets the HTTP status code as 500.
-    pub fn is_404(&self) -> bool {
-        match self {
-            Self::HttpResponse(response) => match &response.body {
-                HttpBody::JsonErrorResponse(body) => response.status_code == 404 || body.looks_like_404(),
-                _ => false,
-            },
-            _ => false,
-        }
-    }
-
     /// Check if this error was caused by an invalid Jinxxy API key
     pub fn is_api_key_invalid(&self) -> bool {
-        self.is_401() || self.is_403()
+        self.is_http_code(401) || self.is_http_code(403)
     }
 }
 
 impl IsDeterministic for JinxxyError {
     fn is_deterministic(&self) -> bool {
         match self {
-            JinxxyError::HttpResponse(e) => {
-                // treat all 4xx errors as deterministic, and all others as worth retrying
-                e.status_code.is_client_error()
-                    || matches!(
-                        &e.body,
-                        HttpBody::JsonErrorResponse(body)
-                        if body.looks_like_401()
-                            || body.looks_like_403()
-                            || body.looks_like_404()
-                    )
-            }
+            JinxxyError::HttpResponse(e) => e.status_code.is_client_error(), // treat all 4xx errors as deterministic, and all others as worth retrying
             JinxxyError::HttpRequest(_) => false,
             JinxxyError::HttpRead(_) => false,
             JinxxyError::JsonDeserialize(_) => false, // this is a bit suspect, but could occur if Jinxxy gives an arbitrary status code with an HTML error page, which web APIs are wont to do
@@ -272,6 +229,7 @@ pub enum HttpBody {
 /// }
 /// ```
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // these are debug printed frequently
 pub struct JinxxyErrorResponse {
     status_code: u16,
     error: String,
@@ -283,48 +241,11 @@ pub struct JinxxyErrorResponse {
     request_id: String,
 }
 
-impl JinxxyErrorResponse {
-    /// Check if an error looks like a 401.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_401(&self) -> bool {
-        self.status_code == 401 || (self.error == "Bad Request" && self.message.matches("Invalid or expired API key"))
-    }
-
-    /// Check if an error looks like a 403.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_403(&self) -> bool {
-        self.status_code == 403 || (self.error == "Bad Request" && self.message.matches("You are not authorized."))
-    }
-
-    /// Check if an error looks like a 404.
-    ///
-    /// For some reason Jinxxy does not return a reasonable status code, leaving it up to me to parse their 500 response JSON.
-    pub fn looks_like_404(&self) -> bool {
-        self.status_code == 404 || (self.error == "Bad Request" && self.message.matches("Resource not found."))
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum JinxxyErrorMessage {
     SingleMessage(String),
     MultiMessage(Vec<JinxxyErrorMultiMessagePart>),
-}
-
-impl JinxxyErrorMessage {
-    fn matches(&self, string: &str) -> bool {
-        match self {
-            // For single messages, do an exact string match. I've seen this case be useful in the wild.
-            Self::SingleMessage(message) => message == string,
-            // For multi-messages, match each message. I've never seen this be useful in the wild, though.
-            Self::MultiMessage(messages) => messages
-                .iter()
-                .map(|item| &item.message)
-                .any(|message| message == string),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
