@@ -2,11 +2,12 @@
 
 ## Jinxxy API Permissions
 
-| Permission     | Explanation                                                   |
-|----------------|---------------------------------------------------------------|
-| products_read  | Used to list products so you can assign Discord roles to them |
-| licenses_read  | Used to verify license keys                                   |
-| licenses_write | Used to link a Discord user to a license key                  |
+| Permission           | Explanation                                                           |
+|----------------------|-----------------------------------------------------------------------|
+| products_read        | Used to list products so you can assign Discord roles to them         |
+| licenses_read        | Used to verify license keys                                           |
+| licenses_write       | Used to link a Discord user to a license key                          |
+| discount_codes_write | Used for Gumroad->Jinxxy product transfer (this is an opt-in feature) |
 
 ## Discord Bot Permissions
 

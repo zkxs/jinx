@@ -16,7 +16,6 @@ const VERIFY_URL: &str = "https://api.gumroad.com/v2/licenses/verify";
 /// system we opt out of it.
 ///
 /// See: https://gumroad.com/api#licenses for more docs.
-#[allow(dead_code)] //TODO: stop ignoring unused code
 pub async fn verify_license(product_id: &str, license_key: &str) -> GumroadResult<bool> {
     let start_time = Instant::now();
     let response = HTTP2_CLIENT
@@ -33,7 +32,7 @@ pub async fn verify_license(product_id: &str, license_key: &str) -> GumroadResul
         let bytes = response.bytes().await.map_err(GumroadError::from_read)?;
         let verification: Verification = serde_json::from_slice(&bytes).map_err(GumroadError::from_json)?;
         Ok(verification.success)
-    } else if response.status().as_u16() == 404 {
+    } else if response.status() == 404 {
         Ok(false)
     } else {
         Err(GumroadError::from_response(response).await)
@@ -58,7 +57,7 @@ pub enum GumroadError {
     HttpRequest(ReqwestError),
     /// An error occurred reading response body. We did not expect an error, so headers were not captured.
     HttpRead(ReqwestError),
-    /// We received a successful response from Gumroad which we could not deserialize
+    /// We received a response from Gumroad which we could not deserialize
     JsonDeserialize(serde_json::Error),
 }
 

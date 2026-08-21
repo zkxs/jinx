@@ -659,7 +659,7 @@ async fn handle_gumroad_migration(
     modal_interaction: &ModalInteraction,
     gumroad_license_key: &str,
 ) -> Result<(), JinxError> {
-    let _start_time = Instant::now(); //TODO: timing
+    let start_time = Instant::now();
     let product_id = modal_interaction.data.components.iter().find_map(|component| {
         if let ModalComponent::Label(label) = component
             && let LabelComponent::SelectMenu(select_menu) = &label.component

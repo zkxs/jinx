@@ -20,7 +20,7 @@ pub enum JinxxyError {
     HttpRequest(ReqwestError),
     /// An error occurred reading response body. We did not expect an error, so headers were not captured.
     HttpRead(ReqwestError),
-    /// We received a successful response from Jinxxy which we could not deserialize
+    /// We received a response from Jinxxy which we could not deserialize
     JsonDeserialize(serde_json::Error),
     /// Some parallel task join failed.
     Join(tokio::task::JoinError),
@@ -147,6 +147,13 @@ impl JinxxyError {
     /// Create a JinxxyError from a tokio JoinError
     pub fn from_join(join_error: tokio::task::JoinError) -> Self {
         Self::Join(join_error)
+    }
+
+    pub fn is_http_code(&self, status_code: u16) -> bool {
+        match self {
+            Self::HttpResponse(response) => response.status_code == status_code,
+            _ => false,
+        }
     }
 
     /// Check if an error is a 401, handling cases where Jinxxy improperly sets the HTTP status code as 500.

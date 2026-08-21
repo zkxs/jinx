@@ -8,6 +8,7 @@ mod error;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
+use crate::http::jinxxy::dto::CreateDiscountCode;
 use crate::license::LicenseKey;
 pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
@@ -341,6 +342,33 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
     debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
     let response: LicenseActivation = read_2xx_json(ENDPOINT, response).await?;
     Ok(response.id)
+}
+
+/// Create a new discount code
+pub async fn create_discount_code(api_key: &str, discount_code: CreateDiscountCode) -> JinxxyResult<bool> {
+    static ENDPOINT: &str = "POST /discount_codes";
+    let start_time = Instant::now();
+    let response = HTTP_CLIENT
+        .post(format!("{JINXXY_BASE_URL}discount_codes"))
+        .headers(get_headers(api_key))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&discount_code)
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    if response.status().is_success() {
+        Ok(true)
+    } else {
+        debug!("could not look up user-provided license id");
+        // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
+        let error = JinxxyError::from_response(ENDPOINT, response).await;
+        if error.is_http_code(400) || error.is_http_code(404) {
+            Ok(false)
+        } else {
+            Err(error)
+        }
+    }
 }
 
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
