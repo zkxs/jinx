@@ -1,6 +1,7 @@
 // This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
+use crate::bot::event_handler::REGISTER_BUTTON_ID;
 use crate::bot::util::{error_reply, success_reply};
 use crate::bot::{Context, MISSING_STORE_LINK_MESSAGE, util};
 use crate::db::{ActivationCounts, LinkSource};
@@ -20,10 +21,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use tokio::task::JoinSet;
 use tracing::{error, info, warn};
-
-// discord component ids
-pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
-pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 

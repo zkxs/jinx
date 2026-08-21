@@ -1,28 +1,37 @@
 // This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
-use crate::bot::commands::{LICENSE_KEY_ID, REGISTER_BUTTON_ID};
+use crate::bot::Data;
 use crate::bot::util::{MessageExtensions as _, SafeDisplay as _};
 use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GuildCreateEvent, util};
-use crate::bot::{Data, REGISTER_MODAL_ID};
 use crate::db::JinxDb;
 use crate::error::JinxError;
-use crate::http::jinxxy;
+use crate::http::{gumroad, jinxxy};
 use crate::license::{ActivationValidation, LicenseType};
 use jiff::Timestamp;
 use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateComponent};
 use serenity::{
     Colour, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage,
-    CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateTextDisplay, EditInteractionResponse, Error,
-    Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, Member,
-    ModalComponent, ModalInteraction, RatelimitInfo,
+    CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind,
+    CreateSelectMenuOption, CreateTextDisplay, EditInteractionResponse, Error, Event, EventHandler, FullEvent,
+    GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, Member, ModalComponent, ModalInteraction,
+    RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
+
+// discord component ids
+pub(in crate::bot) const REGISTER_MODAL_ID: &str = "jinx_register_modal";
+pub(in crate::bot) const GUMROAD_MODAL_ID: &str = "jinx_gumroad_modal";
+pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
+pub(in crate::bot) const GUMROAD_BUTTON_ID: &str = "jinx_gumroad_button";
+pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
+pub(in crate::bot) const PRODUCT_ID: &str = "jinx_product_id_input";
 
 static GLOBAL_EASTER_EGG_1_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -155,6 +164,47 @@ impl EventHandler for Data {
                             return;
                         }
                     }
+                    // create the gumroad modal when user presses a button to continue
+                    (GUMROAD_BUTTON_ID, Some(gumroad_license_key)) => {
+                        let form_instruction_text = CreateTextDisplay::new(
+                            "Please provide the name of the Jinxxy product your Gumroad license matches. If you do not see your product listed, then migration is not enabled for it and you should contact the store owner for support.",
+                        );
+                        let next_step_text = CreateTextDisplay::new(
+                            "After we verify your Gumroad license a 100% discount code will be created you can use to redeem your product on Jinxxy.",
+                        );
+
+                        //TODO: enumerate options for real
+                        let option1 = CreateSelectMenuOption::new("label1", "value1");
+                        let option2 = CreateSelectMenuOption::new("label2", "value2");
+                        let options = vec![option1, option2];
+                        let input = CreateSelectMenu::new(
+                            PRODUCT_ID,
+                            CreateSelectMenuKind::String {
+                                options: options.into(),
+                            },
+                        );
+                        let label = CreateLabel::select_menu("Product Name", input);
+                        let components = [
+                            CreateModalComponent::TextDisplay(form_instruction_text),
+                            CreateModalComponent::Label(label),
+                            CreateModalComponent::TextDisplay(next_step_text),
+                        ];
+
+                        // proxy the gumroad_license_key from the button into the modal
+                        // note that custom id can be AT MOST 100 characters long or Discord will explode
+                        let custom_id = format!("{GUMROAD_MODAL_ID}:{gumroad_license_key}");
+                        if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
+                            let modal = CreateModal::new(custom_id, "Gumroad to Jinxxy License Migration")
+                                .components(&components);
+                            let response = CreateInteractionResponse::Modal(modal);
+                            if let Err(e) = component_interaction.create_response(&context.http, response).await {
+                                warn!("Error creating response to license registration modal: {e:?}");
+                            }
+                        } else {
+                            warn!("Tried to create a custom modal ID longer than {CUSTOM_ID_CHARACTER_LIMIT}");
+                            return;
+                        }
+                    }
                     (event_type, event_key) => {
                         warn!("Unknown component interaction custom_id: {event_type}:{event_key:?}");
                     }
@@ -187,13 +237,7 @@ impl EventHandler for Data {
                     }
                 }
 
-                // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
-                if let Err(e) = modal_interaction.defer_ephemeral(&context.http).await {
-                    warn!("Error deferring modal interaction {e:?}");
-                    return;
-                }
-
-                // our custom ids are a static prefix followed by a ':', and then some dynamic value
+                // our custom ids are a static prefix optionally followed by a ':', and then some dynamic value
                 let custom_id = modal_interaction.data.custom_id.as_str();
                 let custom_id = match custom_id.split_once(':') {
                     Some((key, value)) => (key, Some(value)),
@@ -204,6 +248,11 @@ impl EventHandler for Data {
                 match custom_id {
                     // this is the code that handles a user submitting the register form. All the license activation logic lives here.
                     (REGISTER_MODAL_ID, jinxxy_user_id) => {
+                        // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
+                        if let Err(e) = modal_interaction.defer_ephemeral(&context.http).await {
+                            warn!("Error deferring modal interaction {e:?}");
+                            return;
+                        }
                         let start_time = Instant::now();
                         if let Err(e) =
                             handle_license_registration(self, context, modal_interaction, jinxxy_user_id).await
@@ -212,6 +261,32 @@ impl EventHandler for Data {
                             let nonce: u64 = util::generate_nonce();
                             let nonce = format!("{nonce:016X}");
                             error!("NONCE[{nonce}] Error registering license after {elapsed_ms}ms: {e:?}");
+                            let safe_display = e.safe_display();
+                            let embed = CreateEmbed::default()
+                                .title("Registration Failure")
+                                .description(format!("Caused by: {safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
+                                .color(Colour::RED);
+                            let edit = EditInteractionResponse::default().embed(embed);
+                            if let Err(e) = modal_interaction.edit_response(&context.http, edit).await {
+                                warn!("Error edit register modal response: {e:?}");
+                                return;
+                            }
+                        }
+                    }
+                    (GUMROAD_MODAL_ID, Some(gumroad_license_key)) => {
+                        // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
+                        if let Err(e) = modal_interaction.defer(&context.http).await {
+                            warn!("Error deferring modal interaction {e:?}");
+                            return;
+                        }
+                        let start_time = Instant::now();
+                        if let Err(e) =
+                            handle_gumroad_migration(self, context, modal_interaction, gumroad_license_key).await
+                        {
+                            let elapsed_ms = start_time.elapsed().as_millis();
+                            let nonce: u64 = util::generate_nonce();
+                            let nonce = format!("{nonce:016X}");
+                            error!("NONCE[{nonce}] Error migrating gumroad license after {elapsed_ms}ms: {e:?}");
                             let safe_display = e.safe_display();
                             let embed = CreateEmbed::default()
                                 .title("Registration Failure")
@@ -578,6 +653,48 @@ async fn grant_member_roles(data: &Data, context: &Context, new_member: &Member)
     Ok(())
 }
 
+async fn handle_gumroad_migration(
+    _data: &Data,
+    context: &Context,
+    modal_interaction: &ModalInteraction,
+    gumroad_license_key: &str,
+) -> Result<(), JinxError> {
+    let _start_time = Instant::now(); //TODO: timing
+    let product_id = modal_interaction.data.components.iter().find_map(|component| {
+        if let ModalComponent::Label(label) = component
+            && let LabelComponent::SelectMenu(select_menu) = &label.component
+            && select_menu.custom_id == PRODUCT_ID
+        {
+            select_menu
+                .values
+                .first()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+        } else {
+            None
+        }
+    });
+
+    //TODO: verify gumroad for real
+    if let Some(product_id) = product_id {
+        let verification = gumroad::verify_license(product_id, gumroad_license_key).await;
+        debug!("gumroad verification result: {:?}", verification);
+    }
+
+    //TODO: remove placeholder response
+    let embed = CreateEmbed::default()
+        .title("Gumroad to Jinxxy Migration Error")
+        .description("This interaction is not implemented")
+        .color(Colour::RED);
+    let edit = EditInteractionResponse::default().embed(embed).components(&[]);
+    let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
+    if let Err(error) = user_notification_result {
+        error!("Error notifying user of missing license key: {:?}", error);
+    }
+
+    Ok(())
+}
+
 async fn handle_license_registration(
     data: &Data,
     context: &Context,
@@ -634,6 +751,30 @@ async fn handle_license_registration(
         - An invalid license
         */
         let send_fail_message = async || {
+            if matches!(license_type, LicenseType::Gumroad) {
+                let can_migrate_gumroad = true; //TODO: load this from db
+
+                if can_migrate_gumroad {
+                    // we hijack the normal fail message flow here and pivot into asking if the user wants to do a gumroad migration
+                    let description = "Gumroad to Jinxxy migration is possible for some products in this Jinxxy store. To see if your license is eligible, press the button below:";
+                    let buttons = [CreateButton::new(format!("{}:{}", GUMROAD_BUTTON_ID, license_key))
+                        .label("Migrate")
+                        .style(ButtonStyle::Primary)];
+                    let action_row = CreateActionRow::Buttons(buttons.as_ref().into());
+                    let components = [CreateComponent::ActionRow(action_row)];
+                    let embed = CreateEmbed::default()
+                        .title("Gumroad to Jinxxy Migration")
+                        .description(description);
+                    let edit = EditInteractionResponse::default().embed(embed).components(&components);
+                    modal_interaction
+                        .edit_response(&context.http, edit)
+                        .await
+                        .map_err(JinxError::from)?;
+                    return Ok(());
+                }
+                data.db.increment_gumroad_failure_count(guild_id).await?;
+            }
+
             if license_type.is_license() {
                 debug!(
                     "failed to verify license in {} for <@{}> which looks like {}",
@@ -650,10 +791,6 @@ async fn handle_license_registration(
                     user_id.get(),
                     license_type
                 );
-            }
-
-            if matches!(license_type, LicenseType::Gumroad) {
-                data.db.increment_gumroad_failure_count(guild_id).await?;
             }
 
             let description = if license_type.is_jinxxy_license() {
@@ -680,11 +817,12 @@ async fn handle_license_registration(
         };
 
         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id, &jinxxy_user_id).await? {
-            let license = license_type.create_untrusted_jinxxy_license(license_key);
+            let license = license_type.create_untrusted_jinxxy_license(license_key); // this filters out non-jinxxy licenses
             let license_response = if let Some(license) = license {
                 util::retry_thrice(|| jinxxy::check_license(&api_key, license.clone(), true)).await?
             } else {
                 // if the user has given us something that is very clearly not a Jinxxy license then don't even try hitting the API
+                // this branch is what causes us to jump to the error message if the provided string doesn't look like a jinxxy license
                 None
             };
             if let Some(license_info) = license_response {
