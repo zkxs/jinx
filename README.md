@@ -21,6 +21,7 @@ Features include:
 - Multiple Jinxxy stores per Discord server
   - Want to share a single Discord server with your partner? Jinx supports it!
   - Linking multiple Discord servers to a single store also works
+- Optional Gumroad → Jinxxy license transfers. ([setup instructions][license import])
 
 If you have suggestions, feedback, or bug reports please let us know [here on GitHub][issues] or [in our Discord][discord].
 
@@ -51,29 +52,36 @@ For example, in the screenshot below Jinx can only manage "test-secret-role" and
 
 ![Role Management UI](docs/images/manage_roles.png)
 
-Next, go to [Jinxxy's API Keys page](https://dashboard.jinxxy.com/api-keys) and create a new
-API key with products_read, licenses_read, and licenses_write (see
-[explanation of permissions](docs/permissions-used.md) to learn why we need these). Uncheck the expiration checkbox.
-Make note of the API key when you create it: we'll need it shortly. The form should look like this:
+Next, we'll create a Jinxxy API key for the bot.
+
+1. Go to [Jinxxy's API Keys page](https://dashboard.jinxxy.com/api-keys)
+2. create a new API key
+3. Grant access to `products_read`, `discount_codes_write`, `licenses_read`, and `licenses_write`. See
+   [explanation of permissions](docs/permissions-used.md) to learn why we need these.
+4. Uncheck the expiration checkbox.
+5. Save changes and make note of the API key: we'll need it shortly.
+
+The form should look like this:
 
 ![API Key creation](docs/images/create_api_key.png)
 
 Finally, back in your Discord server run the following slash commands:
 
 1. Run the `/add_store <api_key>` command in your sever and provide your Jinxxy API key.
-2. Optionally, run `/set_log_channel [channel]` to tell the bot which channel to log events (such as license activations)
-   to. I recommend you make this channel private so only you and your trusted moderators can see it. You will probably
+2. Run `/set_log_channel [channel]` to tell the bot where to log events such as license activations and errors.
+   I recommend you make this channel private so only you and your trusted moderators can see it. You will probably
    need to grant Jinx permission to send messages to this channel.
 3. Run the `/link_product` command to create a product→role link. You can reuse the same role for
    multiple products. Products can even grant multiple roles! If you make a mistake, use `/unlink_product` to fix it.
    For even more ways to link products to roles, check out the rest of the [role management commands](docs/command-reference.md#role-management-commands).
 4. Check your work using `/list_links`
-5. When you're ready, run `/create_post <store_name>` in the channel of your choosing to have Jinx create a button users can click to
-   register license keys. You may create multiple posts this way. If you update your Jinxxy username or profile picture
-   you may want to delete and recreate the post, as it will not automatically update.
+5. Finally, run `/create_post <store_name>` in the channel of your choosing to have Jinx create a button users can click to
+   register license keys.
 
-If you want to verify the bot works you can create a 100% discount code or create an unlisted free
-product to create test license keys.
+You're done!
+
+Optionally, if you have a Gumroad store and would like to automate moving your customers to Jinxxy, see
+[Setting Up Cross-Marketplace License Transfers][license import].
 
 ## Administrator Commands
 
@@ -105,3 +113,4 @@ The [publicly installable bot][bot install] provided by us is available under ou
 [discord]: https://discord.gg/aKkA6m26f9
 [issues]: https://github.com/zkxs/jinx/issues
 [app directory]: https://discord.com/application-directory/1270708639145001052
+[license import]: docs/license_import.md

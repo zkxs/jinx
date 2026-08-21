@@ -37,8 +37,6 @@ This is the same as the above error, except Jinx is fairly certain you have prov
 - A Payhip key.
 - some other unknown value that is not formatted like a Jinxxy short or long key.
 
-Jinx **only** supports Jinxxy license keys: license keys from other digital marketplaces are not compatible.
-
 ## Unhandled Error
 
 Error text:
