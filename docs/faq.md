@@ -40,11 +40,21 @@ To retroactively grant roles using your current product→role links to users wh
 simply run `/grant_missing_roles`. You can do this for a single role, or omit the role parameter to have Jinx re-check
 all roles.
 
+### Someone has refunded a product. How does Jinx handle this?
+
+Unfortunately the Jinxxy API does not provide any way to subscribe to refund events, so Jinx is unable to handle this
+automatically. If you are notified of a refund and are concerned the customer may be abusing Jinx for Discord role
+benefits, do the following:
+
+1. Find the license key for the refunded order in your Jinxxy dashboard
+2. Use the `/lock_license` command to prevent further use of the license. The Jinxxy API does not currently invalidate
+   refunded licenses, so you **must** take this step to prevent Jinx from granting roles in the future.
+3. Use the `/license_info` command to learn if the license has already been used in your Discord, and if so who by.
+4. Take any desired moderation action against that Discord user.
+
 ### Are there plans to add support for other marketplaces?
 
-Not at this time. If the
-[Give Creators the Ability to Manually Assign Licenses](https://feedback.jinxxy.com/p/give-creators-the-ability-to-manually-assign-licenses)
- feature request is ever implemented I may revisit this to create some kind of Gumroad -> Jinxxy migration feature.
+Not at this time. See the [store support issue](https://github.com/zkxs/jinx/issues/41) for more details.
 
 ### Can I self-host the bot?
 
