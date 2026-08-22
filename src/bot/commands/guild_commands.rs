@@ -1419,3 +1419,171 @@ pub(in crate::bot) async fn grant_missing_roles(
 
     Ok(())
 }
+
+/// Enable transferring a Gumroad license to Jinxxy for a particular product
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn enable_gumroad_transfer(
+    context: Context<'_>,
+    #[description = "Gumroad product_id"] gumroad_product_id: String,
+    #[description = "Jinxxy Product"]
+    #[autocomplete = "product_autocomplete"]
+    product: String,
+) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    let product_ids = context
+        .data()
+        .api_cache
+        .product_name_to_ids(&context.data().db, guild_id, &product)
+        .await?;
+
+    let reply = if product_ids.is_empty() {
+        error_reply("Error Enabling Gumroad Transfer", "Jinxxy product not found.")
+    } else {
+        for product_id in product_ids {
+            context
+                .data()
+                .db
+                .upsert_gumroad_transfer(&product_id.jinxxy_user_id, &gumroad_product_id, &product_id.product_id)
+                .await?;
+        }
+
+        let embed = CreateEmbed::default()
+            .title("Gumroad Transfer Enabled")
+            .description(format!(
+                "Gumroad licenses for `{gumroad_product_id}` can now be redeemed for {product} on Jinxxy"
+            ))
+            .color(Colour::DARK_GREEN);
+        CreateReply::default().embed(embed).ephemeral(true)
+    };
+
+    context.send(reply).await?;
+
+    Ok(())
+}
+
+/// Disable transferring a Gumroad license to Jinxxy for a particular product
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn disable_gumroad_transfer(
+    context: Context<'_>,
+    #[description = "Jinxxy store name"]
+    #[autocomplete = "store_name_autocomplete"]
+    store_name: String,
+    #[description = "Gumroad product_id"] gumroad_product_id: String,
+) -> Result<(), Error> {
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    let reply = if let Some(store) = context
+        .data()
+        .db
+        .get_store_link_by_username(guild_id, &store_name)
+        .await?
+    {
+        let deleted_jinxxy_product_id = context
+            .data()
+            .db
+            .delete_gumroad_transfer(&store.jinxxy_user_id, &gumroad_product_id)
+            .await?;
+
+        if let Some(deleted_jinxxy_product_id) = deleted_jinxxy_product_id {
+            let message = context
+                .data()
+                .api_cache
+                .get(&context.data().db, guild_id, &store.jinxxy_user_id, |cache| {
+                    let product_name = cache.product_id_to_name(&deleted_jinxxy_product_id);
+                    let pretty_product_name = product_name.unwrap_or(&deleted_jinxxy_product_id);
+                    format!("`{gumroad_product_id}` will no longer grant {pretty_product_name}")
+                })
+                .await?;
+
+            let embed = CreateEmbed::default()
+                .title("Transfer Disabled")
+                .description(message)
+                .color(Colour::DARK_GREEN);
+            CreateReply::default().embed(embed).ephemeral(true)
+        } else {
+            // gumroad product_id wasn't in the DB
+            let embed = CreateEmbed::default()
+                .title("No Transfer Found")
+                .description(format!(
+                    "No configured transfer for product_id `{gumroad_product_id}` was found"
+                ))
+                .color(Colour::ORANGE);
+            CreateReply::default().embed(embed).ephemeral(true)
+        }
+    } else {
+        // store id lookup somehow failed
+        error_reply("Error disabling Gumroad transfer", MISSING_STORE_LINK_MESSAGE)
+    };
+
+    context.send(reply).await?;
+
+    Ok(())
+}
+
+/// List all the Gumroad → Jinxxy transfer links.
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_ROLES",
+    install_context = "Guild",
+    interaction_context = "Guild"
+)]
+pub(in crate::bot) async fn list_gumroad_transfers(context: Context<'_>) -> Result<(), Error> {
+    context.defer_ephemeral().await?;
+
+    let guild_id = context
+        .guild_id()
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    let mut message = String::new();
+    let store_links = context.data().db.get_store_links(guild_id).await?;
+    for store in store_links {
+        let pretty_store_name =
+            Username::format_discord_display_name(&store.jinxxy_user_id, store.jinxxy_username.as_deref());
+        let transfer_configs = context
+            .data()
+            .db
+            .get_gumroad_transfers_for_store(&store.jinxxy_user_id)
+            .await?;
+        if !transfer_configs.is_empty() {
+            message.push_str(format!("\n{pretty_store_name}:").as_str());
+            for transfer_config in transfer_configs {
+                context
+                    .data()
+                    .api_cache
+                    .get(&context.data().db, guild_id, &store.jinxxy_user_id, |cache| {
+                        let product_name = cache.product_id_to_name(&transfer_config.product_id);
+                        let pretty_product_name = product_name.unwrap_or(&transfer_config.product_id);
+                        message.push_str(
+                            format!("\n- {} → {}", transfer_config.gumroad_product_id, pretty_product_name).as_str(),
+                        );
+                    })
+                    .await?;
+            }
+        }
+    }
+
+    let reply = success_reply("All Gumroad → Jinxxy transfer links", message);
+    context.send(reply).await?;
+
+    Ok(())
+}

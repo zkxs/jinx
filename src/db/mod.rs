@@ -4,7 +4,7 @@
 mod schema_v1;
 mod schema_v2;
 
-use crate::error::JinxError;
+use crate::error::{JinxError, JinxResult};
 use crate::http::jinxxy::{ProductNameInfo, ProductVersionId, ProductVersionNameInfo};
 use crate::time::SimpleTime;
 use jiff::Timestamp;
@@ -32,7 +32,6 @@ const LOW_PRIORITY_CACHE_EXPIRY_SECONDS: &str = "low_priority_cache_expiry_secon
 const GUILD_MEMBERS_ENABLED: &str = "guild_members_enabled";
 const CAN_NAG_PUBLIC_CHANNELS: &str = "can_nag_public_channels";
 
-type JinxResult<T> = Result<T, JinxError>;
 type SqliteResult<T> = Result<T, SqlxError>;
 
 /// Cloning is by-reference.
@@ -1629,6 +1628,66 @@ impl JinxDb {
         transaction.commit().await?;
         Ok(())
     }
+
+    /// Check if a store has any gumroad transfers configured
+    pub async fn store_can_gumroad_transfer(&self, jinxxy_user_id: &str) -> JinxResult<bool> {
+        let result = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT * FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ?) AS "has_any: bool""#,
+            jinxxy_user_id
+        )
+        .fetch_one(&self.read_pool)
+        .await?;
+        Ok(result)
+    }
+
+    /// Enumerate all gumroad transfers for a store
+    pub async fn get_gumroad_transfers_for_store(&self, jinxxy_user_id: &str) -> JinxResult<Vec<GumroadTransfer>> {
+        let result = sqlx::query_as!(
+            GumroadTransfer,
+            r#"SELECT gumroad_product_id, product_id FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ?"#,
+            jinxxy_user_id
+        )
+        .fetch_all(&self.read_pool)
+        .await?;
+        Ok(result)
+    }
+
+    /// Create a gumroad transfer config for the given store
+    pub async fn upsert_gumroad_transfer(
+        &self,
+        jinxxy_user_id: &str,
+        gumroad_product_id: &str,
+        jinxxy_product_id: &str,
+    ) -> JinxResult<()> {
+        let mut connection = self.write_connection().await?;
+        sqlx::query!(
+            r#"INSERT INTO jinxxy_gumroad_product (jinxxy_user_id, gumroad_product_id, product_id) VALUES (?, ?, ?)
+               ON CONFLICT (jinxxy_user_id, gumroad_product_id) DO UPDATE SET product_id = excluded.product_id"#,
+            jinxxy_user_id,
+            gumroad_product_id,
+            jinxxy_product_id
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Delete a gumroad transfer config for the given store. On success, returns the jinxxy product ID from the deleted row.
+    pub async fn delete_gumroad_transfer(
+        &self,
+        jinxxy_user_id: &str,
+        gumroad_product_id: &str,
+    ) -> JinxResult<Option<String>> {
+        let mut connection = self.write_connection().await?;
+        let deleted_jinxxy_product_id = sqlx::query_scalar!(
+            r#"DELETE from jinxxy_gumroad_product WHERE jinxxy_user_id = ? AND gumroad_product_id = ? RETURNING product_id"#,
+            jinxxy_user_id,
+            gumroad_product_id
+        )
+        .fetch_optional(&mut *connection)
+        .await?;
+        Ok(deleted_jinxxy_product_id)
+    }
 }
 
 /// Helper functions that don't access a whole pool
@@ -2239,4 +2298,11 @@ pub struct ActivationCounts {
     pub day_90: u64,
     pub day_365: u64,
     pub lifetime: u64,
+}
+
+/// Helper struct returned by [`JinxDb::get_gumroad_transfers_for_store`]
+#[derive(sqlx::FromRow)]
+pub struct GumroadTransfer {
+    pub gumroad_product_id: String,
+    pub product_id: String,
 }

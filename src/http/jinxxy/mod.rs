@@ -282,7 +282,7 @@ pub async fn get_license_activations(
         warn!(
             "NONCE[{nonce}] {url} returned exactly {ACTIVATION_PAGINATION_LIMIT} items, which is the pagination limit"
         );
-        Err(JinxxyError::UnsupportedPagination(nonce))
+        Err(Box::new(JinxxyError::UnsupportedPagination(nonce)))
     } else {
         Ok(response.results)
     }

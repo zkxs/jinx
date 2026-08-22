@@ -54,10 +54,13 @@ const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, vers
 const CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     create_post,
     deactivate_license,
+    disable_gumroad_transfer,
+    enable_gumroad_transfer,
     grant_missing_roles,
     license_info,
     link_product,
     link_product_version,
+    list_gumroad_transfers,
     list_links,
     lock_license,
     set_log_channel,

@@ -5,7 +5,7 @@ use crate::bot::Data;
 use crate::bot::util::{MessageExtensions as _, SafeDisplay as _};
 use crate::bot::{BAKED_GLOBAL_COMMANDS, CUSTOM_ID_CHARACTER_LIMIT, GuildCreateEvent, util};
 use crate::db::JinxDb;
-use crate::error::JinxError;
+use crate::error::{JinxError, JinxResult};
 use crate::http::{gumroad, jinxxy};
 use crate::license::{ActivationValidation, LicenseType};
 use jiff::Timestamp;
@@ -593,7 +593,7 @@ impl EventHandler for Data {
 }
 
 /// Grant any missing roles to a member
-async fn grant_member_roles(data: &Data, context: &Context, new_member: &Member) -> Result<(), JinxError> {
+async fn grant_member_roles(data: &Data, context: &Context, new_member: &Member) -> JinxResult<()> {
     let roles = data
         .db
         .get_roles_for_user(new_member.guild_id, new_member.user.id)
@@ -658,7 +658,7 @@ async fn handle_gumroad_migration(
     context: &Context,
     modal_interaction: &ModalInteraction,
     gumroad_license_key: &str,
-) -> Result<(), JinxError> {
+) -> JinxResult<()> {
     let start_time = Instant::now();
     let product_id = modal_interaction.data.components.iter().find_map(|component| {
         if let ModalComponent::Label(label) = component
@@ -700,7 +700,7 @@ async fn handle_license_registration(
     context: &Context,
     modal_interaction: &ModalInteraction,
     jinxxy_user_id: Option<&str>,
-) -> Result<(), JinxError> {
+) -> JinxResult<()> {
     let start_time = Instant::now();
     let license_key = modal_interaction.data.components.iter().find_map(|component| {
         if let ModalComponent::Label(label) = component
@@ -769,7 +769,7 @@ async fn handle_license_registration(
                     modal_interaction
                         .edit_response(&context.http, edit)
                         .await
-                        .map_err(JinxError::from)?;
+                        .map_err(Box::<JinxError>::from)?;
                     return Ok(());
                 }
                 data.db.increment_gumroad_failure_count(guild_id).await?;
@@ -812,8 +812,10 @@ async fn handle_license_registration(
             modal_interaction
                 .edit_response(&context.http, edit)
                 .await
-                .map_err(JinxError::from)?;
-            Ok::<(), JinxError>(())
+                .map_err(Box::<JinxError>::from)?;
+
+            // this evil thing is needed to let rust infer the return type of this closure
+            Ok::<(), Box<JinxError>>(())
         };
 
         if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id, &jinxxy_user_id).await? {

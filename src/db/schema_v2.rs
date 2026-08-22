@@ -2,7 +2,7 @@
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::db::helper;
-use crate::error::JinxError;
+use crate::error::{JinxError, JinxResult};
 use poise::futures_util::TryStreamExt;
 use sqlx::{Executor, Row, SqliteConnection};
 use std::collections::HashMap;
@@ -14,10 +14,10 @@ const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
 /// Increment this if there is a backwards-compatibility breaking schema change, such as deleting a column
 const SCHEMA_MINOR_VERSION_VALUE: i32 = 1;
 /// Increment this if there is a backwards-compatible change, such as adding a new column
-const SCHEMA_PATCH_VERSION_VALUE: i32 = 0;
+const SCHEMA_PATCH_VERSION_VALUE: i32 = 1;
 
 /// Set up the v2 database
-pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxError> {
+pub(super) async fn init(connection: &mut SqliteConnection) -> JinxResult<()> {
     let start = Instant::now();
 
     // simple key-value settings
@@ -207,7 +207,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         // removing NOT NULL constraint from product_id
         connection
             .execute(
-                r#"CREATE TABLE IF NOT EXISTS new_license_activation (
+                r#"CREATE TABLE new_license_activation (
                    jinxxy_user_id         TEXT NOT NULL,
                    license_id             TEXT NOT NULL,
                    activator_user_id      INTEGER NOT NULL,
@@ -252,6 +252,21 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
         connection.execute(r#"ALTER TABLE product DROP COLUMN etag"#).await?;
     }
 
+    // handle 2.1.0 -> 2.1.1 migration
+    if schema_version < (1, 1) {
+        connection
+            .execute(
+                r#"CREATE TABLE jinxxy_gumroad_product (
+                   jinxxy_user_id         TEXT NOT NULL,
+                   gumroad_product_id     TEXT NOT NULL,
+                   product_id             TEXT NOT NULL,
+                   PRIMARY KEY            (jinxxy_user_id, gumroad_product_id),
+                   FOREIGN KEY            (jinxxy_user_id) REFERENCES jinxxy_user ON DELETE CASCADE
+               ) STRICT, WITHOUT ROWID"#,
+            )
+            .await?;
+    }
+
     // Index needed to look up all links by guild
     connection
         .execute(r#"CREATE INDEX IF NOT EXISTS api_key_lookup_by_guild ON jinxxy_user_guild (guild_id)"#)
@@ -273,6 +288,12 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
     connection
         .execute(
             r#"CREATE INDEX IF NOT EXISTS activation_lookup_by_activator ON license_activation (activator_user_id)"#,
+        )
+        .await?;
+    // for searching for gumroad product IDs given a jinxxy product ID
+    connection
+        .execute(
+            r#"CREATE INDEX IF NOT EXISTS gumroad_product_lookup_by_jinxxy_product ON jinxxy_gumroad_product (jinxxy_user_id, product_id)"#,
         )
         .await?;
 
@@ -299,7 +320,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> Result<(), JinxEr
 pub(super) async fn copy_from_v1(
     v1_connection: &mut SqliteConnection,
     v2_connection: &mut SqliteConnection,
-) -> Result<(), JinxError> {
+) -> JinxResult<()> {
     // settings migration
     {
         debug!("starting settings migration");

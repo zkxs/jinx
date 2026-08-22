@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO jinxxy_gumroad_product (jinxxy_user_id, gumroad_product_id, product_id) VALUES (?, ?, ?)\n               ON CONFLICT (jinxxy_user_id, gumroad_product_id) DO UPDATE SET product_id = excluded.product_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "23a92d8f141cb927e634887312b3439bc5f9372bc1e35b377117c37f9fd33977"
+}

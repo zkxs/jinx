@@ -29,7 +29,7 @@
 | Command                                                          | Required Permission | Description                                                               |
 | ---------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------- |
 | `/enable_gumroad_transfer <gumroad_product_id> <jinxxy_product>` | Manage Roles        | Enable transferring a Gumroad license to Jinxxy for a particular product  |
-| `/disable_gumroad_transfer <gumroad_product_id>`                 | Manage Roles        | Disable transferring a Gumroad license to Jinxxy for a particular product |
+| `/disable_gumroad_transfer <store_name> <gumroad_product_id>`    | Manage Roles        | Disable transferring a Gumroad license to Jinxxy for a particular product |
 | `/list_gumroad_transfers`                                        | Manage Roles        | List all the Gumroad→Jinxxy transfer links.                               |
 
 ## License Management Commands

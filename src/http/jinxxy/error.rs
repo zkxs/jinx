@@ -6,8 +6,9 @@ use bytes::Bytes;
 use reqwest::{Response, StatusCode};
 use serde::Deserialize;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 
-pub type JinxxyResult<T> = Result<T, JinxxyError>;
+pub type JinxxyResult<T> = Result<T, Box<JinxxyError>>;
 
 #[derive(Debug)]
 #[allow(dead_code)] // these are debug printed frequently
@@ -107,7 +108,7 @@ impl<'a> SafeDisplay<'a, RedactedJinxxyError<'a>> for JinxxyError {
 
 impl JinxxyError {
     /// Create a JinxxyError from raw json bytes
-    pub async fn from_response(endpoint: &'static str, response: Response) -> Self {
+    pub async fn from_response(endpoint: &'static str, response: Response) -> Box<Self> {
         let status_code = response.status();
         let headers = format!("{:?}", response.headers());
         let bytes = response.bytes().await;
@@ -124,29 +125,29 @@ impl JinxxyError {
             headers,
             body,
         };
-        Self::HttpResponse(http)
+        Box::new(Self::HttpResponse(http))
     }
 
     /// Create a JinxxyError from a reqwest error (use this after `.send()`)
-    pub fn from_request(endpoint: &'static str, error: reqwest::Error) -> Self {
+    pub fn from_request(endpoint: &'static str, error: reqwest::Error) -> Box<Self> {
         let inner = ReqwestError { endpoint, error };
-        Self::HttpRequest(inner)
+        Box::new(Self::HttpRequest(inner))
     }
 
     /// Create a JinxxyError from a reqwest error attempting to read response body (use this after `.bytes()`)
-    pub fn from_read(endpoint: &'static str, error: reqwest::Error) -> Self {
+    pub fn from_read(endpoint: &'static str, error: reqwest::Error) -> Box<Self> {
         let inner = ReqwestError { endpoint, error };
-        Self::HttpRead(inner)
+        Box::new(Self::HttpRead(inner))
     }
 
     /// Create a JinxxyError from a serde_json Error
-    pub fn from_json(json_error: serde_json::Error) -> Self {
-        Self::JsonDeserialize(json_error)
+    pub fn from_json(json_error: serde_json::Error) -> Box<Self> {
+        Box::new(Self::JsonDeserialize(json_error))
     }
 
     /// Create a JinxxyError from a tokio JoinError
-    pub fn from_join(join_error: tokio::task::JoinError) -> Self {
-        Self::Join(join_error)
+    pub fn from_join(join_error: tokio::task::JoinError) -> Box<Self> {
+        Box::new(Self::Join(join_error))
     }
 
     pub fn is_http_code(&self, status_code: u16) -> bool {
@@ -162,9 +163,9 @@ impl JinxxyError {
     }
 }
 
-impl IsDeterministic for JinxxyError {
+impl IsDeterministic for Box<JinxxyError> {
     fn is_deterministic(&self) -> bool {
-        match self {
+        match self.deref() {
             JinxxyError::HttpResponse(e) => e.status_code.is_client_error(), // treat all 4xx errors as deterministic, and all others as worth retrying
             JinxxyError::HttpRequest(_) => false,
             JinxxyError::HttpRead(_) => false,

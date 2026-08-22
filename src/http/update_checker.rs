@@ -1,10 +1,10 @@
-// This file is part of jinx. Copyright © 2024-2025 jinx contributors.
+// This file is part of jinx. Copyright © 2024-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 //! GitHub Releases-based update checking
 
 use super::HTTP2_CLIENT as HTTP_CLIENT;
-use crate::error::JinxError;
+use crate::error::{JinxError, JinxResult};
 use reqwest::header;
 use semver::Version;
 use serde::Deserialize;
@@ -18,7 +18,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 const UPDATE_CHECK_URI: &str = "https://api.github.com/repos/zkxs/jinx/releases/latest";
 
 thread_local! {
-    static LOCAL_VERSION: Result<Version, JinxError> = Version::parse(env!("CARGO_PKG_VERSION"))
+    static LOCAL_VERSION: JinxResult<Version> = Version::parse(env!("CARGO_PKG_VERSION"))
         .map_err(|e| {
             let message = format!("Local version \"{}\" didn't follow semver! {}", env!("CARGO_PKG_VERSION"), e);
             warn!(message); // obnoxiously, this gets logged once per thread. Oh well.
