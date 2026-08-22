@@ -1450,7 +1450,22 @@ pub(in crate::bot) async fn enable_gumroad_transfer(
     let reply = if product_ids.is_empty() {
         error_reply("Error Enabling Gumroad Transfer", "Jinxxy product not found.")
     } else {
+        let mut any_api_key_issue = false;
         for product_id in product_ids {
+            let api_key_issue = match context
+                .data()
+                .db
+                .get_jinxxy_api_key(guild_id, &product_id.jinxxy_user_id)
+                .await?
+            {
+                Some(api_key) => {
+                    let jinxxy_user = jinxxy::get_own_user(&api_key).await?;
+                    !jinxxy_user.has_scope_discount_codes_write()
+                }
+                None => true,
+            };
+            any_api_key_issue |= api_key_issue;
+
             context
                 .data()
                 .db
@@ -1464,7 +1479,16 @@ pub(in crate::bot) async fn enable_gumroad_transfer(
                 "Gumroad licenses for `{gumroad_product_id}` can now be redeemed for {product} on Jinxxy"
             ))
             .color(Colour::DARK_GREEN);
-        CreateReply::default().embed(embed).ephemeral(true)
+        let reply = CreateReply::default().embed(embed).ephemeral(true);
+        if any_api_key_issue {
+            let embed = CreateEmbed::default()
+                .title("Jinxxy API Key Issue Detected")
+                .description("Your Jinxxy API key appears to be misconfigured. Please ensure it has the `discount_codes_write` scope.")
+                .color(Colour::ORANGE);
+            reply.embed(embed)
+        } else {
+            reply
+        }
     };
 
     context.send(reply).await?;

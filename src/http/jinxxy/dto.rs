@@ -150,7 +150,7 @@ impl AuthUser {
     // }
 
     /// Check if this API key has the `discount_codes_write` scope
-    fn has_scope_discount_codes_write(&self) -> bool {
+    pub fn has_scope_discount_codes_write(&self) -> bool {
         self.scopes.contains("discount_codes_write")
     }
 

@@ -45,7 +45,7 @@ pub static MISSING_STORE_LINK_MESSAGE: &str = "No linked store with that usernam
 
 /// Version number for the guild commands that is incremented whenever a command's definition (not code!) changes,
 /// or a new command is added
-const GUILD_COMMAND_VERSION: i64 = 1;
+const GUILD_COMMAND_VERSION: i64 = 2;
 
 /// commands to be installed globally
 const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];

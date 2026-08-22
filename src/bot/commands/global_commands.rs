@@ -99,7 +99,7 @@ pub(in crate::bot) async fn add_store(
         if check_owner(context).await? {
             context.data().db.set_owner_guild(guild_id, true).await?;
 
-            //TODO: for some reason this sometimes times out and gives a 404 if the commands have
+            //TODO-MAYBE: for some reason this sometimes times out and gives a 404 if the commands have
             // previously been deleted in the same bot process; HOWEVER it actually still succeeds.
             // I suspect this is a discord/serenity/poise bug.
             // For some <id>, <nonce>, this looks like:

@@ -11,13 +11,12 @@ use crate::license::{ActivationValidation, LicenseType};
 use jiff::Timestamp;
 use poise::{async_trait, serenity_prelude as serenity};
 use regex::Regex;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateComponent};
 use serenity::{
-    Colour, Context, CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseMessage,
-    CreateLabel, CreateMessage, CreateModal, CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind,
-    CreateSelectMenuOption, CreateTextDisplay, EditInteractionResponse, Error, Event, EventHandler, FullEvent,
-    GenericChannelId, GuildId, InputTextStyle, Interaction, LabelComponent, Member, ModalComponent, ModalInteraction,
-    RatelimitInfo,
+    ButtonStyle, Colour, Context, CreateActionRow, CreateButton, CreateComponent, CreateEmbed, CreateInputText,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateLabel, CreateMessage, CreateModal,
+    CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, CreateTextDisplay,
+    EditInteractionResponse, Event, EventHandler, FullEvent, GenericChannelId, GuildId, InputTextStyle, Interaction,
+    LabelComponent, Member, ModalComponent, ModalInteraction, RatelimitInfo,
 };
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -26,11 +25,24 @@ use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
 // discord component ids
+/// custom_id format is: `{REGISTER_MODAL_ID}:{jinxxy_user_id}`
+///
+/// for legacy buttons the user_id will be absent and must be looked up from DB: guild.default_jinxxy_user
 pub(in crate::bot) const REGISTER_MODAL_ID: &str = "jinx_register_modal";
+
+/// custom_id format is: `{GUMROAD_MODAL_ID}:{jinxxy_user_id}:{license_key}`
 pub(in crate::bot) const GUMROAD_MODAL_ID: &str = "jinx_gumroad_modal";
+
+/// custom_id format is: `{REGISTER_BUTTON_ID}:{jinxxy_user_id}`
+///
+/// for legacy buttons the user_id will be absent and must be looked up from DB: guild.default_jinxxy_user
 pub(in crate::bot) const REGISTER_BUTTON_ID: &str = "jinx_register_button";
+
+/// custom_id format is: `{GUMROAD_BUTTON_ID}:{jinxxy_user_id}:{license_key}`
 pub(in crate::bot) const GUMROAD_BUTTON_ID: &str = "jinx_gumroad_button";
+
 pub(in crate::bot) const LICENSE_KEY_ID: &str = "jinx_license_key_input";
+
 pub(in crate::bot) const PRODUCT_ID: &str = "jinx_product_id_input";
 
 static GLOBAL_EASTER_EGG_1_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -125,13 +137,13 @@ impl EventHandler for Data {
 
                 // our custom ids are a static prefix followed by a ':', and then some dynamic value
                 let custom_id = component_interaction.data.custom_id.as_str();
-                let custom_id = match custom_id.split_once(':') {
+                let split_custom_id = match custom_id.split_once(':') {
                     Some((key, value)) => (key, Some(value)),
                     None => (custom_id, None),
                 };
                 #[allow(clippy::single_match)]
                 // likely to add more matches later, so I'm leaving it like this because it's obnoxious to switch between `if let` and `match`
-                match custom_id {
+                match split_custom_id {
                     // create the register form when a user presses the register button
                     (REGISTER_BUTTON_ID, jinxxy_user_id) => {
                         let text = CreateTextDisplay::new(
@@ -165,7 +177,15 @@ impl EventHandler for Data {
                         }
                     }
                     // create the gumroad modal when user presses a button to continue
-                    (GUMROAD_BUTTON_ID, Some(gumroad_license_key)) => {
+                    (GUMROAD_BUTTON_ID, Some(button_data)) => {
+                        let guild_id = match component_interaction.guild_id {
+                            Some(guild_id) => guild_id,
+                            None => {
+                                warn!("expected to be in a guild during gumroad button press");
+                                return;
+                            }
+                        };
+
                         let form_instruction_text = CreateTextDisplay::new(
                             "Please provide the name of the Jinxxy product your Gumroad license matches. If you do not see your product listed, then migration is not enabled for it and you should contact the store owner for support.",
                         );
@@ -173,35 +193,68 @@ impl EventHandler for Data {
                             "After we verify your Gumroad license a 100% discount code will be created you can use to redeem your product on Jinxxy.",
                         );
 
-                        //TODO: enumerate options for real
-                        let option1 = CreateSelectMenuOption::new("label1", "value1");
-                        let option2 = CreateSelectMenuOption::new("label2", "value2");
-                        let options = vec![option1, option2];
-                        let input = CreateSelectMenu::new(
-                            PRODUCT_ID,
-                            CreateSelectMenuKind::String {
-                                options: options.into(),
-                            },
-                        );
-                        let label = CreateLabel::select_menu("Product Name", input);
-                        let components = [
-                            CreateModalComponent::TextDisplay(form_instruction_text),
-                            CreateModalComponent::Label(label),
-                            CreateModalComponent::TextDisplay(next_step_text),
-                        ];
+                        if let Some((jinxxy_user_id, _gumroad_license_key)) = button_data.split_once(':') {
+                            let transfers = match self.db.get_gumroad_transfers_for_store(jinxxy_user_id).await {
+                                Ok(transfers) => transfers,
+                                Err(e) => {
+                                    warn!(
+                                        "Error getting gumroad transfers for store during gumroad button press: {e:?}"
+                                    );
+                                    return;
+                                }
+                            };
+                            let mut options = Vec::with_capacity(transfers.len());
+                            for transfer in transfers {
+                                let result = self
+                                    .api_cache
+                                    .get(&self.db, guild_id, jinxxy_user_id, |cache| {
+                                        let product_name = cache.product_id_to_name(&transfer.product_id);
+                                        let pretty_product_name = product_name.unwrap_or(&transfer.product_id);
+                                        CreateSelectMenuOption::new(
+                                            pretty_product_name.to_string(),
+                                            transfer.gumroad_product_id,
+                                        )
+                                    })
+                                    .await;
+                                match result {
+                                    Ok(option) => options.push(option),
+                                    Err(e) => {
+                                        warn!("Error reading API cache during gumroad button press: {e:?}");
+                                        return;
+                                    }
+                                };
+                            }
 
-                        // proxy the gumroad_license_key from the button into the modal
-                        // note that custom id can be AT MOST 100 characters long or Discord will explode
-                        let custom_id = format!("{GUMROAD_MODAL_ID}:{gumroad_license_key}");
-                        if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
-                            let modal = CreateModal::new(custom_id, "Gumroad to Jinxxy License Migration")
-                                .components(&components);
-                            let response = CreateInteractionResponse::Modal(modal);
-                            if let Err(e) = component_interaction.create_response(&context.http, response).await {
-                                warn!("Error creating response to license registration modal: {e:?}");
+                            let input = CreateSelectMenu::new(
+                                PRODUCT_ID,
+                                CreateSelectMenuKind::String {
+                                    options: options.into(),
+                                },
+                            );
+                            let label = CreateLabel::select_menu("Product Name", input);
+                            let components = [
+                                CreateModalComponent::TextDisplay(form_instruction_text),
+                                CreateModalComponent::Label(label),
+                                CreateModalComponent::TextDisplay(next_step_text),
+                            ];
+
+                            // proxy the data from the button into the modal
+                            // note that custom id can be AT MOST 100 characters long or Discord will explode
+                            let custom_id = format!("{GUMROAD_MODAL_ID}:{button_data}");
+                            if custom_id.len() <= CUSTOM_ID_CHARACTER_LIMIT {
+                                let modal = CreateModal::new(custom_id, "Gumroad to Jinxxy License Migration")
+                                    .components(&components);
+                                let response = CreateInteractionResponse::Modal(modal);
+                                if let Err(e) = component_interaction.create_response(&context.http, response).await {
+                                    warn!("Error creating response to license registration modal: {e:?}");
+                                }
+                            } else {
+                                warn!("Tried to create a custom modal ID longer than {CUSTOM_ID_CHARACTER_LIMIT}");
+                                return;
                             }
                         } else {
-                            warn!("Tried to create a custom modal ID longer than {CUSTOM_ID_CHARACTER_LIMIT}");
+                            // custom_id format was invalid
+                            warn!("Invalid custom_id \"{custom_id}\"");
                             return;
                         }
                     }
@@ -273,28 +326,26 @@ impl EventHandler for Data {
                             }
                         }
                     }
-                    (GUMROAD_MODAL_ID, Some(gumroad_license_key)) => {
+                    (GUMROAD_MODAL_ID, Some(modal_data)) => {
                         // this may take some time, so we defer the modal_interaction. If we don't ACK the interaction during the first 3s it is invalidated.
                         if let Err(e) = modal_interaction.defer(&context.http).await {
                             warn!("Error deferring modal interaction {e:?}");
                             return;
                         }
                         let start_time = Instant::now();
-                        if let Err(e) =
-                            handle_gumroad_migration(self, context, modal_interaction, gumroad_license_key).await
-                        {
+                        if let Err(e) = handle_gumroad_migration(self, context, modal_interaction, modal_data).await {
                             let elapsed_ms = start_time.elapsed().as_millis();
                             let nonce: u64 = util::generate_nonce();
                             let nonce = format!("{nonce:016X}");
                             error!("NONCE[{nonce}] Error migrating gumroad license after {elapsed_ms}ms: {e:?}");
                             let safe_display = e.safe_display();
                             let embed = CreateEmbed::default()
-                                .title("Registration Failure")
+                                .title("License Transfer Failure")
                                 .description(format!("Caused by: {safe_display}\n\nIf you report this to the bot developer, include error code `{nonce}` in your report.\n\nBugs can be reported on [our GitHub](<https://github.com/zkxs/jinx/issues>) or in [our Discord](<https://discord.gg/aKkA6m26f9>)."))
                                 .color(Colour::RED);
                             let edit = EditInteractionResponse::default().embed(embed);
                             if let Err(e) = modal_interaction.edit_response(&context.http, edit).await {
-                                warn!("Error edit register modal response: {e:?}");
+                                warn!("Error editing register modal response: {e:?}");
                                 return;
                             }
                         }
@@ -654,42 +705,139 @@ async fn grant_member_roles(data: &Data, context: &Context, new_member: &Member)
 }
 
 async fn handle_gumroad_migration(
-    _data: &Data,
+    data: &Data,
     context: &Context,
     modal_interaction: &ModalInteraction,
-    gumroad_license_key: &str,
+    modal_data: &str,
 ) -> JinxResult<()> {
     let start_time = Instant::now();
-    let product_id = modal_interaction.data.components.iter().find_map(|component| {
-        if let ModalComponent::Label(label) = component
-            && let LabelComponent::SelectMenu(select_menu) = &label.component
-            && select_menu.custom_id == PRODUCT_ID
-        {
-            select_menu
-                .values
-                .first()
-                .map(|value| value.trim())
-                .filter(|value| !value.is_empty())
+
+    let guild_id = modal_interaction
+        .guild_id
+        .ok_or_else(|| JinxError::new("expected to be in a guild"))?;
+
+    let embed = if let Some((jinxxy_user_id, gumroad_license_key)) = modal_data.split_once(':') {
+        // we've parsed the custom_id
+        // next grab the gumroad_product_id from the modal response data
+        let gumroad_product_id = modal_interaction.data.components.iter().find_map(|component| {
+            if let ModalComponent::Label(label) = component
+                && let LabelComponent::SelectMenu(select_menu) = &label.component
+                && select_menu.custom_id == PRODUCT_ID
+            {
+                select_menu
+                    .values
+                    .first()
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+            } else {
+                None
+            }
+        });
+
+        if let Some(gumroad_product_id) = gumroad_product_id {
+            if let Some(api_key) = data.db.get_jinxxy_api_key(guild_id, jinxxy_user_id).await? {
+                if let Some(jinxxy_product_id) = data
+                    .db
+                    .gumroad_to_jinxxy_product_id(jinxxy_user_id, gumroad_product_id)
+                    .await?
+                {
+                    let verification = gumroad::verify_license(gumroad_product_id, gumroad_license_key).await;
+                    match verification {
+                        Ok(true) => {
+                            debug!(
+                                "valid gumroad license for jinxxy store {} product {}",
+                                jinxxy_user_id, gumroad_product_id
+                            );
+
+                            let jinxxy_discount_code = format!("gumroad_{gumroad_license_key}");
+                            let discount_name = format!(
+                                "Jinx transfer code for Discord user {}",
+                                modal_interaction.user.id.get()
+                            );
+
+                            let discount_request = jinxxy::CreateDiscountCode::free_single_use(
+                                jinxxy_discount_code.clone(),
+                                discount_name,
+                                jinxxy_product_id,
+                            );
+                            let code_is_new = jinxxy::create_discount_code(&api_key, discount_request).await?;
+
+                            const REDEEM_INSTRUCTIONS: &str = "To redeem your product:\n\
+                            1. Find its product page on Jinxxy and add it to your cart\n\
+                            2. Enter the above code into the \"Promo Code\" box.\n\
+                            3. Verify the item price updates to $0\n\
+                            4. Check out normally";
+
+                            let message = if code_is_new {
+                                format!(
+                                    "Your Jinxxy discount code is: `{}`\n\n{}",
+                                    jinxxy_discount_code, REDEEM_INSTRUCTIONS
+                                )
+                            } else {
+                                format!(
+                                    "Your Jinxxy discount code was already created. In case you've forgotten it, here it is again: `{}`\n\n{}",
+                                    jinxxy_discount_code, REDEEM_INSTRUCTIONS
+                                )
+                            };
+                            CreateEmbed::default()
+                                .title("Gumroad to Jinxxy Migration Success")
+                                .description(message)
+                                .color(Colour::DARK_GREEN)
+                        }
+                        Ok(false) => {
+                            debug!("invalid gumroad license");
+                            CreateEmbed::default()
+                                .title("Gumroad to Jinxxy Migration Failure")
+                                .description("Gumroad license is not valid")
+                                .color(Colour::RED)
+                        }
+                        Err(e) => {
+                            warn!("Error hitting gumroad API: {e:?}");
+                            CreateEmbed::default()
+                                .title("Gumroad to Jinxxy Migration Error")
+                                .description("Unexpected error hitting Gumroad API")
+                                .color(Colour::RED)
+                        }
+                    }
+                } else {
+                    // somehow between the modal submission and now the transfer mapping is gone, and we couldn't get the jinxxy product id
+                    CreateEmbed::default()
+                        .title("Gumroad to Jinxxy Migration Error")
+                        .description("Product is invalid")
+                        .color(Colour::RED)
+                }
+            } else {
+                CreateEmbed::default()
+                    .title("Jinx Misconfiguration")
+                    .description("Jinxxy API key is not set: please contact the server administrator for support.")
+                    .color(Colour::RED)
+            }
         } else {
-            None
+            // gumroad_product_id was unset. This shouldn't happen as it's mandatory in the modal.
+            CreateEmbed::default()
+                .title("Gumroad to Jinxxy Migration Error")
+                .description("Product is invalid")
+                .color(Colour::RED)
         }
-    });
+    } else {
+        // custom_id was invalid
+        return Err(JinxError::sensitive(
+            "Migrate button is invalid",
+            format!("modal_data=\"{modal_data}\""),
+        ));
+    };
 
-    //TODO: verify gumroad for real
-    if let Some(product_id) = product_id {
-        let verification = gumroad::verify_license(product_id, gumroad_license_key).await;
-        debug!("gumroad verification result: {:?}", verification);
-    }
-
-    //TODO: remove placeholder response
-    let embed = CreateEmbed::default()
-        .title("Gumroad to Jinxxy Migration Error")
-        .description("This interaction is not implemented")
-        .color(Colour::RED);
     let edit = EditInteractionResponse::default().embed(embed).components(&[]);
     let user_notification_result = modal_interaction.edit_response(&context.http, edit).await;
     if let Err(error) = user_notification_result {
-        error!("Error notifying user of missing license key: {:?}", error);
+        error!("Error updating message after gumroad modal: {:?}", error);
+    }
+
+    // log if gumroad transfer took a really long time
+    let elapsed = start_time.elapsed();
+    if elapsed > Duration::from_secs(5) {
+        let elapsed_ms = elapsed.as_millis();
+        warn!("Gumroad transfer took {elapsed_ms}ms");
     }
 
     Ok(())
@@ -752,14 +900,15 @@ async fn handle_license_registration(
         */
         let send_fail_message = async || {
             if matches!(license_type, LicenseType::Gumroad) {
-                let can_migrate_gumroad = true; //TODO: load this from db
-
-                if can_migrate_gumroad {
+                if data.db.store_can_gumroad_transfer(&jinxxy_user_id).await? {
                     // we hijack the normal fail message flow here and pivot into asking if the user wants to do a gumroad migration
                     let description = "Gumroad to Jinxxy migration is possible for some products in this Jinxxy store. To see if your license is eligible, press the button below:";
-                    let buttons = [CreateButton::new(format!("{}:{}", GUMROAD_BUTTON_ID, license_key))
-                        .label("Migrate")
-                        .style(ButtonStyle::Primary)];
+                    let buttons =
+                        [
+                            CreateButton::new(format!("{}:{}:{}", GUMROAD_BUTTON_ID, jinxxy_user_id, license_key))
+                                .label("Migrate")
+                                .style(ButtonStyle::Primary),
+                        ];
                     let action_row = CreateActionRow::Buttons(buttons.as_ref().into());
                     let components = [CreateComponent::ActionRow(action_row)];
                     let embed = CreateEmbed::default()
@@ -1071,9 +1220,10 @@ async fn handle_license_registration(
                                         owner_message.push_str(bullet_point.as_str());
                                     }
                                     Err(e) => match e {
-                                        Error::Http(serenity::http::HttpError::UnsuccessfulRequest(http_error))
-                                            if http_error.status_code == serenity::http::StatusCode::NOT_FOUND
-                                                && http_error.error.message == "Unknown Role" =>
+                                        serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(
+                                            http_error,
+                                        )) if http_error.status_code == serenity::http::StatusCode::NOT_FOUND
+                                            && http_error.error.message == "Unknown Role" =>
                                         {
                                             // this role no longer exists, so just delete it now and don't tell the user
                                             if let Err(e) = data.db.delete_role(guild_id, role).await {

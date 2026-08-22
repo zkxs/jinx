@@ -89,7 +89,7 @@ async fn get_latest_release() -> Result<RemoteVersion, Error> {
         .map_err(|e| format!("Update check failed: {e}"))?;
     debug!("update check took {}ms", start_time.elapsed().as_millis());
 
-    //TODO: implement etag-based caching
+    //TODO-MAYBE: implement caching of github API responses if somehow this path ever gets hotter. Etags work here.
 
     let status = response.status();
     let result = response.json::<RemoteVersion>().await.map_err(|e| {

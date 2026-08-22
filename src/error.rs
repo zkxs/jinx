@@ -84,11 +84,11 @@ impl JinxError {
 
     /// `public` is a message that is safe to display to a user.
     /// `private` is a message that may contain sensitive information.
-    pub fn sensitive(public: impl Into<String>, private: impl Into<String>) -> Self {
-        Self::Sensitive {
+    pub fn sensitive(public: impl Into<String>, private: impl Into<String>) -> Box<Self> {
+        Box::new(Self::Sensitive {
             public: public.into(),
             private: private.into(),
-        }
+        })
     }
 
     /// Check if this error was caused by an invalid Jinxxy API key

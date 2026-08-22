@@ -290,12 +290,6 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> JinxResult<()> {
             r#"CREATE INDEX IF NOT EXISTS activation_lookup_by_activator ON license_activation (activator_user_id)"#,
         )
         .await?;
-    // for searching for gumroad product IDs given a jinxxy product ID
-    connection
-        .execute(
-            r#"CREATE INDEX IF NOT EXISTS gumroad_product_lookup_by_jinxxy_product ON jinxxy_gumroad_product (jinxxy_user_id, product_id)"#,
-        )
-        .await?;
 
     // Applications that use long-lived database connections should run "PRAGMA optimize=0x10002;" when the connection is first opened.
     // All applications should run "PRAGMA optimize;" after a schema change.

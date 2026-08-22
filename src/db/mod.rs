@@ -1652,6 +1652,22 @@ impl JinxDb {
         Ok(result)
     }
 
+    /// Get a specific jinxxy product ID from a gumroad product id
+    pub async fn gumroad_to_jinxxy_product_id(
+        &self,
+        jinxxy_user_id: &str,
+        gumroad_product_id: &str,
+    ) -> JinxResult<Option<String>> {
+        let result = sqlx::query_scalar!(
+            r#"SELECT product_id FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ? and gumroad_product_id = ?"#,
+            jinxxy_user_id,
+            gumroad_product_id
+        )
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(result)
+    }
+
     /// Create a gumroad transfer config for the given store
     pub async fn upsert_gumroad_transfer(
         &self,

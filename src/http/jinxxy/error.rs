@@ -260,7 +260,7 @@ impl Display for JinxxyErrorMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             JinxxyErrorMessage::SingleMessage(message) => write!(f, "{message}"),
-            JinxxyErrorMessage::MultiMessage(messages) => write!(f, "{messages:?}"), //TODO: display this better
+            JinxxyErrorMessage::MultiMessage(messages) => write!(f, "{messages:?}"),
         }
     }
 }

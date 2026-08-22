@@ -8,9 +8,8 @@ mod error;
 
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
-use crate::http::jinxxy::dto::CreateDiscountCode;
 use crate::license::LicenseKey;
-pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
+pub use dto::{AuthUser, CreateDiscountCode, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Response, header};
@@ -339,7 +338,7 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
     Ok(response.id)
 }
 
-/// Create a new discount code
+/// Create a new discount code. If the code is newly created, return `true`, and if the code already exists return `false`.
 pub async fn create_discount_code(api_key: &str, discount_code: CreateDiscountCode) -> JinxxyResult<bool> {
     static ENDPOINT: &str = "POST /discount_codes";
     let start_time = Instant::now();
