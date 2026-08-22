@@ -1003,7 +1003,7 @@ pub(in crate::bot) async fn backfill_license_activation(context: Context<'_>) ->
         1
     };
     let chunk_size = db_activations.len().div_ceil(parallelism);
-    let mut join_set = JoinSet::<Result<(u64, u64), JinxError>>::new();
+    let mut join_set = JoinSet::<Result<(u64, u64), Box<JinxError>>>::new();
     for chunk in db_activations.chunks(chunk_size) {
         // tragically we must clone here because you can't just split an allocation
         // the only alternative would be some reference counting solution such as vecshard to drop once all shards are dropped

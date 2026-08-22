@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT * FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ?) AS \"has_any: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has_any: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6594f1799016ba784cdd83478e670b3209f1b61d8a173386b17ad41b39a14192"
+}

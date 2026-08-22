@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2025 jinx contributors.
+// This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 use crate::bot::util::SafeDisplay;
@@ -8,12 +8,16 @@ use serenity::Error as SerenityError;
 use sqlx::error::Error as SqlxError;
 use std::fmt::{Display, Formatter};
 
+pub type JinxResult<T> = Result<T, Box<JinxError>>;
+
+/// High level error type that can contain anything that goes wrong with Jinx. This type has grown quite large, so it
+/// is always boxed
 #[derive(Debug)]
 #[allow(dead_code)] // these are debug printed frequently
 pub enum JinxError {
     Message(String),
     Sensitive { public: String, private: String },
-    Jinxxy(JinxxyError),
+    Jinxxy(Box<JinxxyError>),
     Sqlite(SqlxError),
     Serenity(SerenityError),
 }
@@ -54,44 +58,37 @@ impl<'a> SafeDisplay<'a, RedactedJinxError<'a>> for JinxError {
     }
 }
 
-impl From<JinxxyError> for JinxError {
-    fn from(e: JinxxyError) -> Self {
-        Self::Jinxxy(e)
-    }
-}
-
-// no clue why this isn't implied, but whatever
-impl From<JinxxyError> for Box<JinxError> {
-    fn from(e: JinxxyError) -> Self {
+impl From<Box<JinxxyError>> for Box<JinxError> {
+    fn from(e: Box<JinxxyError>) -> Self {
         Box::new(JinxError::Jinxxy(e))
     }
 }
 
-impl From<SqlxError> for JinxError {
+impl From<SqlxError> for Box<JinxError> {
     fn from(e: SqlxError) -> Self {
-        Self::Sqlite(e)
+        Box::new(JinxError::Sqlite(e))
     }
 }
 
-impl From<SerenityError> for JinxError {
+impl From<SerenityError> for Box<JinxError> {
     fn from(e: SerenityError) -> Self {
-        Self::Serenity(e)
+        Box::new(JinxError::Serenity(e))
     }
 }
 
 impl JinxError {
     /// `message` is a message that is safe to display to a user
-    pub fn new(message: impl Into<String>) -> Self {
-        Self::Message(message.into())
+    pub fn new(message: impl Into<String>) -> Box<Self> {
+        Box::new(Self::Message(message.into()))
     }
 
     /// `public` is a message that is safe to display to a user.
     /// `private` is a message that may contain sensitive information.
-    pub fn sensitive(public: impl Into<String>, private: impl Into<String>) -> Self {
-        Self::Sensitive {
+    pub fn sensitive(public: impl Into<String>, private: impl Into<String>) -> Box<Self> {
+        Box::new(Self::Sensitive {
             public: public.into(),
             private: private.into(),
-        }
+        })
     }
 
     /// Check if this error was caused by an invalid Jinxxy API key

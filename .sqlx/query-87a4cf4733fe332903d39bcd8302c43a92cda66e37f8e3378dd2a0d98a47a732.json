@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE from jinxxy_gumroad_product WHERE jinxxy_user_id = ? AND gumroad_product_id = ? RETURNING product_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_gumroad_product",
+            "name": "product_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "87a4cf4733fe332903d39bcd8302c43a92cda66e37f8e3378dd2a0d98a47a732"
+}

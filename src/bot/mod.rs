@@ -43,11 +43,9 @@ pub static MISSING_API_KEY_MESSAGE: &str = "Jinxxy API key is not set: please us
 /// Message shown to admins when there's no store link for the username they provided via some command
 pub static MISSING_STORE_LINK_MESSAGE: &str = "No linked store with that username was found.";
 
-const REGISTER_MODAL_ID: &str = "jinx_register_modal";
-
 /// Version number for the guild commands that is incremented whenever a command's definition (not code!) changes,
 /// or a new command is added
-const GUILD_COMMAND_VERSION: i64 = 1;
+const GUILD_COMMAND_VERSION: i64 = 2;
 
 /// commands to be installed globally
 const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, version];
@@ -56,10 +54,13 @@ const GLOBAL_COMMANDS: &[fn() -> Command<Data, Error>] = &[add_store, help, vers
 const CREATOR_COMMANDS: &[fn() -> Command<Data, Error>] = &[
     create_post,
     deactivate_license,
+    disable_gumroad_transfer,
+    enable_gumroad_transfer,
     grant_missing_roles,
     license_info,
     link_product,
     link_product_version,
+    list_gumroad_transfers,
     list_links,
     lock_license,
     set_log_channel,

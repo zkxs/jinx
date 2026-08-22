@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT product_id FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ? and gumroad_product_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "product_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_gumroad_product",
+            "name": "product_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "228c3b6687288daafec0fb897cecbad457f84ad4404253ab8cfd241ab4b59e19"
+}

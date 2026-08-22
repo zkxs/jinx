@@ -1,4 +1,4 @@
-// This file is part of jinx. Copyright © 2025 jinx contributors.
+// This file is part of jinx. Copyright © 2025-2026 jinx contributors.
 // jinx is licensed under the GNU AGPL v3.0 or any later version. See LICENSE file for full text.
 
 //! HTTP API calls
@@ -7,6 +7,7 @@ use crate::constants;
 use std::sync::LazyLock;
 use std::time::Duration;
 
+pub mod gumroad;
 pub mod jinxxy;
 pub mod update_checker;
 

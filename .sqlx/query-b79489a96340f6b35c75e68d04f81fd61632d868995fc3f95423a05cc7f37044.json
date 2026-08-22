@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT gumroad_product_id, product_id FROM jinxxy_gumroad_product WHERE jinxxy_user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "gumroad_product_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_gumroad_product",
+            "name": "gumroad_product_id"
+          }
+        }
+      },
+      {
+        "name": "product_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jinxxy_gumroad_product",
+            "name": "product_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "b79489a96340f6b35c75e68d04f81fd61632d868995fc3f95423a05cc7f37044"
+}

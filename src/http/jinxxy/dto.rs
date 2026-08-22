@@ -144,14 +144,19 @@ impl AuthUser {
         self.scopes.contains("products_read")
     }
 
-    // /// Check if this API key has the `orders_read` scope
-    // fn has_scope_orders_read(&self) -> bool {
-    //     self.scopes.contains("orders_read")
-    // }
-
     // /// Check if this API key has the `discount_codes_read` scope
     // fn has_scope_discount_codes_read(&self) -> bool {
     //     self.scopes.contains("discount_codes_read")
+    // }
+
+    /// Check if this API key has the `discount_codes_write` scope
+    pub fn has_scope_discount_codes_write(&self) -> bool {
+        self.scopes.contains("discount_codes_write")
+    }
+
+    // /// Check if this API key has the `orders_read` scope
+    // fn has_scope_orders_read(&self) -> bool {
+    //     self.scopes.contains("orders_read")
     // }
 
     // /// Check if this API key has the `customers_read` scope
@@ -326,6 +331,44 @@ impl CreateLicenseActivation {
     pub fn from_user_id(user_id: u64) -> Self {
         Self {
             description: format!("{DISCORD_PREFIX}{user_id}"),
+        }
+    }
+}
+
+/// Request body to create a discount code. There is also a `expires_at` field I don't use, so have excluded.
+#[derive(Debug, Serialize)]
+pub struct CreateDiscountCode {
+    /// Discount amount (cents for FIXED_AMOUNT, percentage for PERCENTAGE). Min: 1
+    amount: i64,
+    /// The discount code customers will enter. min length: 1
+    code: String,
+    /// Display name for the discount. min length: 1
+    name: String,
+    /// Where the discount applies. Must be either "STORE" or "PRODUCT"
+    scope: String,
+    /// Type of discount. Must be either "FIXED_AMOUNT" or "PERCENTAGE"
+    #[serde(rename = "type")]
+    discount_type: String,
+    /// Product IDs if scope is PRODUCT
+    product_ids: Option<Vec<String>>,
+    /// Maximum number of uses (null for unlimited, minimum 1)
+    use_limit: Option<i64>,
+}
+
+impl CreateDiscountCode {
+    /// Create a request to create a new 100% discount code with a single use for the given product.
+    /// - `code`: The discount code customers will enter
+    /// - `name`: Display name for the discount
+    /// - `product_id`: Jinxxy product ID
+    pub fn free_single_use(code: String, name: String, product_id: String) -> Self {
+        Self {
+            amount: 100,
+            code,
+            name,
+            scope: "PRODUCT".to_string(),
+            discount_type: "PERCENTAGE".to_string(),
+            product_ids: Some(vec![product_id]),
+            use_limit: Some(1),
         }
     }
 }

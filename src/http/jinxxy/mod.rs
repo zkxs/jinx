@@ -9,7 +9,7 @@ mod error;
 use super::HTTP1_CLIENT as HTTP_CLIENT;
 use crate::bot::util;
 use crate::license::LicenseKey;
-pub use dto::{AuthUser, FullProduct, LicenseActivation, PartialProduct};
+pub use dto::{AuthUser, CreateDiscountCode, FullProduct, LicenseActivation, PartialProduct};
 pub use error::{JinxxyError, JinxxyResult};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Response, header};
@@ -178,13 +178,9 @@ pub async fn check_license(
                 Ok(Some(response))
             } else {
                 debug!("could not look up user-provided license id");
-                // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
+                // jinxxy API gives a 404 if the license ID doesn't exist
                 let error = JinxxyError::from_response(ENDPOINT, response).await;
-                if error.is_403() || error.is_404() {
-                    Ok(None)
-                } else {
-                    Err(error)
-                }
+                if error.is_http_code(404) { Ok(None) } else { Err(error) }
             }
         }
         LicenseKey::Short(license_key) => {
@@ -285,7 +281,7 @@ pub async fn get_license_activations(
         warn!(
             "NONCE[{nonce}] {url} returned exactly {ACTIVATION_PAGINATION_LIMIT} items, which is the pagination limit"
         );
-        Err(JinxxyError::UnsupportedPagination(nonce))
+        Err(Box::new(JinxxyError::UnsupportedPagination(nonce)))
     } else {
         Ok(response.results)
     }
@@ -293,7 +289,7 @@ pub async fn get_license_activations(
 
 /// Get a single license activation by its activation_id
 ///
-/// Note that the Delete jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
+/// Note that the Delete License Activation jinxxy API has a bug where it doesn't delete license activations from this API. List works as expected.
 pub async fn get_license_activation(
     api_key: &str,
     license_id: &str,
@@ -315,8 +311,7 @@ pub async fn get_license_activation(
     } else {
         debug!("could not get license id \"{license_id}\" activation id \"{activation_id}\"");
         let error = JinxxyError::from_response(ENDPOINT, response).await;
-        if error.is_404() {
-            //TODO: this is speculation as to how this will behave in the future
+        if error.is_http_code(404) {
             // license activation was not found
             Ok(None)
         } else {
@@ -343,6 +338,33 @@ pub async fn create_license_activation(api_key: &str, license_id: &str, user_id:
     Ok(response.id)
 }
 
+/// Create a new discount code. If the code is newly created, return `true`, and if the code already exists return `false`.
+pub async fn create_discount_code(api_key: &str, discount_code: CreateDiscountCode) -> JinxxyResult<bool> {
+    static ENDPOINT: &str = "POST /discount_codes";
+    let start_time = Instant::now();
+    let response = HTTP_CLIENT
+        .post(format!("{JINXXY_BASE_URL}discount_codes"))
+        .headers(get_headers(api_key))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&discount_code)
+        .send()
+        .await
+        .map_err(|e| JinxxyError::from_request(ENDPOINT, e))?;
+    debug!("{} took {}ms", ENDPOINT, start_time.elapsed().as_millis());
+    if response.status().is_success() {
+        Ok(true)
+    } else {
+        debug!("could not look up user-provided license id");
+        // jinxxy API really doesn't expect you to pass invalid license IDs, so we have to do some convoluted bullshit here to figure out what exactly went wrong
+        let error = JinxxyError::from_response(ENDPOINT, response).await;
+        if error.is_http_code(400) || error.is_http_code(404) {
+            Ok(false)
+        } else {
+            Err(error)
+        }
+    }
+}
+
 /// Delete a license activation. Returns `true` if the activation was deleted, or `false` if it was not found.
 ///
 /// Note that this jinxxy API has a bug where it doesn't delete license activations from the Retrieve API. List works as expected.
@@ -363,7 +385,7 @@ pub async fn delete_license_activation(api_key: &str, license_id: &str, activati
     } else {
         debug!("could not delete license id \"{license_id}\" activation id \"{activation_id}\"");
         let error = JinxxyError::from_response(ENDPOINT, response).await;
-        if error.is_404() {
+        if error.is_http_code(404) {
             // license was not found
             Ok(false)
         } else {

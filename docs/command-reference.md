@@ -24,6 +24,14 @@
 | `/list_links`                                      | Manage Roles        | List all product→role links.                                                                                                 |
 | `/grant_missing_roles [role]`                      | Manage Roles        | Grant a role to any users who have a license but are missing the linked role. Omit role parameter to run for all roles.      |
 
+## Gumroad Transfer Commands
+
+| Command                                                          | Required Permission | Description                                                               |
+| ---------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------- |
+| `/enable_gumroad_transfer <gumroad_product_id> <jinxxy_product>` | Manage Roles        | Enable transferring a Gumroad license to Jinxxy for a particular product  |
+| `/disable_gumroad_transfer <store_name> <gumroad_product_id>`    | Manage Roles        | Disable transferring a Gumroad license to Jinxxy for a particular product |
+| `/list_gumroad_transfers`                                        | Manage Roles        | List all the Gumroad→Jinxxy transfer links.                               |
+
 ## License Management Commands
 
 | Command                                             | Required Permission | Description                                                                                                                          |
