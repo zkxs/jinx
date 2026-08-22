@@ -7,7 +7,7 @@ use poise::futures_util::TryStreamExt;
 use sqlx::{Executor, Row, SqliteConnection};
 use std::collections::HashMap;
 use tokio::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 
 const SCHEMA_MINOR_VERSION_KEY: &str = "schema_minor_version";
 const SCHEMA_PATCH_VERSION_KEY: &str = "schema_patch_version";
@@ -295,13 +295,20 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> JinxResult<()> {
     // All applications should run "PRAGMA optimize;" after a schema change.
     connection.execute(r#"PRAGMA optimize = 0x10002"#).await?;
 
-    // update the schema version value persisted to the DB
-    helper::set_setting(connection, SCHEMA_MINOR_VERSION_KEY, SCHEMA_MINOR_VERSION_VALUE).await?;
-    helper::set_setting(connection, SCHEMA_PATCH_VERSION_KEY, SCHEMA_PATCH_VERSION_VALUE).await?;
+    // if the schema version needs to be increased, persisted it to the DB
+    if schema_version < (SCHEMA_MINOR_VERSION_VALUE, SCHEMA_PATCH_VERSION_VALUE) {
+        helper::set_setting(connection, SCHEMA_MINOR_VERSION_KEY, SCHEMA_MINOR_VERSION_VALUE).await?;
+        helper::set_setting(connection, SCHEMA_PATCH_VERSION_KEY, SCHEMA_PATCH_VERSION_VALUE).await?;
+    } else if schema_version > (SCHEMA_MINOR_VERSION_VALUE, SCHEMA_PATCH_VERSION_VALUE) {
+        warn!(
+            "DB is running a newer schema version (2.{}.{}) than this code but it should be compatible",
+            schema_version.0, schema_version.1
+        );
+    }
 
     let elapsed = start.elapsed();
     debug!(
-        "initialized v2.{}.{} db in {}ms",
+        "initialized v2.{}.{} db schema in {}ms",
         SCHEMA_MINOR_VERSION_VALUE,
         SCHEMA_PATCH_VERSION_VALUE,
         elapsed.as_millis()
