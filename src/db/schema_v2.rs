@@ -256,7 +256,7 @@ pub(super) async fn init(connection: &mut SqliteConnection) -> JinxResult<()> {
     if schema_version < (1, 1) {
         connection
             .execute(
-                r#"CREATE TABLE jinxxy_gumroad_product (
+                r#"CREATE TABLE IF NOT EXISTS jinxxy_gumroad_product (
                    jinxxy_user_id         TEXT NOT NULL,
                    gumroad_product_id     TEXT NOT NULL,
                    product_id             TEXT NOT NULL,
