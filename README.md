@@ -3,6 +3,8 @@
 Jinx is a free, open source Discord bot that grants roles to users in your server when they register [Jinxxy](https://jinxxy.com/)
 license keys. Note that the Jinx bot is not affiliated with Jinxxy: this is an independent project.
 
+No AI was used in the making of this software.
+
 > [!IMPORTANT]
 > **[Click here to add the bot to your server][bot install]**  
 > <small>(and then go follow the [installation instructions](#installation))</small>
