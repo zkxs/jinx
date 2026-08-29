@@ -3,7 +3,8 @@
 Jinx can automatically grant a code to redeem a Jinxxy product when a customer presents a valid Gumroad license.
 
 > [!NOTE]
-> Jinxxy now has a 1st-party [Gumroad store importer](https://feedback.jinxxy.com/changelog/gumroad-store-importer) which may be a better fit for you.
+> Jinxxy now has a 1st-party [Gumroad store importer](https://feedback.jinxxy.com/changelog/gumroad-store-importer) which may be a better fit for you
+> ([feature comparison](#comparison-to-jinxxys-gumroad-store-importer)).
 
 To set up license transfers in Jinx, the store owner must take the following steps:
 
@@ -28,3 +29,17 @@ Jinx achieves the transfer by granting a single-use 100% discount code. This is 
 - **The discount code does not expire**. A user could hold their unused code for an indefinite time. (If this is problematic please let me know, as I actually do have the ability to change this).
 - **Discount codes can be redeemed for any product version**. If you use product versions on Jinxxy, especially if they have different prices, this could be problematic.
 - **Jinx does not revoke access on Gumroad**. Customers will have access to the product on both marketplaces.
+
+## Comparison to Jinxxy's Gumroad Store Importer
+
+| Feature                                     | Jinx Bot | Jinxxy.com Importer | Notes                                                                      |
+| ------------------------------------------- | -------- | ------------------- | -------------------------------------------------------------------------- |
+| user interface                              | Discord  | Web                 |                                                                            |
+| Gumroad → Jinxxy license transfer           | ✔️        | ✔️                   |                                                                            |
+| creates Jinxxy listing from Gumroad listing | ❌        | ✔️                   |                                                                            |
+| 1st-party                                   | ❌        | ✔️                   |                                                                            |
+| direct product grant                        | ❌        | ✔️                   | Jinx uses 100% discount codes                                              |
+| Emails your Gumroad customers               | ❌        | ✔️                   |                                                                            |
+| multi-use                                   | ✔️        | ❌                   | Jinxxy's importer can only be used by a store once                         |
+| link products with differing names          | ✔️        | ❌                   | Jinxxy's importer requires Gumroad/Jinxxy product names to match *exactly* |
+| revokes Gumroad access after transfer       | ❌        | ❌                   |                                                                            |
