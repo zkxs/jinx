@@ -11,7 +11,7 @@ use crate::error::JinxError;
 use crate::http::jinxxy;
 use crate::http::jinxxy::{GetProfileImageUrl as _, GetUsername as _};
 use poise::{CreateReply, serenity_prelude as serenity};
-use serenity::{Colour, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
+use serenity::{Colour, CreateAttachment, CreateEmbed, CreateMessage, GuildId, GuildRef, UserId};
 use std::sync::atomic;
 use tokio::task::JoinSet;
 use tokio::time::{Duration, Instant};
@@ -565,7 +565,13 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
 
     let reply = if any_misconfigurations {
         lines.push_str("```");
-        error_reply("Misconfigured Guild Report", lines)
+        if lines.len() > 4096 {
+            // we have a lot of text to send. Too much for a single embed.
+            success_reply("Misconfigured Guild Report", "Report is too long so it is attached instead")
+                .attachment(CreateAttachment::bytes(lines, "misconfigured_guilds.txt"))
+        } else {
+            success_reply("Misconfigured Guild Report", lines)
+        }
     } else {
         success_reply("Misconfigured Guild Report", "No misconfigured guilds!")
     };
