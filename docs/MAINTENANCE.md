@@ -52,7 +52,7 @@ https://crates.io/crates/libsqlite3-sys/0.35.0/code/sqlite3/bindgen_bundled_vers
 I have manually collected the mapping for selected versions:
 
 | libsqlite3-sys | sqlite |
-|----------------|--------|
+| -------------- | ------ |
 | 0.34.0         | 3.49.2 |
 | 0.35.0         | 3.50.2 |
 | 0.36.0         | 3.51.1 |
@@ -60,6 +60,8 @@ I have manually collected the mapping for selected versions:
 | 0.38.0         | 3.53.1 |
 | 0.38.1         | 3.53.2 |
 | 0.38.2         | 3.53.2 |
+| 0.39.0         | 3.54.0 |
+| 0.39.1         | 3.54.1 |
 
 Relevant pages with information on sqlite versions:
 - https://sqlite.org/changes.html
@@ -71,14 +73,14 @@ To patch jinx for sqlite bugs:
 2. `git checkout main`
 3. `git pull`
 4. `git push origin`
-4. `git branch libsqlite3-0.38-3.53`
-5. `git checkout libsqlite3-0.38-3.53`
-6. Update Cargo.toml to reference libsqlite3 0.38
-6. `cargo test -p sqlx-sqlite --features bundled,deserialize,load-extension,unlock-notify`
-7. `cargo test -p sqlx --lib --features macros,sqlite,runtime-tokio`
-8. `git push`
-9. Go back to your https://github.com/zkxs/jinx checkout
-10. Update Cargo.toml to reference the new sqlx branch
+5. `git branch libsqlite3-0.39-3.54`
+6. `git checkout libsqlite3-0.39-3.54`
+7. Update Cargo.toml to reference libsqlite3 0.39 (there may be multiple references!)
+8. `cargo test -p sqlx-sqlite --features bundled,deserialize,load-extension,unlock-notify`
+9. `cargo test -p sqlx --lib --features macros,sqlite,runtime-tokio`
+10. `git push`
+11. Go back to your https://github.com/zkxs/jinx checkout
+12. Update Cargo.toml to reference the new sqlx branch
 
 # How Jinx Works
 

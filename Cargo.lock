@@ -1345,9 +1345,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -2203,7 +2203,7 @@ dependencies = [
 [[package]]
 name = "sqlx"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -2215,7 +2215,7 @@ dependencies = [
 [[package]]
 name = "sqlx-core"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2248,7 +2248,7 @@ dependencies = [
 [[package]]
 name = "sqlx-macros"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2260,7 +2260,7 @@ dependencies = [
 [[package]]
 name = "sqlx-macros-core"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "cfg-if",
  "dotenvy",
@@ -2283,7 +2283,7 @@ dependencies = [
 [[package]]
 name = "sqlx-mysql"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -2307,7 +2307,7 @@ dependencies = [
 [[package]]
 name = "sqlx-postgres"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "atoi",
  "base64 0.22.1",
@@ -2340,7 +2340,7 @@ dependencies = [
 [[package]]
 name = "sqlx-sqlite"
 version = "0.9.0"
-source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.38-3.53#1c43a6cec6891ee350795be53e57073f9365133a"
+source = "git+https://github.com/zkxs/sqlx.git?branch=libsqlite3-0.39-3.54#ae659a0ca4e5e6708e589abc216f734deddb8e29"
 dependencies = [
  "atoi",
  "flume",

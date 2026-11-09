@@ -228,8 +228,9 @@ skip = [
     { crate = "getrandom@0.2", reason = "used by rustls"},
     { crate = "webpki-roots@0.26", reason = "used by serenity / tokio-tungstenite"},
     { crate = "block-buffer@0.10.4", reason = "used by serenity / tokio-tungstenite"},
-    { crate = "crypto-common@0.1.7", reason = "used by serenity / tokio-tungstenite"},
+    { crate = "crypto-common@0.1.6", reason = "used by serenity / tokio-tungstenite"},
     { crate = "digest@0.10.7", reason = "used by serenity / tokio-tungstenite"},
+    { crate = "base64@0.22.1", reason = "used by serenity / sqlx"},
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
