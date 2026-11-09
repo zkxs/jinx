@@ -567,8 +567,11 @@ pub(in crate::bot) async fn misconfigured_guilds(context: Context<'_>) -> Result
         lines.push_str("```");
         if lines.len() > 4096 {
             // we have a lot of text to send. Too much for a single embed.
-            success_reply("Misconfigured Guild Report", "Report is too long so it is attached instead")
-                .attachment(CreateAttachment::bytes(lines, "misconfigured_guilds.txt"))
+            success_reply(
+                "Misconfigured Guild Report",
+                "Report is too long so it is attached instead",
+            )
+            .attachment(CreateAttachment::bytes(lines, "misconfigured_guilds.txt"))
         } else {
             success_reply("Misconfigured Guild Report", lines)
         }

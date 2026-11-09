@@ -257,11 +257,22 @@ pub struct ProductVersion {
 #[derive(Debug, Deserialize)]
 pub struct ProductList {
     results: Vec<PartialProduct>,
+    /// total number of pages, 1-indexed
+    page_count: u32,
 }
 
 impl ProductList {
-    pub fn products(self) -> Vec<PartialProduct> {
+    pub fn products(&self) -> &[PartialProduct] {
+        &self.results
+    }
+
+    pub fn into_products(self) -> Vec<PartialProduct> {
         self.results
+    }
+
+    /// total number of pages, 1-indexed
+    pub fn page_count(&self) -> u32 {
+        self.page_count
     }
 }
 

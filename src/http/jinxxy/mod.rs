@@ -439,25 +439,24 @@ pub async fn get_products(api_key: &str) -> JinxxyResult<Vec<PartialProduct>> {
     let mut page_number: u32 = 1;
     loop {
         let response = util::retry_thrice(|| get_products_page(api_key, page_number)).await?;
-        let response = response.products();
 
-        if response.is_empty() {
+        if response.products().is_empty() {
             // we are past the last page and should stop iterating
             // `products` vec already contains everything we need to return
             break;
         } else {
-            let response_len = response.len();
+            let page_count = response.page_count();
 
             // add this page of products to the `products` vec we will eventually return
             if products.is_empty() {
                 // don't do an allocation + copy for the first page: just steal the vec
-                products = response;
+                products = response.into_products();
             } else {
-                products.extend(response);
+                products.extend(response.into_products());
             }
 
-            if response_len < PRODUCT_PAGINATION_LIMIT {
-                // we got less than the limit, which implies this is the last page
+            if page_number >= page_count {
+                // the response explicitly tells us were at (or beyond) the last page
                 break;
             }
 
