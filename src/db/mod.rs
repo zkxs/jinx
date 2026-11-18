@@ -499,10 +499,7 @@ impl JinxDb {
     /// This deletes MOST of a guild's data:
     ///
     /// - all guild:store links for this guild, represented as rows in the `jinxxy_user_guild` table
-    /// - most guild settings in the `guild` table *except* certain values that should persist forever in case the guild
-    ///   is restored later, including:
-    ///   - gumroad_failure_count and gumroad_nag_count, as your sins must not be forgotten
-    ///   - default_jinxxy_user, as we cannot guarantee you've destroyed all your legacy register buttons
+    /// - all guild settings in the `guild` table *except* in the rare case where the guild is banned, and we need to remember that.
     /// - all `product_role` and `product_version_role` entries referencing the removed `jinxxy_user_guild` entries
     ///   (handled automatically by ON DELETE CASCADE)
     /// - all `jinxxy_user` entries that are no longer linked to any guild via `jinxxy_user_guild`
@@ -1967,15 +1964,33 @@ mod helper {
             .execute(&mut **transaction)
             .await?;
 
-        // note that if the guild's row is somehow not present, this is a no-op, which is totally fine.
-        sqlx::query!(
-            r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, blanket_role_id = NULL, command_version = NULL
-               WHERE guild_id = ?"#,
+        let banned = sqlx::query_scalar!(
+            r#"SELECT banned AS "banned: bool" FROM guild WHERE guild_id = ?"#,
             guild_id
         )
-        .execute(&mut **transaction)
-        .await?;
+        .fetch_optional(&mut **transaction)
+        .await?
+        .unwrap_or(false);
 
+        if banned {
+            // The guild is banned, so we need to retain ONLY the ban metadata.
+            // Note: if the guild's row is somehow not present, this is a no-op, which is totally fine.
+            // Note: deleting default_jinxxy_user could cause some weird issue with legacy register buttons, but this is a price users will have to pay if they kick and re-add the bot.
+            sqlx::query!(
+                r#"UPDATE guild SET log_channel_id = NULL, test = FALSE, owner = FALSE, gumroad_failure_count = 0, gumroad_nag_count = 0, blanket_role_id = NULL, default_jinxxy_user = NULL, command_version = NULL
+                   WHERE guild_id = ?"#,
+                guild_id
+            )
+            .execute(&mut **transaction)
+            .await?;
+        } else {
+            // No guild data needs to be retained. Delete it all.
+            sqlx::query!(r#"DELETE FROM guild WHERE guild_id = ?"#, guild_id)
+                .execute(&mut **transaction)
+                .await?;
+        }
+
+        // delete all Jinxxy users that are no longer in use by ANY guild. This check is needed for the uncommon case where a store is linked to multiple guilds.
         let deleted_users = sqlx::query_scalar!(
             r#"DELETE from jinxxy_user WHERE jinxxy_user_id NOT IN (SELECT jinxxy_user_id FROM jinxxy_user_guild) RETURNING jinxxy_user_id"#
         )
