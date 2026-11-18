@@ -82,15 +82,22 @@ As the bot owner, you have access to additional owner-only commands:
 | `/set_test <True/False>`                    | Set/unset this server as a test server.                                                                                           |
 | `/announce_test <message> [title]`          | Send an announcement to the log channels for all servers marked as test servers using the `/set_test` command.                    |
 | `/announce <message> [title]`               | Send an announcement to the log channels for all servers                                                                          |
+| `/ban_guild <guild> [reason]`               | Ban a guild from adding this bot, optionally providing a reason why.                                                              |
+| `/ban_user <user> [reason]`                 | Ban a user from interacting with this bot, optionally providing a reason why. This can also be used via the context menu.         |
+| `/unban_guild <guild>`                      | Unban a guild from adding this bot.                                                                                               |
+| `/unban_user <user>`                        | Unban a user from interacting with this bot. This can also be used via the context menu.                                          |
+
+There are also a few niche commands that are for support, debugging, or one-off DB updates that are unlikely to be relevant to independent bot operators. Regardless, they're documented here:
+
+| Command                                     | Description                                                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `/verify_guild <guild_id> [guild_owner_id]` | Verify if the provided guild ID is owned by the provided user ID. Intended use is to verify guild ownership for support requests. |
 | `/whois <user>`                             | Check a user's guild ownership status. Intended as an alternative way to verify guild ownership for support requests.             |
 | `/misconfigured_guilds`                     | List guilds with common configuration issues. Intended to identify places where better documentation is needed.                   |
 | `/sudo_list_links <guild_id>`               | List links in a target guild. Used for investigating role linking bugs.                                                           |
 | `/debug_product_cache <guild_id>`           | Dump product cache for a target guild. Used for investigating product cache bugs.                                                 |
-| `/clear_cache`                              | Delete all product cache state.                                                                                                   |
+| `/clear_cache`                              | Delete all product cache state. It will be expensive to rebuild, so don't do this unless there's a strong reason.                                                                                                  |
 | `/unfuck_cache`                             | Forcibly re-register all stores in the product cache. Useful if Jinxxy API failures have caused stores to become unregistered.    |
-| `/set_cache_expiry_time <hours>`            | Set the expiry time for the product cache. Default is 24 hours. Do not set this to 0.                                             |
-| `/ban_guild <guild> [reason]`               | Ban a guild from adding this bot, optionally providing a reason why.                                                              |
-| `/ban_user <user> [reason]`                 | Ban a user from interacting with this bot, optionally providing a reason why. This can also be used via the context menu.         |
-| `/unban_guild <guild>`                      | Unban a guild from adding this bot.                                                                                               |
-| `/unban_user <user>`                        | Unban a user from interacting with this bot. This can also be used via the context menu.                                          |
+| `/set_cache_expiry_time <hours>`            | Set the expiry time for the product cache. Default is 24 hours.                                             |
+| `/backfill_license_activation` | Backfill missing license activation information. This was needed for a specific Jinx feature addtion, and should not be needed again.|
+| `/delete_stale_guilds`| Removes any guilds from the DB where we somehow missed the GuildDelete event. You should run this if `/owner_stats` ever detects a "stale" guild, especially after any backup restoration!|

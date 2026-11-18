@@ -1,5 +1,12 @@
 # Maintenance Notes
 
+Note that Jinx isn't really built like an enterprise service.
+This is intentional, because I don't find enterprisy-stuff enjoyable. I do enterprise stuff for work. I don't want to do
+it at home. This is ultimately a project I make for free in my spare time, so it being tolerable for me to work on is
+critical for keeping the project running. This means I don't have fancy things like dashboards, metrics, alarms, or
+multi-site replication. But in exchange the whole project runs in 1 process, 100MB RAM, and negligible CPU. The DB is a
+single <10MB file, and the whole bot should be fairly easy for a layperson to self-host.
+
 ## Do Before Each Release
 
 - Make sure you didn't forget any license notices: `rg -g '*.rs' --files-without-match -F 'GNU AGPL v3.0'`
